@@ -128,6 +128,27 @@ The integration needs to register with Firebase Cloud Messaging. This happens au
 ### Camera shows no image
 The visitor camera only shows photos captured when someone rings the doorbell. If no one has rung since the integration was set up, the camera will be empty.
 
+## Development
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for full guidelines.
+
+```bash
+# Install dev dependencies
+pip install -e ".[dev]"
+
+# Run tests
+pytest tests/ -v
+
+# Run with coverage
+pytest tests/ -v --cov=custom_components/fermax_blue --cov-report=term-missing
+
+# Lint
+pip install ruff
+ruff check custom_components/ tests/
+```
+
+This project uses [Conventional Commits](https://www.conventionalcommits.org/).
+
 ## Credits
 
 - Inspired by [HASS-BlueCon](https://github.com/AfonsoFGarcia/hass-bluecon) by Afonso Garcia
