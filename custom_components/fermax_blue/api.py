@@ -90,6 +90,19 @@ class FermaxBlueApi:
         self._access_token: str | None = None
         self._token_expires_at: float = 0
         self._pairings: list[Pairing] = []
+        self._client: httpx.AsyncClient | None = None
+
+    async def _get_client(self) -> httpx.AsyncClient:
+        """Get or create a persistent HTTP client."""
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(timeout=API_TIMEOUT)
+        return self._client
+
+    async def close(self) -> None:
+        """Close the HTTP client."""
+        if self._client and not self._client.is_closed:
+            await self._client.aclose()
+            self._client = None
 
     @property
     def is_authenticated(self) -> bool:
@@ -119,10 +132,10 @@ class FermaxBlueApi:
             **APP_HEADERS,
         }
 
-        async with httpx.AsyncClient(timeout=OAUTH_TIMEOUT) as client:
-            response = await client.post(
-                FERMAX_AUTH_URL, headers=headers, content=payload
-            )
+        client = await self._get_client()
+        response = await client.post(
+            FERMAX_AUTH_URL, headers=headers, content=payload
+        )
 
         data = response.json()
         if "error" in data:
@@ -143,22 +156,22 @@ class FermaxBlueApi:
     async def _api_get(self, path: str, **kwargs) -> httpx.Response:
         """Make an authenticated GET request."""
         await self._ensure_authenticated()
-        async with httpx.AsyncClient(timeout=API_TIMEOUT) as client:
-            return await client.get(
-                f"{FERMAX_BASE_URL}{path}",
-                headers=self._get_auth_headers(),
-                **kwargs,
-            )
+        client = await self._get_client()
+        return await client.get(
+            f"{FERMAX_BASE_URL}{path}",
+            headers=self._get_auth_headers(),
+            **kwargs,
+        )
 
     async def _api_post(self, path: str, **kwargs) -> httpx.Response:
         """Make an authenticated POST request."""
         await self._ensure_authenticated()
-        async with httpx.AsyncClient(timeout=API_TIMEOUT) as client:
-            return await client.post(
-                f"{FERMAX_BASE_URL}{path}",
-                headers=self._get_auth_headers(),
-                **kwargs,
-            )
+        client = await self._get_client()
+        return await client.post(
+            f"{FERMAX_BASE_URL}{path}",
+            headers=self._get_auth_headers(),
+            **kwargs,
+        )
 
     async def get_pairings(self) -> list[Pairing]:
         """Get all paired devices."""

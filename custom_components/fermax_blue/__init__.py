@@ -68,6 +68,7 @@ async def async_unload_entry(
     coordinators = hass.data[DOMAIN].get(entry.entry_id, [])
     for coordinator in coordinators:
         await coordinator.stop_notifications()
+        await coordinator.api.close()
 
     unload_ok = await hass.config_entries.async_unload_platforms(
         entry, PLATFORMS

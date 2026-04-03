@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from pathlib import Path
@@ -50,23 +51,31 @@ class FermaxNotificationListener:
     def _on_credentials_updated(self, new_creds: dict) -> None:
         """Handle FCM credentials update."""
         self._credentials = new_creds
-        self._save_credentials()
+        # Save in a thread since this callback is sync
+        self._credentials_file.write_text(
+            json.dumps(self._credentials, indent=2)
+        )
 
-    def _save_credentials(self) -> None:
-        """Save FCM credentials to disk."""
+    async def _save_credentials(self) -> None:
+        """Save FCM credentials to disk (non-blocking)."""
         if self._credentials:
-            self._credentials_file.write_text(
-                json.dumps(self._credentials, indent=2)
+            await asyncio.to_thread(
+                self._credentials_file.write_text,
+                json.dumps(self._credentials, indent=2),
             )
 
-    def _load_credentials(self) -> dict | None:
-        """Load FCM credentials from disk."""
-        if self._credentials_file.exists():
-            try:
-                return json.loads(self._credentials_file.read_text())
-            except (json.JSONDecodeError, OSError):
-                pass
-        return None
+    async def _load_credentials(self) -> dict | None:
+        """Load FCM credentials from disk (non-blocking)."""
+
+        def _read():
+            if self._credentials_file.exists():
+                try:
+                    return json.loads(self._credentials_file.read_text())
+                except (json.JSONDecodeError, OSError):
+                    pass
+            return None
+
+        return await asyncio.to_thread(_read)
 
     def _on_notification(
         self,
@@ -81,7 +90,7 @@ class FermaxNotificationListener:
 
     async def register(self) -> str | None:
         """Register with Firebase and return the FCM token."""
-        self._credentials = self._load_credentials()
+        self._credentials = await self._load_credentials()
 
         if not self._credentials:
             _LOGGER.info("Registering new FCM client with Firebase")
@@ -90,7 +99,7 @@ class FermaxNotificationListener:
                 credentials_updated_callback=self._on_credentials_updated,
             )
             self._credentials = await registerer.register()
-            self._save_credentials()
+            await self._save_credentials()
             _LOGGER.info("FCM registration complete")
 
         return self.fcm_token
