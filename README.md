@@ -48,9 +48,27 @@ The integration is configured through the Home Assistant UI:
 1. Go to **Settings** > **Devices & Services**
 2. Click **Add Integration**
 3. Search for **Fermax Blue**
-4. Enter your Fermax Blue app credentials (same email/password you use in the mobile app)
+4. Enter your Fermax Blue app credentials (see below)
 
 The integration will automatically discover all paired devices on your account.
+
+### Dedicated User for Doorbell Notifications (Recommended)
+
+Fermax Blue only allows **one active push notification token per user**. If you use your main account for the integration, your mobile app will stop receiving doorbell notifications (or vice versa).
+
+To solve this, **create a dedicated user** for the integration:
+
+1. Open the **Fermax Blue app** on your phone
+2. Go to **Settings** > **Users** > **Invite user**
+3. Enter a new email address (e.g., `yourname+ha@gmail.com` — Gmail `+` aliases work)
+4. The invited user will receive an email with a registration link
+5. Open the link, **download the Fermax Blue app** on any phone, and complete the registration with a password
+6. Once registered, you can uninstall the app — the account is now active
+7. Use this new account's credentials when configuring the integration in Home Assistant
+
+This way, your main account keeps receiving notifications on your phone, and the integration receives them independently via its own account.
+
+> **Note:** If you skip this step and use your main account, the integration will still work for door opening, device status, and camera — but real-time doorbell notifications may conflict with your mobile app.
 
 ## Entities
 

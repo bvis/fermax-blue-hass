@@ -267,16 +267,19 @@ class FermaxBlueApi:
     ) -> bool:
         """Register FCM token with Fermax for push notifications."""
         payload = {
+            "appTokenId": fcm_token,
             "token": fcm_token,
+            "os": "ANDROID",
             "appVersion": "3.4.4",
             "appBuild": 1,
             "phoneModel": "HA-Integration",
             "phoneOS": "14.0",
+            "locale": "en_US",
             "active": active,
         }
 
         response = await self._api_post(
-            "/notification/api/v1/apptoken",
+            "/notification/api/v2/apptoken",
             json=payload,
         )
         return response.is_success
