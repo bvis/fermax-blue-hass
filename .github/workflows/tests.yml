@@ -31,13 +31,35 @@ jobs:
         run: |
           pytest tests/ -v --cov=custom_components/fermax_blue --cov-report=term-missing --tb=short --junit-xml=test-results.xml
 
-      - name: Publish test results
-        uses: dorny/test-reporter@v2
+      - name: Test summary
         if: always()
-        with:
-          name: Test Results (Python ${{ matrix.python-version }})
-          path: test-results.xml
-          reporter: java-junit
+        run: |
+          python -c "
+          import xml.etree.ElementTree as ET
+          tree = ET.parse('test-results.xml')
+          root = tree.getroot()
+          tests = root.attrib.get('tests', '0')
+          failures = root.attrib.get('failures', '0')
+          errors = root.attrib.get('errors', '0')
+          time_taken = root.attrib.get('time', '0')
+          passed = int(tests) - int(failures) - int(errors)
+          status = ':white_check_mark:' if int(failures) == 0 and int(errors) == 0 else ':x:'
+          with open('$GITHUB_STEP_SUMMARY', 'a') as f:
+              f.write(f'## {status} Test Results (Python \${{ matrix.python-version }})\n\n')
+              f.write(f'| Metric | Value |\n|--------|-------|\n')
+              f.write(f'| Total | {tests} |\n')
+              f.write(f'| Passed | {passed} |\n')
+              f.write(f'| Failed | {failures} |\n')
+              f.write(f'| Errors | {errors} |\n')
+              f.write(f'| Time | {time_taken}s |\n\n')
+              for suite in root:
+                  for case in suite:
+                      name = case.attrib.get('name', '')
+                      classname = case.attrib.get('classname', '')
+                      fail = case.find('failure')
+                      if fail is not None:
+                          f.write(f'### :x: {classname}::{name}\n\`\`\`\n{fail.text[:500] if fail.text else \"\"}\n\`\`\`\n')
+          "
 
   lint:
     runs-on: ubuntu-latest
