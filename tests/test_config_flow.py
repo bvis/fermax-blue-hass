@@ -1,11 +1,10 @@
 """Tests for the Fermax Blue config flow."""
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 
 from custom_components.fermax_blue.api import FermaxAuthError
-from custom_components.fermax_blue.config_flow import FermaxBlueConfigFlow
 
 
 class TestConfigFlow:
