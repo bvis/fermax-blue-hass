@@ -35,7 +35,6 @@ jobs:
         if: always()
         env:
           PY_VERSION: ${{ matrix.python-version }}
-          SUMMARY_FILE: ${{ github.step_summary }}
         run: |
           python << 'PYEOF'
           import os, xml.etree.ElementTree as ET
@@ -55,7 +54,7 @@ jobs:
           passed = tests - failures - errors
           icon = ":white_check_mark:" if failures == 0 and errors == 0 else ":x:"
           py = os.environ["PY_VERSION"]
-          summary = os.environ["SUMMARY_FILE"]
+          summary = os.environ["GITHUB_STEP_SUMMARY"]
 
           with open(summary, "a") as f:
               f.write(f"## {icon} Test Results (Python {py})\n\n")
