@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 from pathlib import Path
@@ -14,7 +13,6 @@ from firebase_messaging.fcmregister import FcmRegister, FcmRegisterConfig
 from .const import (
     FIREBASE_API_KEY,
     FIREBASE_APP_ID,
-    FIREBASE_PACKAGE_NAME,
     FIREBASE_PROJECT_ID,
     FIREBASE_SENDER_ID,
 )

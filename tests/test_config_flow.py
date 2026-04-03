@@ -4,11 +4,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from custom_components.fermax_blue.api import (
-    AccessDoor,
-    FermaxAuthError,
-    Pairing,
-)
+from custom_components.fermax_blue.api import FermaxAuthError
 from custom_components.fermax_blue.const import DOMAIN
 
 

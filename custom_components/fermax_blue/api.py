@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-import asyncio
 import base64
-import hashlib
 import json
 import logging
+import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from pathlib import Path
 from urllib.parse import quote
 
 import httpx
@@ -19,11 +17,6 @@ from .const import (
     FERMAX_AUTH_BASIC,
     FERMAX_AUTH_URL,
     FERMAX_BASE_URL,
-    FIREBASE_API_KEY,
-    FIREBASE_APP_ID,
-    FIREBASE_PACKAGE_NAME,
-    FIREBASE_PROJECT_ID,
-    FIREBASE_SENDER_ID,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -101,7 +94,6 @@ class FermaxBlueApi:
     @property
     def is_authenticated(self) -> bool:
         """Return True if we have a valid token."""
-        import time
         return (
             self._access_token is not None
             and time.time() < self._token_expires_at
@@ -138,7 +130,6 @@ class FermaxBlueApi:
                 data.get("error_description", data["error"])
             )
 
-        import time
         self._access_token = data["access_token"]
         self._token_expires_at = time.time() + data.get("expires_in", 3600) - 60
         _LOGGER.debug("Authenticated with Fermax Blue")
