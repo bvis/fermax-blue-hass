@@ -14,10 +14,10 @@ jobs:
         python-version: ["3.12", "3.13"]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
 
@@ -29,15 +29,23 @@ jobs:
 
       - name: Run tests
         run: |
-          pytest tests/ -v --cov=custom_components/fermax_blue --cov-report=term-missing
+          pytest tests/ -v --cov=custom_components/fermax_blue --cov-report=term-missing --tb=short --junit-xml=test-results.xml
+
+      - name: Publish test results
+        uses: dorny/test-reporter@v2
+        if: always()
+        with:
+          name: Test Results (Python ${{ matrix.python-version }})
+          path: test-results.xml
+          reporter: java-junit
 
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
@@ -47,12 +55,12 @@ jobs:
           pip install ruff
 
       - name: Lint with ruff
-        run: ruff check custom_components/ tests/
+        run: ruff check custom_components/ tests/ --output-format=github
 
   validate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: HACS validation
         uses: hacs/action@main
