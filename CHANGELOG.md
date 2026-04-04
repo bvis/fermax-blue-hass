@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.2.0] - 2026-04-05
+
+### Added
+- Camera preview (auto-on): view intercom camera on demand without a doorbell ring
+- Camera preview button entity (`button.camera_preview`)
+- Camera entity supports `turn_on` to trigger auto-on
+- Video source change API support
+- Docker-based development tooling (`make check/lint/format/typecheck/test`)
+- Comprehensive ruff linting (16 rule categories) and mypy type checking in CI
+- 36 unit tests across 8 test classes
+
+### Fixed
+- Critical: `@callback` on async shutdown handler prevented cleanup on HA stop
+- API client leak on setup failure and config flow validation
+- Use `async_call_later` for all timed tasks (doorbell reset, auto-lock, camera timeout) instead of untracked background coroutines
+- Proper error handling with `UpdateFailed` in coordinator
+- Log exceptions instead of silently swallowing them
+- WiFi signal sensor: removed invalid device_class for "bars" unit
+
+### Changed
+- Optimize API calls: call log/photos only fetched after doorbell ring (was every 5 min)
+- Camera auto-deactivates after 90 seconds (matching app behavior)
+- Door auto-locks after 5 seconds using cancellable timer
+- Removed duplicate CONF constants from const.py
+
 ## [0.1.1] - 2026-04-04
 
 ### Fixed
