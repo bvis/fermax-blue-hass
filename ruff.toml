@@ -1,0 +1,41 @@
+target-version = "py312"
+line-length = 88
+
+[lint]
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # pyflakes
+    "I",      # isort
+    "N",      # pep8-naming
+    "UP",     # pyupgrade
+    "B",      # flake8-bugbear
+    "A",      # flake8-builtins
+    "C4",     # flake8-comprehensions
+    "SIM",    # flake8-simplify
+    "TCH",    # flake8-type-checking
+    "RUF",    # ruff-specific rules
+    "PT",     # flake8-pytest-style
+    "RET",    # flake8-return
+    "PIE",    # flake8-pie
+    "LOG",    # flake8-logging
+    "T20",    # flake8-print
+    "ASYNC",  # flake8-async
+]
+ignore = [
+    "E501",   # line too long (handled by formatter)
+    "RUF012", # mutable class attrs (HA pattern)
+    "TC001",  # typing-only first-party import (HA needs runtime imports)
+    "TC002",  # typing-only third-party import (HA needs runtime imports)
+    "TC003",  # typing-only stdlib import (HA needs runtime imports)
+]
+
+[lint.per-file-ignores]
+"tests/*" = ["B018", "PT004", "PT012"]
+
+[lint.isort]
+known-first-party = ["custom_components.fermax_blue"]
+
+[format]
+quote-style = "double"
+indent-style = "space"

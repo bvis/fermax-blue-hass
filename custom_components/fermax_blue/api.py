@@ -7,7 +7,7 @@ import json
 import logging
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from urllib.parse import quote
 
 import httpx
@@ -120,10 +120,7 @@ class FermaxBlueApi:
     @property
     def is_authenticated(self) -> bool:
         """Return True if we have a valid token."""
-        return (
-            self._access_token is not None
-            and time.time() < self._token_expires_at
-        )
+        return self._access_token is not None and time.time() < self._token_expires_at
 
     def _get_auth_headers(self) -> dict:
         """Get headers for authenticated API requests."""
@@ -146,15 +143,11 @@ class FermaxBlueApi:
         }
 
         client = await self._get_client()
-        response = await client.post(
-            FERMAX_AUTH_URL, headers=headers, content=payload
-        )
+        response = await client.post(FERMAX_AUTH_URL, headers=headers, content=payload)
 
         data = response.json()
         if "error" in data:
-            raise FermaxAuthError(
-                data.get("error_description", data["error"])
-            )
+            raise FermaxAuthError(data.get("error_description", data["error"]))
 
         self._access_token = data["access_token"]
         self._token_expires_at = time.time() + data.get("expires_in", 3600) - 60
@@ -216,9 +209,7 @@ class FermaxBlueApi:
 
     async def get_device_info(self, device_id: str) -> DeviceInfo:
         """Get device information."""
-        response = await self._api_get(
-            f"/deviceaction/api/v1/device/{device_id}"
-        )
+        response = await self._api_get(f"/deviceaction/api/v1/device/{device_id}")
         response.raise_for_status()
         data = response.json()
 
@@ -261,7 +252,7 @@ class FermaxBlueApi:
                     call_id=item.get("id", ""),
                     device_id=item.get("deviceId", ""),
                     call_date=datetime.fromisoformat(
-                        item.get("callDate", datetime.now(timezone.utc).isoformat())
+                        item.get("callDate", datetime.now(UTC).isoformat())
                     ),
                     photo_id=item.get("photoId"),
                     answered=item.get("answered", False),
@@ -288,9 +279,7 @@ class FermaxBlueApi:
             pass
         return None
 
-    async def auto_on(
-        self, device_id: str, fcm_token: str
-    ) -> DivertResponse | None:
+    async def auto_on(self, device_id: str, fcm_token: str) -> DivertResponse | None:
         """Start camera preview (auto-on) without a doorbell ring.
 
         This triggers the intercom to start streaming video to the app/client.
@@ -308,9 +297,7 @@ class FermaxBlueApi:
         )
 
         if not response.is_success:
-            _LOGGER.error(
-                "autoOn failed: %s %s", response.status_code, response.text
-            )
+            _LOGGER.error("autoOn failed: %s %s", response.status_code, response.text)
             return None
 
         data = response.json()
@@ -355,9 +342,7 @@ class FermaxBlueApi:
             directed_to=data.get("directedTo", ""),
         )
 
-    async def register_app_token(
-        self, fcm_token: str, active: bool = True
-    ) -> bool:
+    async def register_app_token(self, fcm_token: str, active: bool = True) -> bool:
         """Register FCM token with Fermax for push notifications."""
         payload = {
             "appTokenId": fcm_token,

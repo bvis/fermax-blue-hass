@@ -6,7 +6,6 @@ import logging
 from typing import Any
 
 import voluptuous as vol
-
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 
@@ -52,9 +51,7 @@ class FermaxBlueConfigFlow(ConfigFlow, domain=DOMAIN):
                 if not pairings:
                     errors["base"] = "no_devices"
                 else:
-                    await self.async_set_unique_id(
-                        user_input[CONF_USERNAME].lower()
-                    )
+                    await self.async_set_unique_id(user_input[CONF_USERNAME].lower())
                     self._abort_if_unique_id_configured()
 
                     return self.async_create_entry(

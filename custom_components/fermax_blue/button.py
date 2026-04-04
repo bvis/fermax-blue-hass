@@ -75,8 +75,6 @@ class FermaxCameraPreviewButton(FermaxBlueEntity, ButtonEntity):
         """Start camera preview."""
         result = await self.coordinator.start_camera_preview()
         if result:
-            _LOGGER.info(
-                "Camera preview started: %s", result.description
-            )
+            _LOGGER.info("Camera preview started: %s", result.description)
         else:
             _LOGGER.error("Failed to start camera preview")

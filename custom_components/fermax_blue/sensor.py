@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from homeassistant.components.sensor import (
-    SensorDeviceClass,
     SensorEntity,
     SensorStateClass,
 )
@@ -35,9 +34,8 @@ async def async_setup_entry(
 class FermaxWifiSignalSensor(FermaxBlueEntity, SensorEntity):
     """WiFi signal strength sensor."""
 
-    _attr_device_class = SensorDeviceClass.SIGNAL_STRENGTH
     _attr_state_class = SensorStateClass.MEASUREMENT
-    _attr_native_unit_of_measurement = "bars"
+    _attr_icon = "mdi:wifi"
     _attr_translation_key = "wifi_signal"
 
     def __init__(self, coordinator: FermaxBlueCoordinator) -> None:

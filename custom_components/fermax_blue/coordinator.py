@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import timedelta
 from pathlib import Path
@@ -44,6 +45,7 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         self._doorbell_ringing: bool = False
         self._camera_active: bool = False
         self._last_divert_response: DivertResponse | None = None
+        self._photo_fetch_pending: bool = False
 
     @property
     def last_photo(self) -> bytes | None:
@@ -61,25 +63,35 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         return self._camera_active
 
     async def _async_update_data(self) -> dict[str, Any]:
-        """Fetch data from the API."""
+        """Fetch data from the API.
+
+        Only fetches device info on each poll (1 API call per 5 min).
+        Call log and photos are only fetched after a doorbell ring event
+        to minimize unnecessary API requests.
+        """
         device_info = await self.api.get_device_info(self.pairing.device_id)
         self.device_info = device_info
 
-        # Try to fetch latest call photo if available
-        if self.notification_listener and self.notification_listener.fcm_token:
-            call_log = await self.api.get_call_log(
-                self.notification_listener.fcm_token
-            )
-            if call_log:
-                latest = max(call_log, key=lambda c: c.call_date)
-                if (
-                    latest.photo_id
-                    and latest.photo_id != self._last_photo_id
-                ):
-                    photo = await self.api.get_call_photo(latest.photo_id)
-                    if photo:
-                        self._last_photo = photo
-                        self._last_photo_id = latest.photo_id
+        # Only fetch call log/photos after a doorbell ring (not every poll)
+        if (
+            self._photo_fetch_pending
+            and self.notification_listener
+            and self.notification_listener.fcm_token
+        ):
+            self._photo_fetch_pending = False
+            try:
+                call_log = await self.api.get_call_log(
+                    self.notification_listener.fcm_token
+                )
+                if call_log:
+                    latest = max(call_log, key=lambda c: c.call_date)
+                    if latest.photo_id and latest.photo_id != self._last_photo_id:
+                        photo = await self.api.get_call_photo(latest.photo_id)
+                        if photo:
+                            self._last_photo = photo
+                            self._last_photo_id = latest.photo_id
+            except Exception:
+                _LOGGER.debug("Failed to fetch call log/photo", exc_info=True)
 
         return {
             "device_id": device_info.device_id,
@@ -121,9 +133,7 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
             await self.notification_listener.stop()
 
     @callback
-    def _handle_notification(
-        self, notification: dict, persistent_id: str
-    ) -> None:
+    def _handle_notification(self, notification: dict, persistent_id: str) -> None:
         """Handle an incoming FCM doorbell notification."""
         _LOGGER.info(
             "Doorbell notification for %s: %s",
@@ -132,6 +142,7 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         )
 
         self._doorbell_ringing = True
+        self._photo_fetch_pending = True
 
         # Extract door key from notification if available
         door_key = notification.get("accessDoorKey", "GENERAL")
@@ -142,7 +153,6 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
 
         # Auto-reset ringing state after 30 seconds
         async def reset_ringing():
-            import asyncio
             await asyncio.sleep(30)
             self._doorbell_ringing = False
             dispatcher_send(
@@ -170,9 +180,7 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
             _LOGGER.error("No accessible door found for %s", door_name)
             return False
 
-        return await self.api.open_door(
-            self.pairing.device_id, door.access_id
-        )
+        return await self.api.open_door(self.pairing.device_id, door.access_id)
 
     async def start_camera_preview(self) -> DivertResponse | None:
         """Start camera preview (auto-on) to view the intercom camera.
@@ -200,7 +208,6 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
 
             # Auto-deactivate after 90 seconds (matching app behavior)
             async def deactivate_camera():
-                import asyncio
                 await asyncio.sleep(90)
                 self._camera_active = False
                 self.async_set_updated_data(self.data)

@@ -18,9 +18,7 @@ _LOGGER = logging.getLogger(__name__)
 type FermaxBlueConfigEntry = ConfigEntry[list[FermaxBlueCoordinator]]
 
 
-async def async_setup_entry(
-    hass: HomeAssistant, entry: FermaxBlueConfigEntry
-) -> bool:
+async def async_setup_entry(hass: HomeAssistant, entry: FermaxBlueConfigEntry) -> bool:
     """Set up Fermax Blue from a config entry."""
     api = FermaxBlueApi(
         entry.data[CONF_USERNAME],
@@ -61,18 +59,14 @@ async def async_setup_entry(
     return True
 
 
-async def async_unload_entry(
-    hass: HomeAssistant, entry: FermaxBlueConfigEntry
-) -> bool:
+async def async_unload_entry(hass: HomeAssistant, entry: FermaxBlueConfigEntry) -> bool:
     """Unload a config entry."""
     coordinators = hass.data[DOMAIN].get(entry.entry_id, [])
     for coordinator in coordinators:
         await coordinator.stop_notifications()
         await coordinator.api.close()
 
-    unload_ok = await hass.config_entries.async_unload_platforms(
-        entry, PLATFORMS
-    )
+    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
     if unload_ok:
         hass.data[DOMAIN].pop(entry.entry_id, None)

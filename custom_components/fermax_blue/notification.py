@@ -5,8 +5,9 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from firebase_messaging import FcmPushClient
 from firebase_messaging.fcmregister import FcmRegister, FcmRegisterConfig
@@ -52,9 +53,7 @@ class FermaxNotificationListener:
         """Handle FCM credentials update."""
         self._credentials = new_creds
         # Save in a thread since this callback is sync
-        self._credentials_file.write_text(
-            json.dumps(self._credentials, indent=2)
-        )
+        self._credentials_file.write_text(json.dumps(self._credentials, indent=2))
 
     async def _save_credentials(self) -> None:
         """Save FCM credentials to disk (non-blocking)."""
