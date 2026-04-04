@@ -7,6 +7,7 @@ import pytest
 from custom_components.fermax_blue.api import (
     AccessDoor,
     DeviceInfo,
+    DivertResponse,
     FermaxBlueApi,
     Pairing,
 )
@@ -57,6 +58,26 @@ def mock_api():
         )
     )
     api.open_door = AsyncMock(return_value=True)
+    api.auto_on = AsyncMock(
+        return_value=DivertResponse(
+            reason="call_starting",
+            divert_service="blueStream",
+            code=1.0,
+            description="Auto on is starting",
+            directed_to="test_fcm_token",
+            local_address="00 00 42",
+            remote_address="AA F0 00",
+        )
+    )
+    api.change_video_source = AsyncMock(
+        return_value=DivertResponse(
+            reason="call_starting",
+            divert_service="blueStream",
+            code=1.0,
+            description="Change video source",
+            directed_to="test_fcm_token",
+        )
+    )
     api.get_call_log = AsyncMock(return_value=[])
     api.get_call_photo = AsyncMock(return_value=None)
     api.register_app_token = AsyncMock(return_value=True)

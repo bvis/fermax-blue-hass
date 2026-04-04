@@ -11,7 +11,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import dispatcher_send
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
-from .api import DeviceInfo, FermaxBlueApi, Pairing
+from .api import DeviceInfo, DivertResponse, FermaxBlueApi, Pairing
 from .const import DOMAIN, SIGNAL_CALL_ENDED, SIGNAL_DOORBELL_RING
 from .notification import FermaxNotificationListener
 
@@ -42,6 +42,8 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         self._last_photo: bytes | None = None
         self._last_photo_id: str | None = None
         self._doorbell_ringing: bool = False
+        self._camera_active: bool = False
+        self._last_divert_response: DivertResponse | None = None
 
     @property
     def last_photo(self) -> bytes | None:
@@ -52,6 +54,11 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
     def doorbell_ringing(self) -> bool:
         """Return True if the doorbell is currently ringing."""
         return self._doorbell_ringing
+
+    @property
+    def camera_active(self) -> bool:
+        """Return True if camera preview is active."""
+        return self._camera_active
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch data from the API."""
@@ -165,4 +172,50 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
 
         return await self.api.open_door(
             self.pairing.device_id, door.access_id
+        )
+
+    async def start_camera_preview(self) -> DivertResponse | None:
+        """Start camera preview (auto-on) to view the intercom camera.
+
+        This initiates a video stream from the intercom without requiring
+        a doorbell ring. The stream parameters will arrive via push notification.
+        """
+        if not self.notification_listener or not self.notification_listener.fcm_token:
+            _LOGGER.error("Cannot start camera: no FCM token available")
+            return None
+
+        result = await self.api.auto_on(
+            self.pairing.device_id,
+            self.notification_listener.fcm_token,
+        )
+
+        if result:
+            self._camera_active = True
+            self._last_divert_response = result
+            _LOGGER.info(
+                "Camera preview started: %s (%s)",
+                result.reason,
+                result.description,
+            )
+
+            # Auto-deactivate after 90 seconds (matching app behavior)
+            async def deactivate_camera():
+                import asyncio
+                await asyncio.sleep(90)
+                self._camera_active = False
+                self.async_set_updated_data(self.data)
+
+            self.hass.async_create_task(deactivate_camera())
+            self.async_set_updated_data(self.data)
+
+        return result
+
+    async def change_video_source(self) -> DivertResponse | None:
+        """Request a video source change on the intercom."""
+        if not self.notification_listener or not self.notification_listener.fcm_token:
+            return None
+
+        return await self.api.change_video_source(
+            self.pairing.device_id,
+            self.notification_listener.fcm_token,
         )

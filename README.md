@@ -10,6 +10,7 @@ This integration simulates a Fermax Blue mobile app client, connecting to the Fe
 
 - **Doorbell detection** — Real-time push notification when someone rings (via Firebase Cloud Messaging)
 - **Door opening** — Open your building's door remotely (lock entity + button)
+- **Camera preview** — On-demand camera view via auto-on (triggers the intercom camera without a doorbell ring)
 - **Visitor camera** — View the last captured visitor photo
 - **Connection status** — Monitor if your intercom is online
 - **WiFi signal** — Track the intercom's wireless signal strength
@@ -80,7 +81,8 @@ For each paired intercom device, the integration creates:
 | `binary_sensor.<name>_doorbell` | Binary Sensor | Turns on when someone rings (auto-resets after 30s) |
 | `lock.<name>_<door>_lock` | Lock | Lock/unlock (open) the door |
 | `button.<name>_<door>_open` | Button | One-press door opening |
-| `camera.<name>_visitor` | Camera | Last captured visitor photo |
+| `button.<name>_camera_preview` | Button | Start camera preview (auto-on) |
+| `camera.<name>_visitor` | Camera | Last captured visitor photo (supports turn_on for live preview) |
 | `sensor.<name>_wifi_signal` | Sensor | WiFi signal strength (0-4 bars) |
 | `sensor.<name>_status` | Sensor | Device activation status |
 | `switch.<name>_notifications` | Switch | Enable/disable push notifications |
@@ -127,11 +129,27 @@ automation:
             image: /local/snapshots/visitor.jpg
 ```
 
+### View camera on demand
+
+```yaml
+automation:
+  - alias: "View intercom camera"
+    trigger:
+      - platform: state
+        entity_id: input_boolean.view_intercom
+        to: "on"
+    action:
+      - service: button.press
+        target:
+          entity_id: button.fermax_your_home_camera_preview
+```
+
 ## How It Works
 
 1. **Authentication**: The integration authenticates with the Fermax Blue cloud API (`pro-duoxme.fermax.io`) using your account credentials
 2. **Device Discovery**: It fetches all paired intercom devices and their accessible doors
 3. **Firebase Registration**: It registers a Firebase Cloud Messaging client (simulating the mobile app) to receive real-time doorbell push notifications
+4. **Camera Preview**: The auto-on feature sends a request to `/deviceaction/api/v2/device/{id}/autoon` which triggers the intercom camera
 4. **Push Notifications**: When someone rings your doorbell, Fermax sends a push notification via Firebase, which the integration receives instantly
 5. **Polling**: Device status (connection, signal) is polled every 5 minutes
 
