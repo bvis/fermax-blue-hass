@@ -97,4 +97,4 @@ class FermaxDoorbellSensor(FermaxBlueEntity, BinarySensorEntity):
     @property
     def is_on(self) -> bool:
         """Return True if doorbell is ringing."""
-        return self._attr_is_on
+        return bool(self._attr_is_on)

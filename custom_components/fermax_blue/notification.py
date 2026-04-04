@@ -46,7 +46,8 @@ class FermaxNotificationListener:
     def fcm_token(self) -> str | None:
         """Return the GCM/FCM token for this client."""
         if self._credentials:
-            return self._credentials.get("gcm", {}).get("token")
+            token: str | None = self._credentials.get("gcm", {}).get("token")
+            return token
         return None
 
     def _on_credentials_updated(self, new_creds: dict) -> None:
