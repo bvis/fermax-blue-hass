@@ -130,3 +130,83 @@ class TestDoorControl:
             )
 
         assert result is True
+
+
+class TestAutoOn:
+    """Test camera preview (auto-on)."""
+
+    @pytest.mark.asyncio
+    async def test_auto_on_success(self, api):
+        """Test successful auto-on request."""
+        api._access_token = "valid_token"
+        api._token_expires_at = 9999999999
+
+        mock_response = httpx.Response(
+            200,
+            json={
+                "reason": "call_starting",
+                "divertService": "blueStream",
+                "code": 1.0,
+                "description": "Auto on is starting",
+                "directedTo": "fcm_token_123",
+                "additional_info": {
+                    "local": {"address": "00 00 42"},
+                    "remote": {"address": "AA F0 00"},
+                },
+            },
+            request=httpx.Request("POST", "https://test.com"),
+        )
+
+        with patch("httpx.AsyncClient.post", return_value=mock_response):
+            result = await api.auto_on("device_123", "fcm_token_123")
+
+        assert result is not None
+        assert result.reason == "call_starting"
+        assert result.divert_service == "blueStream"
+        assert result.description == "Auto on is starting"
+        assert result.directed_to == "fcm_token_123"
+        assert result.local_address == "00 00 42"
+        assert result.remote_address == "AA F0 00"
+
+    @pytest.mark.asyncio
+    async def test_auto_on_failure(self, api):
+        """Test auto-on when server returns error."""
+        api._access_token = "valid_token"
+        api._token_expires_at = 9999999999
+
+        mock_response = httpx.Response(
+            500,
+            json={"title": "Internal Server Error", "status": 500},
+            request=httpx.Request("POST", "https://test.com"),
+        )
+
+        with patch("httpx.AsyncClient.post", return_value=mock_response):
+            result = await api.auto_on("device_123", "fcm_token_123")
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_change_video_source(self, api):
+        """Test video source change request."""
+        api._access_token = "valid_token"
+        api._token_expires_at = 9999999999
+
+        mock_response = httpx.Response(
+            200,
+            json={
+                "reason": "call_starting",
+                "divertService": "blueStream",
+                "code": 1.0,
+                "description": "Change video source",
+                "directedTo": "fcm_token_123",
+            },
+            request=httpx.Request("POST", "https://test.com"),
+        )
+
+        with patch("httpx.AsyncClient.post", return_value=mock_response):
+            result = await api.change_video_source(
+                "device_123", "fcm_token_123"
+            )
+
+        assert result is not None
+        assert result.reason == "call_starting"

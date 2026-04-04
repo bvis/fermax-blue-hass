@@ -73,6 +73,19 @@ class CallLogEntry:
     answered: bool = False
 
 
+@dataclass
+class DivertResponse:
+    """Response from autoOn/changeVideoSource calls."""
+
+    reason: str
+    divert_service: str
+    code: float
+    description: str
+    directed_to: str
+    local_address: str = ""
+    remote_address: str = ""
+
+
 class FermaxAuthError(Exception):
     """Authentication error."""
 
@@ -274,6 +287,73 @@ class FermaxBlueApi:
         except Exception:
             pass
         return None
+
+    async def auto_on(
+        self, device_id: str, fcm_token: str
+    ) -> DivertResponse | None:
+        """Start camera preview (auto-on) without a doorbell ring.
+
+        This triggers the intercom to start streaming video to the app/client.
+        The signaling server URL and room ID will arrive via push notification.
+        """
+        payload = {
+            "directedToBluestream": fcm_token,
+            "directedToSippo": None,
+            "callAs": None,
+        }
+
+        response = await self._api_post(
+            f"/deviceaction/api/v2/device/{device_id}/autoon",
+            json=payload,
+        )
+
+        if not response.is_success:
+            _LOGGER.error(
+                "autoOn failed: %s %s", response.status_code, response.text
+            )
+            return None
+
+        data = response.json()
+        additional = data.get("additional_info", {})
+        local_info = additional.get("local", {})
+        remote_info = additional.get("remote", {})
+
+        return DivertResponse(
+            reason=data.get("reason", ""),
+            divert_service=data.get("divertService", ""),
+            code=data.get("code", 0),
+            description=data.get("description", ""),
+            directed_to=data.get("directedTo", ""),
+            local_address=local_info.get("address", ""),
+            remote_address=remote_info.get("address", ""),
+        )
+
+    async def change_video_source(
+        self, device_id: str, fcm_token: str
+    ) -> DivertResponse | None:
+        """Request a video source change on the intercom."""
+        payload = {
+            "directedToBluestream": fcm_token,
+            "directedToSippo": None,
+            "callAs": None,
+        }
+
+        response = await self._api_post(
+            f"/deviceaction/api/v2/device/{device_id}/changevideosource",
+            json=payload,
+        )
+
+        if not response.is_success:
+            return None
+
+        data = response.json()
+        return DivertResponse(
+            reason=data.get("reason", ""),
+            divert_service=data.get("divertService", ""),
+            code=data.get("code", 0),
+            description=data.get("description", ""),
+            directed_to=data.get("directedTo", ""),
+        )
 
     async def register_app_token(
         self, fcm_token: str, active: bool = True

@@ -34,7 +34,15 @@ async def async_setup_entry(
 
 
 class FermaxCamera(FermaxBlueEntity, Camera):
-    """Camera entity showing last visitor photo."""
+    """Camera entity showing last visitor photo.
+
+    Supports on-demand camera preview via the auto-on feature.
+    When turned on, it triggers the intercom to start streaming
+    and captures the visitor photo.
+
+    Note: Full video streaming requires mediasoup/Socket.IO client
+    which is not yet implemented. Currently supports still image capture.
+    """
 
     _attr_translation_key = "visitor"
 
@@ -68,7 +76,28 @@ class FermaxCamera(FermaxBlueEntity, Camera):
         """Return the last captured visitor photo."""
         return self.coordinator.last_photo
 
+    async def async_turn_on(self) -> None:
+        """Start camera preview via auto-on.
+
+        This triggers the intercom to activate its camera and start
+        streaming. The video stream uses mediasoup over Socket.IO
+        (signaling server: signaling-pro-duoxme.fermax.io).
+
+        Currently captures a still image. Full video streaming support
+        is planned for a future release.
+        """
+        result = await self.coordinator.start_camera_preview()
+        if result:
+            _LOGGER.info("Camera auto-on started: %s", result.description)
+            # Trigger a refresh to pick up new photos
+            await self.coordinator.async_request_refresh()
+        else:
+            _LOGGER.error("Failed to start camera auto-on")
+
+    async def async_turn_off(self) -> None:
+        """Stop camera preview (no-op, stream auto-expires)."""
+
     @property
     def is_on(self) -> bool:
-        """Return True if the camera is enabled."""
-        return True
+        """Return True if the camera preview is active."""
+        return self.coordinator.camera_active

@@ -31,6 +31,7 @@ async def async_setup_entry(
                 entities.append(
                     FermaxOpenDoorButton(coordinator, door_name, door.title)
                 )
+        entities.append(FermaxCameraPreviewButton(coordinator))
 
     async_add_entities(entities)
 
@@ -58,3 +59,24 @@ class FermaxOpenDoorButton(FermaxBlueEntity, ButtonEntity):
             _LOGGER.info("Door %s opened via button", self._door_name)
         else:
             _LOGGER.error("Failed to open door %s via button", self._door_name)
+
+
+class FermaxCameraPreviewButton(FermaxBlueEntity, ButtonEntity):
+    """Button to start camera preview (auto-on)."""
+
+    _attr_translation_key = "camera_preview"
+    _attr_icon = "mdi:cctv"
+
+    def __init__(self, coordinator: FermaxBlueCoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{self._device_id}_camera_preview"
+
+    async def async_press(self) -> None:
+        """Start camera preview."""
+        result = await self.coordinator.start_camera_preview()
+        if result:
+            _LOGGER.info(
+                "Camera preview started: %s", result.description
+            )
+        else:
+            _LOGGER.error("Failed to start camera preview")

@@ -49,6 +49,9 @@
     "button": {
       "open_door": {
         "name": "Open door"
+      },
+      "camera_preview": {
+        "name": "Camera preview"
       }
     },
     "switch": {
