@@ -39,14 +39,14 @@ FIREBASE_PACKAGE_NAME = _d("Y0hCaExtVjFiR0l1ZUdGdGNtVm1MbTF2WXc9PQ==")
 
 # Simulated device headers
 APP_HEADERS = {
-    "app-version": "3.4.4",
+    "app-version": "4.3.0",
     "accept-language": "en-ES;q=1.0, es-ES;q=0.9",
     "phone-os": "14.0",
     "user-agent": (
-        "Blue/3.4.4 (com.fermax.blue.app; build:3; Android 14.0) okhttp/4.12.0"
+        "Blue/4.3.0 (com.fermax.blue.app; build:1; Android 14.0) okhttp/4.12.0"
     ),
     "phone-model": "HA-Integration",
-    "app-build": "3",
+    "app-build": "1",
 }
 
 # Signal dispatchers

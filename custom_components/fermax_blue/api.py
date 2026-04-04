@@ -181,7 +181,7 @@ class FermaxBlueApi:
 
     async def get_pairings(self) -> list[Pairing]:
         """Get all paired devices."""
-        response = await self._api_get("/pairing/api/v3/pairings/me")
+        response = await self._api_get("/pairing/api/v4/pairings/me")
         response.raise_for_status()
         pairings = []
 
@@ -238,7 +238,7 @@ class FermaxBlueApi:
     async def get_call_log(self, fcm_token: str) -> list[CallLogEntry]:
         """Get call log entries."""
         response = await self._api_get(
-            "/callManager/api/v1/callregistry/participant",
+            "/callmanager/api/v1/callregistry/participant",
             params={"appToken": fcm_token, "callRegistryType": "all"},
         )
 
@@ -263,7 +263,7 @@ class FermaxBlueApi:
     async def get_call_photo(self, photo_id: str) -> bytes | None:
         """Get a photo from a call."""
         response = await self._api_get(
-            "/callManager/api/v1/photocall",
+            "/callmanager/api/v1/photocall",
             params={"photoId": photo_id},
         )
 
@@ -348,7 +348,7 @@ class FermaxBlueApi:
             "appTokenId": fcm_token,
             "token": fcm_token,
             "os": "ANDROID",
-            "appVersion": "3.4.4",
+            "appVersion": "4.3.0",
             "appBuild": 1,
             "phoneModel": "HA-Integration",
             "phoneOS": "14.0",
