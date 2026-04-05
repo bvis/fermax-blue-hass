@@ -32,6 +32,8 @@ async def async_setup_entry(
                     FermaxOpenDoorButton(coordinator, door_name, door.title)
                 )
         entities.append(FermaxCameraPreviewButton(coordinator))
+        entities.append(FermaxF1Button(coordinator))
+        entities.append(FermaxCallGuardButton(coordinator))
 
     async_add_entities(entities)
 
@@ -78,3 +80,33 @@ class FermaxCameraPreviewButton(FermaxBlueEntity, ButtonEntity):
             _LOGGER.info("Camera preview started: %s", result.description)
         else:
             _LOGGER.error("Failed to start camera preview")
+
+
+class FermaxF1Button(FermaxBlueEntity, ButtonEntity):
+    """Button for F1 auxiliary function."""
+
+    _attr_translation_key = "f1"
+    _attr_icon = "mdi:numeric-1-box"
+
+    def __init__(self, coordinator: FermaxBlueCoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{self._device_id}_f1"
+
+    async def async_press(self) -> None:
+        """Press F1."""
+        await self.coordinator.press_f1()
+
+
+class FermaxCallGuardButton(FermaxBlueEntity, ButtonEntity):
+    """Button to call the building guard/janitor."""
+
+    _attr_translation_key = "call_guard"
+    _attr_icon = "mdi:account-tie"
+
+    def __init__(self, coordinator: FermaxBlueCoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{self._device_id}_call_guard"
+
+    async def async_press(self) -> None:
+        """Call the guard."""
+        await self.coordinator.call_guard()

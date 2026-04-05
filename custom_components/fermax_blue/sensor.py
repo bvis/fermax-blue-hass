@@ -27,6 +27,7 @@ async def async_setup_entry(
     for coordinator in coordinators:
         entities.append(FermaxWifiSignalSensor(coordinator))
         entities.append(FermaxDeviceStatusSensor(coordinator))
+        entities.append(FermaxLastOpeningSensor(coordinator))
 
     async_add_entities(entities)
 
@@ -65,3 +66,33 @@ class FermaxDeviceStatusSensor(FermaxBlueEntity, SensorEntity):
         if self.coordinator.data:
             return self.coordinator.data.get("status")
         return None
+
+
+class FermaxLastOpeningSensor(FermaxBlueEntity, SensorEntity):
+    """Sensor showing the last door opening."""
+
+    _attr_translation_key = "last_opening"
+    _attr_icon = "mdi:door-open"
+
+    def __init__(self, coordinator: FermaxBlueCoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{self._device_id}_last_opening"
+
+    @property
+    def native_value(self) -> str | None:
+        """Return the timestamp of the last opening."""
+        if self.coordinator.last_opening:
+            return self.coordinator.last_opening.timestamp
+        return None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, str | None] | None:
+        """Return extra attributes about the last opening."""
+        if not self.coordinator.last_opening:
+            return None
+        record = self.coordinator.last_opening
+        return {
+            "user": record.user,
+            "door": record.door,
+            "guest_email": record.guest_email,
+        }
