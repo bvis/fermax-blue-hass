@@ -168,6 +168,8 @@ class FermaxCamera(FermaxBlueEntity, Camera):
 
     @property
     def is_on(self) -> bool:
-        """Return True if the camera is actively streaming."""
+        """Return True if the camera can serve an image."""
         stream = self.coordinator.stream_session
-        return bool(stream and stream.is_active)
+        if stream and stream.is_active:
+            return True
+        return self.coordinator.last_photo is not None
