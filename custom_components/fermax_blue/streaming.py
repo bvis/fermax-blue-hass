@@ -372,19 +372,28 @@ class FermaxStreamSession:
         from aiortc.mediastreams import MediaStreamError
 
         track = self._consumer.track
+        _LOGGER.info("Frame grabber started, track kind=%s", track.kind)
+        frame_count = 0
         try:
             while self._active:
                 frame = await track.recv()
+                frame_count += 1
                 img = frame.to_image()
                 buf = io.BytesIO()
                 img.save(buf, format="JPEG", quality=75)
                 self._latest_frame = buf.getvalue()
+                if frame_count == 1:
+                    _LOGGER.info(
+                        "First frame received: %d bytes", len(self._latest_frame)
+                    )
+                elif frame_count % 100 == 0:
+                    _LOGGER.debug("Frame %d received", frame_count)
         except MediaStreamError:
-            _LOGGER.info("Video track ended")
+            _LOGGER.info("Video track ended after %d frames", frame_count)
         except asyncio.CancelledError:
-            pass
+            _LOGGER.info("Frame grabber cancelled after %d frames", frame_count)
         except Exception:
-            _LOGGER.exception("Frame grabber error")
+            _LOGGER.exception("Frame grabber error after %d frames", frame_count)
         finally:
             self._active = False
             if self._on_end:
@@ -410,5 +419,5 @@ class FermaxStreamSession:
             self._recv_transport = None
 
         await self._signaling.disconnect()
-        self._latest_frame = None
+        # Keep _latest_frame for preview after stream ends
         _LOGGER.info("Stream session stopped")

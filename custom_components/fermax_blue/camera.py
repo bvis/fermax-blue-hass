@@ -29,8 +29,7 @@ async def async_setup_entry(
     entities: list[Camera] = []
 
     for coordinator in coordinators:
-        if coordinator.device_info and coordinator.device_info.photocaller:
-            entities.append(FermaxCamera(coordinator))
+        entities.append(FermaxCamera(coordinator))
 
     async_add_entities(entities)
 
@@ -73,9 +72,9 @@ class FermaxCamera(FermaxBlueEntity, Camera):
     async def async_camera_image(
         self, width: int | None = None, height: int | None = None
     ) -> bytes | None:
-        """Return the latest frame: live stream if active, else last visitor photo."""
+        """Return the latest frame: live stream if active, else last captured frame."""
         stream = self.coordinator.stream_session
-        if stream and stream.is_active and stream.latest_frame:
+        if stream and stream.latest_frame:
             return stream.latest_frame
         return self.coordinator.last_photo
 
