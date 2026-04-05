@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import timedelta
 from pathlib import Path
@@ -67,6 +68,35 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
     def last_photo(self) -> bytes | None:
         """Return the last captured photo."""
         return self._last_photo
+
+    def _last_frame_path(self) -> Path | None:
+        """Return the path for persisting the last camera frame."""
+        if self.notification_listener and self.notification_listener._storage_path:
+            return (
+                self.notification_listener._storage_path
+                / f"last_frame_{self.pairing.device_id}.jpg"
+            )
+        return None
+
+    async def _save_last_photo(self) -> None:
+        """Persist last photo to disk for survival across restarts."""
+        path = self._last_frame_path()
+        if path and self._last_photo:
+            await asyncio.to_thread(path.write_bytes, self._last_photo)
+
+    async def _load_last_photo(self) -> None:
+        """Load persisted last photo from disk."""
+        path = self._last_frame_path()
+        if path:
+
+            def _read() -> bytes | None:
+                if path.exists():
+                    return path.read_bytes()
+                return None
+
+            photo = await asyncio.to_thread(_read)
+            if photo:
+                self._last_photo = photo
 
     @property
     def doorbell_ringing(self) -> bool:
@@ -158,6 +188,9 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
             storage_path=storage_path,
             notification_callback=self._handle_notification,
         )
+
+        # Load persisted last photo for camera preview
+        await self._load_last_photo()
 
         fcm_token = await self.notification_listener.register()
         if fcm_token:
@@ -361,6 +394,7 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
             # Save last frame as photo preview before releasing the session
             if self._stream_session and self._stream_session.latest_frame:
                 self._last_photo = self._stream_session.latest_frame
+                self.hass.async_create_task(self._save_last_photo())
             self._stream_session = None
             self._camera_active = False
             self.async_set_updated_data(self.data)
