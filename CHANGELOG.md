@@ -1,5 +1,42 @@
 # Changelog
 
+## [0.3.0] - 2026-04-05
+
+### Added
+- **Do Not Disturb switch** — Toggle DND mode per device via `/notification/api/v1/mutedevice/me`
+- **Photo caller switch** — Enable/disable automatic photo capture on doorbell ring via `/deviceaction/api/v1/{id}/photocaller`
+- **F1 auxiliary button** — Trigger the F1 function on the intercom panel
+- **Call guard button** — Call the building's guard/janitor from HA
+- **Doorbell event entity** — Semantic `event.doorbell` replaces the binary_sensor doorbell for richer automations
+- **Last door opening sensor** — Shows timestamp of last opening with extra attributes (user, door, guest)
+- **Notification acknowledgement** — Automatically ACK call and info push notifications for improved reliability
+- **Opening history API** — Fetch door opening registry from `/rexistro/api/v1/opendoorregistry`
+- **Diagnostics support** — Config entry diagnostics with redacted credentials for troubleshooting
+- **Options flow** — Configure polling interval (1–30 minutes) from the integration settings
+- **Entity availability** — All entities become unavailable when the intercom is disconnected
+- **API retry logic** — Exponential backoff (1s/2s/4s) on transient errors (5xx, connection, timeout)
+- **Interactive CLI tester** — `make cli` to test all API features locally in Docker without HA
+- 79 unit tests across API, coordinator, entity, and diagnostics layers
+
+### Changed
+- Doorbell detection migrated from `binary_sensor` to `event` platform (more semantic, better automations)
+- API client now uses unified `_api_request` with retry for GET/POST/PUT
+- Coordinator accepts configurable `scan_interval` from options flow
+- Makefile fixed: Docker commands now work correctly with proper quoting
+
+### Removed
+- `binary_sensor.doorbell` — replaced by `event.doorbell` (see migration note below)
+
+### Migration from v0.2.0
+- The `binary_sensor.<name>_doorbell` entity is removed. Use the new `event.<name>_doorbell` entity instead.
+- Automations using `binary_sensor.doorbell` state changes should be updated to use event triggers:
+  ```yaml
+  trigger:
+    - platform: state
+      entity_id: event.fermax_your_home_doorbell
+      attribute: event_type
+  ```
+
 ## [0.2.0] - 2026-04-05
 
 ### Added

@@ -93,7 +93,26 @@ make format-check  # Verify formatting without changes (CI mode)
 make typecheck     # Mypy type checking
 make test          # Pytest with coverage report
 make check         # Run ALL of the above in sequence
+make cli           # Interactive API tester (test features against real API)
 ```
+
+### Testing Against the Real API
+
+The `make cli` command launches an interactive tool to test every API feature without Home Assistant:
+
+```bash
+# Will prompt for email/password
+make cli
+
+# Or pass credentials as env vars
+FERMAX_USER=your@email.com FERMAX_PASS=yourpassword make cli
+```
+
+This is useful for:
+- Verifying a new API method works before integrating it with HA entities
+- Debugging API response formats
+- Testing door opening, DND toggle, F1, call guard, etc. in isolation
+- Making raw GET/POST calls to explore undocumented endpoints
 
 ### Running a Specific Test
 

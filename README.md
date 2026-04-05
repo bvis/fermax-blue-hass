@@ -12,9 +12,16 @@ This integration simulates a Fermax Blue mobile app client, connecting to the Fe
 - **Door opening** — Open your building's door remotely (lock entity + button)
 - **Camera preview** — On-demand camera view via auto-on (triggers the intercom camera without a doorbell ring)
 - **Visitor camera** — View the last captured visitor photo
-- **Connection status** — Monitor if your intercom is online
+- **F1 auxiliary button** — Trigger the intercom's F1 function
+- **Call guard** — Call the building's guard/janitor
+- **Do Not Disturb** — Toggle DND mode per device (useful for night automations)
+- **Photo caller control** — Enable/disable automatic visitor photo capture
+- **Opening history** — Track who opened the door and when
+- **Connection status** — Monitor if your intercom is online (entities go unavailable when offline)
 - **WiFi signal** — Track the intercom's wireless signal strength
 - **Notification control** — Enable/disable doorbell notifications
+- **Diagnostics** — Built-in troubleshooting data (with redacted credentials)
+- **Configurable polling** — Adjust the status polling interval (1–30 minutes)
 
 ## Supported Devices
 
@@ -22,7 +29,7 @@ Tested with:
 - Fermax VEO-XL WiFi DUOX PLUS
 - Fermax VEO-XS WiFi DUOX PLUS (REF: 9449)
 
-Should work with any Fermax Blue-compatible intercom (devices that work with the Fermax Blue mobile app).
+Should work with any Fermax Blue-compatible intercom (devices that work with the Fermax Blue / DuoxMe mobile app).
 
 ## Installation
 
@@ -53,6 +60,14 @@ The integration is configured through the Home Assistant UI:
 
 The integration will automatically discover all paired devices on your account.
 
+### Options
+
+After setup, you can configure the integration options:
+
+1. Go to **Settings** > **Devices & Services**
+2. Click **Configure** on your Fermax Blue integration
+3. Adjust the **polling interval** (1–30 minutes, default: 5)
+
 ### Dedicated User for Doorbell Notifications (Recommended)
 
 Fermax Blue only allows **one active push notification token per user**. If you use your main account for the integration, your mobile app will stop receiving doorbell notifications (or vice versa).
@@ -77,15 +92,20 @@ For each paired intercom device, the integration creates:
 
 | Entity | Type | Description |
 |--------|------|-------------|
-| `binary_sensor.<name>_connection` | Binary Sensor | Device connectivity status |
-| `binary_sensor.<name>_doorbell` | Binary Sensor | Turns on when someone rings (auto-resets after 30s) |
+| `binary_sensor.<name>_connection` | Binary Sensor | Device connectivity (entities go unavailable when disconnected) |
+| `event.<name>_doorbell` | Event | Fires `ring` event when someone rings the doorbell |
 | `lock.<name>_<door>_lock` | Lock | Lock/unlock (open) the door |
 | `button.<name>_<door>_open` | Button | One-press door opening |
 | `button.<name>_camera_preview` | Button | Start camera preview (auto-on) |
+| `button.<name>_f1` | Button | F1 auxiliary function |
+| `button.<name>_call_guard` | Button | Call the building's guard/janitor |
 | `camera.<name>_visitor` | Camera | Last captured visitor photo (supports turn_on for live preview) |
 | `sensor.<name>_wifi_signal` | Sensor | WiFi signal strength (0-4 bars) |
 | `sensor.<name>_status` | Sensor | Device activation status |
+| `sensor.<name>_last_opening` | Sensor | Last door opening timestamp (with user, door, guest attributes) |
 | `switch.<name>_notifications` | Switch | Enable/disable push notifications |
+| `switch.<name>_dnd` | Switch | Do Not Disturb mode |
+| `switch.<name>_photo_caller` | Switch | Enable/disable automatic visitor photos |
 
 ## Automations
 
@@ -96,8 +116,8 @@ automation:
   - alias: "Flash lights on doorbell"
     trigger:
       - platform: state
-        entity_id: binary_sensor.fermax_your_home_doorbell
-        to: "on"
+        entity_id: event.fermax_your_home_doorbell
+        attribute: event_type
     action:
       - service: light.turn_on
         target:
@@ -113,8 +133,8 @@ automation:
   - alias: "Notify on doorbell with photo"
     trigger:
       - platform: state
-        entity_id: binary_sensor.fermax_your_home_doorbell
-        to: "on"
+        entity_id: event.fermax_your_home_doorbell
+        attribute: event_type
     action:
       - service: camera.snapshot
         target:
@@ -127,6 +147,29 @@ automation:
           message: "Someone is at the door!"
           data:
             image: /local/snapshots/visitor.jpg
+```
+
+### Enable Do Not Disturb at night
+
+```yaml
+automation:
+  - alias: "DND at night"
+    trigger:
+      - platform: time
+        at: "23:00:00"
+    action:
+      - service: switch.turn_on
+        target:
+          entity_id: switch.fermax_your_home_dnd
+
+  - alias: "Disable DND in the morning"
+    trigger:
+      - platform: time
+        at: "07:00:00"
+    action:
+      - service: switch.turn_off
+        target:
+          entity_id: switch.fermax_your_home_dnd
 ```
 
 ### View camera on demand
@@ -150,8 +193,9 @@ automation:
 2. **Device Discovery**: It fetches all paired intercom devices and their accessible doors
 3. **Firebase Registration**: It registers a Firebase Cloud Messaging client (simulating the mobile app) to receive real-time doorbell push notifications
 4. **Camera Preview**: The auto-on feature sends a request to `/deviceaction/api/v2/device/{id}/autoon` which triggers the intercom camera
-4. **Push Notifications**: When someone rings your doorbell, Fermax sends a push notification via Firebase, which the integration receives instantly
-5. **Polling**: Device status (connection, signal) is polled every 5 minutes
+5. **Push Notifications**: When someone rings your doorbell, Fermax sends a push notification via Firebase, which the integration receives instantly and acknowledges
+6. **Polling**: Device status (connection, signal) is polled at a configurable interval (default: 5 minutes)
+7. **Retry Logic**: API calls are automatically retried with exponential backoff on transient errors (5xx, connection failures)
 
 ## Troubleshooting
 
@@ -163,6 +207,39 @@ The integration needs to register with Firebase Cloud Messaging. This happens au
 
 ### Camera shows no image
 The visitor camera only shows photos captured when someone rings the doorbell. If no one has rung since the integration was set up, the camera will be empty.
+
+### Diagnostics
+For troubleshooting, you can download diagnostics from **Settings** > **Devices & Services** > **Fermax Blue** > **3 dots menu** > **Download diagnostics**. Credentials are automatically redacted.
+
+## Local Testing (CLI)
+
+You can test every API feature locally without Home Assistant using the interactive CLI tool:
+
+```bash
+# Interactive mode (will prompt for credentials)
+make cli
+
+# Or pass credentials via environment variables
+FERMAX_USER=your@email.com FERMAX_PASS=yourpassword make cli
+```
+
+This launches a Docker container with a menu-driven interface to:
+
+| Option | Description |
+|--------|-------------|
+| Open door | Select a door and open it |
+| Device info | View connection state, WiFi signal, status |
+| Press F1 | Trigger the F1 auxiliary function |
+| Call guard | Call the building's guard/janitor |
+| DND status | Check Do Not Disturb mode |
+| Toggle DND | Enable/disable Do Not Disturb |
+| Photo caller | Enable/disable automatic visitor photos |
+| Opening history | View who opened the door and when |
+| Camera preview | Start auto-on (requires FCM token) |
+| Call log | View recent call entries |
+| Raw GET/POST | Make arbitrary API calls for debugging |
+
+No local Python installation needed — everything runs in Docker.
 
 ## Development
 
@@ -180,6 +257,7 @@ make format        # Auto-format code
 make format-check  # Verify formatting (CI mode)
 make typecheck     # Mypy type checking
 make test          # Pytest with coverage
+make cli           # Interactive API tester
 ```
 
 This project uses [Conventional Commits](https://www.conventionalcommits.org/).
