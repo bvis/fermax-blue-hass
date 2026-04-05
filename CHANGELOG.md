@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.4.3] - 2026-04-05
+
+### Fixed
+- **Camera preview after restart** — Last stream frame is persisted to disk and loaded on HA startup, so the camera card always shows the most recent image
+- **Camera 503 error** — HA requires `is_on=True` to serve images; now returns True whenever a saved frame exists
+- **Live stream in card** — Dynamic `is_streaming` property auto-switches the card between static preview and live MJPEG when stream starts/stops
+- **Video streaming not starting** — FCM notification data nested under `data` key, use `FermaxToken` from push for signaling auth
+- **Door entities** — Create buttons/locks for all doors regardless of `visible` flag (unreliable on some installations)
+- **Opening history** — Correct API response field (`openDoorRegistry` not `entries`), fetch during polling
+- **H264 decode warnings** — Suppressed expected warnings before first keyframe
+- **ICE transport teardown** — Clean shutdown avoids `RTCIceTransport is closed` errors
+
+### Changed
+- Camera entity created for all devices (no longer requires `photocaller=True`)
+- Opening history fetched on every coordinator poll (1 API call)
+
 ## [0.4.2] - 2026-04-05
 
 ### Fixed
