@@ -27,7 +27,9 @@
       "WebFetch(domain:pypi.org)",
       "Bash(gh search:*)",
       "Bash(pip show:*)",
-      "Bash(pip search:*)"
+      "Bash(pip search:*)",
+      "Bash(bash scripts/pre-push.sh 2>&1)",
+      "Bash(ssh bvis-home:*)"
     ]
   }
 }

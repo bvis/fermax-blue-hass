@@ -1,6 +1,6 @@
 [project]
 name = "fermax-blue-hass"
-version = "0.4.1"
+version = "0.4.2"
 description = "Home Assistant integration for Fermax Blue intercoms"
 requires-python = ">=3.12"
 

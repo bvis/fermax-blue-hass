@@ -31,8 +31,7 @@ async def async_setup_entry(
 
     for coordinator in coordinators:
         for door_name, door in coordinator.pairing.access_doors.items():
-            if door.visible:
-                entities.append(FermaxDoorLock(coordinator, door_name, door.title))
+            entities.append(FermaxDoorLock(coordinator, door_name, door.title))
 
     async_add_entities(entities)
 

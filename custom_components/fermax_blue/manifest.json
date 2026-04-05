@@ -8,5 +8,5 @@
   "iot_class": "cloud_push",
   "issue_tracker": "https://github.com/bvis/fermax-blue-hass/issues",
   "requirements": ["httpx>=0.28.0", "firebase-messaging>=0.4.5", "python-socketio[asyncio_client]>=5.12.0", "pymediasoup>=1.1.0", "Pillow>=10.0.0"],
-  "version": "0.4.1"
+  "version": "0.4.2"
 }

@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.2] - 2026-04-05
+
+### Fixed
+- **Video streaming not starting** — FCM notification data is nested under `data` key; coordinator now extracts `RoomId`, `SocketUrl`, `FermaxToken` correctly
+- **FermaxToken for signaling** — Use device JWT from push notification instead of user OAuth token for Socket.IO authentication
+- **Door buttons/locks missing** — Create entities for all doors regardless of `visible` flag from API (flag is unreliable on some installations)
+- **AccessDoorKey field name** — Handle both `AccessDoorKey` and `accessDoorKey` in notification data
+
 ## [0.4.1] - 2026-04-05
 
 ### Fixed

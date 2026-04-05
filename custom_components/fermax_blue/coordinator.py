@@ -178,9 +178,16 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
             notification,
         )
 
+        # Notification data may be nested under "data" key
+        data = notification.get("data", notification)
+
         # ACK the notification for reliability
-        fcm_message_id = notification.get("fcmMessageId") or persistent_id
-        notification_type = notification.get("FermaxNotificationType", "")
+        fcm_message_id = (
+            notification.get("fcmMessageId")
+            or data.get("fcmMessageId")
+            or persistent_id
+        )
+        notification_type = data.get("FermaxNotificationType", "")
         is_call = notification_type in ("Call", "CallAttend", "CallEnd")
         self.hass.async_create_task(
             self.api.ack_notification(fcm_message_id, is_call=is_call)
@@ -190,13 +197,16 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         self._photo_fetch_pending = True
 
         # Start video stream if notification has room info
-        room_id = notification.get("RoomId")
+        room_id = data.get("RoomId")
         if room_id and notification_type in ("Call", "Autoon"):
-            socket_url = notification.get("SocketUrl", DEFAULT_SIGNALING_URL)
-            self.hass.async_create_task(self._start_stream(room_id, socket_url))
+            socket_url = data.get("SocketUrl", DEFAULT_SIGNALING_URL)
+            fermax_token = data.get("FermaxToken", self.api._access_token or "")
+            self.hass.async_create_task(
+                self._start_stream(room_id, socket_url, fermax_token)
+            )
 
         # Extract door key from notification if available
-        door_key = notification.get("accessDoorKey", "GENERAL")
+        door_key = data.get("AccessDoorKey", data.get("accessDoorKey", "GENERAL"))
         dispatcher_send(
             self.hass,
             SIGNAL_DOORBELL_RING.format(self.pairing.device_id, door_key),
@@ -325,15 +335,18 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
                 wireless_signal=self.device_info.wireless_signal,
             )
 
-    async def _start_stream(self, room_id: str, signaling_url: str) -> None:
+    async def _start_stream(
+        self, room_id: str, signaling_url: str, fermax_token: str = ""
+    ) -> None:
         """Start a video stream session for the given room."""
         await self.stop_stream()
 
-        if not self.api._access_token or not self.notification_listener:
+        if not self.notification_listener:
             return
         fcm_token = self.notification_listener.fcm_token
         if not fcm_token:
             return
+        oauth_token = fermax_token or self.api._access_token or ""
 
         @callback
         def _on_stream_end() -> None:
@@ -343,7 +356,7 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
 
         self._stream_session = FermaxStreamSession(
             signaling_url=signaling_url,
-            oauth_token=self.api._access_token,
+            oauth_token=oauth_token,
             fcm_token=fcm_token,
             room_id=room_id,
             on_end=_on_stream_end,
