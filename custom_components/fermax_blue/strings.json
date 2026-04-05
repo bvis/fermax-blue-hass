@@ -66,6 +66,9 @@
       },
       "last_opening": {
         "name": "Last door opening"
+      },
+      "last_call": {
+        "name": "Last call"
       }
     },
     "button": {

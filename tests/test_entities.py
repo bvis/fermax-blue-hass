@@ -1,5 +1,6 @@
 """Tests for entity platforms."""
 
+from datetime import UTC
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -52,6 +53,8 @@ def mock_coordinator():
     coordinator.notification_listener.is_started = True
     coordinator.dnd_enabled = False
     coordinator.last_opening = None
+    coordinator.last_call = None
+    coordinator.call_log = []
     return coordinator
 
 
@@ -237,3 +240,44 @@ class TestLastOpeningSensor:
         assert attrs["user"] == "John"
         assert attrs["door"] == "Portal"
         assert attrs["guest_email"] == "guest@test.com"
+
+
+class TestLastCallSensor:
+    """Test last call sensor."""
+
+    def test_last_call_unique_id(self, mock_coordinator):
+        from custom_components.fermax_blue.sensor import FermaxLastCallSensor
+
+        mock_coordinator.last_call = None
+        mock_coordinator.call_log = []
+        sensor = FermaxLastCallSensor(mock_coordinator)
+        assert sensor.unique_id == "test_dev_last_call"
+
+    def test_last_call_none(self, mock_coordinator):
+        from custom_components.fermax_blue.sensor import FermaxLastCallSensor
+
+        mock_coordinator.last_call = None
+        mock_coordinator.call_log = []
+        sensor = FermaxLastCallSensor(mock_coordinator)
+        assert sensor.native_value is None
+
+    def test_last_call_value(self, mock_coordinator):
+        from datetime import datetime
+
+        from custom_components.fermax_blue.api import CallLogEntry
+        from custom_components.fermax_blue.sensor import FermaxLastCallSensor
+
+        call = CallLogEntry(
+            call_id="abc123",
+            device_id="test_dev",
+            call_date=datetime(2026, 4, 5, 10, 30, tzinfo=UTC),
+            answered=False,
+        )
+        mock_coordinator.last_call = call
+        mock_coordinator.call_log = [call]
+        sensor = FermaxLastCallSensor(mock_coordinator)
+        assert "2026-04-05" in sensor.native_value
+        attrs = sensor.extra_state_attributes
+        assert attrs["call_id"] == "abc123"
+        assert attrs["answered"] is False
+        assert attrs["recent_calls"] == 1

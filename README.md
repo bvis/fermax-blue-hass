@@ -104,6 +104,7 @@ For each paired intercom device, the integration creates:
 | `sensor.<name>_wifi_signal` | Sensor | WiFi signal strength (0-4 bars) |
 | `sensor.<name>_status` | Sensor | Device activation status |
 | `sensor.<name>_last_opening` | Sensor | Last door opening timestamp (with user, door, guest attributes) |
+| `sensor.<name>_last_call` | Sensor | Last call/doorbell ring timestamp (with call_id, answered, recent_calls count) |
 | `switch.<name>_notifications` | Switch | Enable/disable push notifications |
 | `switch.<name>_dnd` | Switch | Do Not Disturb mode |
 | `switch.<name>_photo_caller` | Switch | Enable/disable automatic visitor photos |

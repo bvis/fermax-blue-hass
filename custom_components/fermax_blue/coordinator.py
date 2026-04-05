@@ -14,6 +14,7 @@ from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import (
+    CallLogEntry,
     DeviceInfo,
     DivertResponse,
     FermaxApiError,
@@ -62,6 +63,8 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         self._camera_timeout_unsub: CALLBACK_TYPE | None = None
         self._dnd_enabled: bool | None = None
         self._last_opening: OpeningRecord | None = None
+        self._last_call: CallLogEntry | None = None
+        self._call_log: list[CallLogEntry] = []
         self._stream_session: FermaxStreamSession | None = None
         self._storage_path: Path | None = None
 
@@ -118,6 +121,16 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         return self._last_opening
 
     @property
+    def last_call(self) -> CallLogEntry | None:
+        """Return the most recent call log entry."""
+        return self._last_call
+
+    @property
+    def call_log(self) -> list[CallLogEntry]:
+        """Return recent call log entries."""
+        return self._call_log
+
+    @property
     def stream_session(self) -> FermaxStreamSession | None:
         """Return the active stream session, if any."""
         return self._stream_session
@@ -138,24 +151,25 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
 
         self.device_info = device_info
 
-        # Only fetch call log/photos after a doorbell ring (not every poll)
-        if (
-            self._photo_fetch_pending
-            and self.notification_listener
-            and self.notification_listener.fcm_token
-        ):
-            self._photo_fetch_pending = False
+        # Fetch call log if FCM token is available
+        if self.notification_listener and self.notification_listener.fcm_token:
             try:
                 call_log = await self.api.get_call_log(
                     self.notification_listener.fcm_token
                 )
+                self._call_log = call_log
                 if call_log:
-                    latest = max(call_log, key=lambda c: c.call_date)
-                    if latest.photo_id and latest.photo_id != self._last_photo_id:
-                        photo = await self.api.get_call_photo(latest.photo_id)
-                        if photo:
-                            self._last_photo = photo
-                            self._last_photo_id = latest.photo_id
+                    self._last_call = max(call_log, key=lambda c: c.call_date)
+
+                    # Fetch photo only after a doorbell ring
+                    if self._photo_fetch_pending:
+                        self._photo_fetch_pending = False
+                        latest = self._last_call
+                        if latest.photo_id and latest.photo_id != self._last_photo_id:
+                            photo = await self.api.get_call_photo(latest.photo_id)
+                            if photo:
+                                self._last_photo = photo
+                                self._last_photo_id = latest.photo_id
             except Exception:
                 _LOGGER.debug("Failed to fetch call log/photo", exc_info=True)
 
