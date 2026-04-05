@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.3.1] - 2026-04-05
+
+### Fixed
+- Resolve mypy `no-any-return` errors in API client (`_api_request`, `get_dnd_status`)
+- Fix `RuntimeError: Frame helper not set up` in coordinator tests on Python 3.13
+
+### Added
+- Pre-push git hook replicating full CI pipeline locally (`make pre-push`)
+- Interactive CLI tester for local API testing (`make cli`)
+
 ## [0.3.0] - 2026-04-05
 
 ### Added
