@@ -373,25 +373,20 @@ class FermaxStreamSession:
     @staticmethod
     def _overlay_live_indicator(img: Any) -> Any:
         """Draw a LIVE indicator and timestamp on the frame."""
-        from datetime import datetime
-
-        from PIL import ImageDraw, ImageFont
-
-        draw = ImageDraw.Draw(img)
-        now = datetime.now().strftime("%H:%M:%S")
-
-        # Try to use a readable font size
-        font: ImageFont.FreeTypeFont | ImageFont.ImageFont
         try:
-            font = ImageFont.truetype(
-                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 16
-            )
-        except OSError:
-            font = ImageFont.load_default()
+            from datetime import datetime
 
-        # Red "● LIVE" badge top-left
-        draw.rectangle([(8, 8), (115, 32)], fill=(200, 0, 0))
-        draw.text((14, 9), f"\u25cf LIVE {now}", fill=(255, 255, 255), font=font)
+            from PIL import ImageDraw, ImageFont
+
+            draw = ImageDraw.Draw(img)
+            now = datetime.now().strftime("%H:%M:%S")
+            font = ImageFont.load_default(size=16)
+
+            # Red "● LIVE" badge top-left
+            draw.rectangle([(6, 6), (130, 28)], fill=(200, 0, 0))
+            draw.text((10, 7), f"\u25cf LIVE {now}", fill=(255, 255, 255), font=font)
+        except Exception:
+            pass  # Never let overlay failure break the stream
 
         return img
 
