@@ -370,6 +370,31 @@ class FermaxStreamSession:
         _LOGGER.info("Stream session started for room %s", self._room_id)
         return True
 
+    @staticmethod
+    def _overlay_live_indicator(img: Any) -> Any:
+        """Draw a LIVE indicator and timestamp on the frame."""
+        from datetime import datetime
+
+        from PIL import ImageDraw, ImageFont
+
+        draw = ImageDraw.Draw(img)
+        now = datetime.now().strftime("%H:%M:%S")
+
+        # Try to use a readable font size
+        font: ImageFont.FreeTypeFont | ImageFont.ImageFont
+        try:
+            font = ImageFont.truetype(
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 16
+            )
+        except OSError:
+            font = ImageFont.load_default()
+
+        # Red "● LIVE" badge top-left
+        draw.rectangle([(8, 8), (115, 32)], fill=(200, 0, 0))
+        draw.text((14, 9), f"\u25cf LIVE {now}", fill=(255, 255, 255), font=font)
+
+        return img
+
     async def _grab_frames(self) -> None:
         """Read video frames from the consumer track, encode as JPEG."""
         from aiortc.mediastreams import MediaStreamError
@@ -382,6 +407,7 @@ class FermaxStreamSession:
                 frame = await track.recv()
                 frame_count += 1
                 img = frame.to_image()
+                img = self._overlay_live_indicator(img)
                 buf = io.BytesIO()
                 img.save(buf, format="JPEG", quality=75)
                 self._latest_frame = buf.getvalue()
