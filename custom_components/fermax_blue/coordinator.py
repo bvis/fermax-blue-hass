@@ -18,6 +18,7 @@ from .api import (
     FermaxApiError,
     FermaxAuthError,
     FermaxBlueApi,
+    OpeningRecord,
     Pairing,
 )
 from .const import DOMAIN, SIGNAL_CALL_ENDED, SIGNAL_DOORBELL_RING
@@ -25,7 +26,6 @@ from .notification import FermaxNotificationListener
 
 _LOGGER = logging.getLogger(__name__)
 
-UPDATE_INTERVAL = timedelta(minutes=5)
 DOORBELL_RESET_SECONDS = 30
 CAMERA_TIMEOUT_SECONDS = 90
 
@@ -38,12 +38,13 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         hass: HomeAssistant,
         api: FermaxBlueApi,
         pairing: Pairing,
+        scan_interval: int = 5,
     ) -> None:
         super().__init__(
             hass,
             _LOGGER,
             name=f"{DOMAIN}_{pairing.device_id}",
-            update_interval=UPDATE_INTERVAL,
+            update_interval=timedelta(minutes=scan_interval),
         )
         self.api = api
         self.pairing = pairing
@@ -57,6 +58,8 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         self._photo_fetch_pending: bool = False
         self._doorbell_reset_unsub: CALLBACK_TYPE | None = None
         self._camera_timeout_unsub: CALLBACK_TYPE | None = None
+        self._dnd_enabled: bool | None = None
+        self._last_opening: OpeningRecord | None = None
 
     @property
     def last_photo(self) -> bytes | None:
@@ -72,6 +75,16 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
     def camera_active(self) -> bool:
         """Return True if camera preview is active."""
         return self._camera_active
+
+    @property
+    def dnd_enabled(self) -> bool | None:
+        """Return DND state."""
+        return self._dnd_enabled
+
+    @property
+    def last_opening(self) -> OpeningRecord | None:
+        """Return the last door opening record."""
+        return self._last_opening
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch data from the API.
@@ -156,6 +169,14 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
             "Doorbell notification for %s: %s",
             self.pairing.device_id,
             notification,
+        )
+
+        # ACK the notification for reliability
+        fcm_message_id = notification.get("fcmMessageId") or persistent_id
+        notification_type = notification.get("FermaxNotificationType", "")
+        is_call = notification_type in ("Call", "CallAttend", "CallEnd")
+        self.hass.async_create_task(
+            self.api.ack_notification(fcm_message_id, is_call=is_call)
         )
 
         self._doorbell_ringing = True
@@ -252,3 +273,41 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
             self.pairing.device_id,
             self.notification_listener.fcm_token,
         )
+
+    async def set_dnd(self, enabled: bool) -> None:
+        """Set Do Not Disturb."""
+        if not self.notification_listener or not self.notification_listener.fcm_token:
+            return
+        await self.api.set_dnd(
+            self.pairing.device_id,
+            self.notification_listener.fcm_token,
+            enabled=enabled,
+        )
+        self._dnd_enabled = enabled
+
+    async def press_f1(self) -> None:
+        """Press F1 auxiliary button."""
+        await self.api.press_f1(self.pairing.device_id)
+
+    async def call_guard(self) -> None:
+        """Call the building guard."""
+        await self.api.call_guard(self.pairing.device_id)
+
+    async def set_photo_caller(self, enabled: bool) -> None:
+        """Enable or disable photo caller."""
+        await self.api.set_photo_caller(self.pairing.device_id, enabled=enabled)
+        # Update local state to reflect the change immediately
+        if self.device_info:
+            self.device_info = DeviceInfo(
+                device_id=self.device_info.device_id,
+                connection_state=self.device_info.connection_state,
+                status=self.device_info.status,
+                family=self.device_info.family,
+                device_type=self.device_info.device_type,
+                subtype=self.device_info.subtype,
+                unit_number=self.device_info.unit_number,
+                photocaller=enabled,
+                streaming_mode=self.device_info.streaming_mode,
+                is_monitor=self.device_info.is_monitor,
+                wireless_signal=self.device_info.wireless_signal,
+            )
