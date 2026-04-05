@@ -90,21 +90,3 @@ def mock_api():
     api.set_photo_caller = AsyncMock()
     api.get_opening_history = AsyncMock(return_value=[])
     return api
-
-
-@pytest.fixture
-def mock_pairing():
-    """Return a test pairing."""
-    return Pairing(
-        device_id="test_device_001",
-        tag="Test Home",
-        installation_id="inst_test",
-        access_doors={
-            "GENERAL": AccessDoor(
-                name="GENERAL",
-                title="Portal",
-                access_id={"block": 100, "subblock": -1, "number": 0},
-                visible=True,
-            ),
-        },
-    )

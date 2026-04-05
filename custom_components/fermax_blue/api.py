@@ -22,7 +22,7 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
-OAUTH_TIMEOUT = 15.0
+
 API_TIMEOUT = 10.0
 MAX_RETRIES = 3
 RETRY_BACKOFF_BASE = 1.0
@@ -127,7 +127,7 @@ class FermaxBlueApi:
         self._password = password
         self._access_token: str | None = None
         self._token_expires_at: float = 0
-        self._pairings: list[Pairing] = []
+
         self._client = client
         self._owns_client = client is None
 
@@ -260,7 +260,6 @@ class FermaxBlueApi:
                 )
             )
 
-        self._pairings = pairings
         return pairings
 
     async def get_device_info(self, device_id: str) -> DeviceInfo:

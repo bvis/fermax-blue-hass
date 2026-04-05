@@ -63,7 +63,7 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         self._last_photo_id: str | None = None
         self._doorbell_ringing: bool = False
         self._camera_active: bool = False
-        self._last_divert_response: DivertResponse | None = None
+
         self._photo_fetch_pending: bool = False
         self._doorbell_reset_unsub: CALLBACK_TYPE | None = None
         self._camera_timeout_unsub: CALLBACK_TYPE | None = None
@@ -347,7 +347,7 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
 
         if result:
             self._camera_active = True
-            self._last_divert_response = result
+
             _LOGGER.info(
                 "Camera preview started: %s (%s)",
                 result.reason,
