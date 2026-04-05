@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 
 from aiohttp import web
@@ -83,9 +84,34 @@ class FermaxCamera(FermaxBlueEntity, Camera):
     ) -> web.StreamResponse | None:
         """Serve live MJPEG stream from the intercom camera."""
         stream = self.coordinator.stream_session
-        if not stream or not stream.is_active:
-            return await super().handle_async_mjpeg_stream(request)
 
+        # If no active stream, serve last photo as single MJPEG frame
+        if not stream or not stream.is_active:
+            image = await self.async_camera_image()
+            if not image:
+                return None
+
+            response = web.StreamResponse(
+                status=200,
+                reason="OK",
+                headers={
+                    "Content-Type": "multipart/x-mixed-replace;boundary=frameboundary",
+                },
+            )
+            await response.prepare(request)
+            with contextlib.suppress(ConnectionResetError, ConnectionError):
+                await response.write(
+                    b"--frameboundary\r\n"
+                    b"Content-Type: image/jpeg\r\n"
+                    b"Content-Length: "
+                    + str(len(image)).encode()
+                    + b"\r\n\r\n"
+                    + image
+                    + b"\r\n"
+                )
+            return response
+
+        # Active stream: serve live frames
         response = web.StreamResponse(
             status=200,
             reason="OK",
@@ -108,7 +134,6 @@ class FermaxCamera(FermaxBlueEntity, Camera):
                         + frame
                         + b"\r\n"
                     )
-                # ~10 fps
                 await asyncio.sleep(0.1)
         except (ConnectionResetError, ConnectionError):
             pass

@@ -29,7 +29,13 @@
       "Bash(pip show:*)",
       "Bash(pip search:*)",
       "Bash(bash scripts/pre-push.sh 2>&1)",
-      "Bash(ssh bvis-home:*)"
+      "Bash(ssh bvis-home:*)",
+      "mcp__plugin_playwright_playwright__browser_snapshot",
+      "mcp__plugin_playwright_playwright__browser_fill_form",
+      "mcp__plugin_playwright_playwright__browser_navigate",
+      "mcp__plugin_playwright_playwright__browser_click",
+      "mcp__plugin_playwright_playwright__browser_take_screenshot",
+      "mcp__plugin_playwright_playwright__browser_run_code"
     ]
   }
 }
