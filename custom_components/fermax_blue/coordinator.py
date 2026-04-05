@@ -63,6 +63,7 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         self._dnd_enabled: bool | None = None
         self._last_opening: OpeningRecord | None = None
         self._stream_session: FermaxStreamSession | None = None
+        self._storage_path: Path | None = None
 
     @property
     def last_photo(self) -> bytes | None:
@@ -71,11 +72,8 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
 
     def _last_frame_path(self) -> Path | None:
         """Return the path for persisting the last camera frame."""
-        if self.notification_listener and self.notification_listener._storage_path:
-            return (
-                self.notification_listener._storage_path
-                / f"last_frame_{self.pairing.device_id}.jpg"
-            )
+        if self._storage_path:
+            return self._storage_path / f"last_frame_{self.pairing.device_id}.jpg"
         return None
 
     async def _save_last_photo(self) -> None:
@@ -97,6 +95,7 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
             photo = await asyncio.to_thread(_read)
             if photo:
                 self._last_photo = photo
+                _LOGGER.info("Loaded persisted camera frame (%d bytes)", len(photo))
 
     @property
     def doorbell_ringing(self) -> bool:
@@ -184,6 +183,7 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
 
     async def setup_notifications(self, storage_path: Path) -> None:
         """Set up the FCM notification listener."""
+        self._storage_path = storage_path
         self.notification_listener = FermaxNotificationListener(
             storage_path=storage_path,
             notification_callback=self._handle_notification,
