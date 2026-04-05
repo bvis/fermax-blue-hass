@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.4.0] - 2026-04-05
+
+### Added
+- **Live video streaming** — Real-time MJPEG video from the intercom camera via mediasoup/WebRTC
+  - Camera entity now serves live frames when preview is active (~720x480, ~10fps)
+  - Full pipeline: auto-on → FCM push → Socket.IO signaling → mediasoup consume → JPEG frames
+  - Camera `turn_on` starts live stream, `turn_off` stops it
+  - Automatic stream teardown on call end or timeout
+- **E2E streaming test script** — `scripts/test_streaming.py` for local validation
+
+### Fixed
+- FCM push notifications not received: missing `bundle_id` (`com.fermax.blue.app`) in Firebase config
+- FCM token type: use FCM v2 registration token instead of legacy GCM token
+- Signaling protocol: correct field names matching APK (`fermaxOauthToken`, `appToken`, `protocolVersion`)
+- Token registration: use v1 endpoint matching APK behavior, handle 409 conflict
+- DND status API: handle bare boolean response (not always dict)
+- mediasoup consume: parse RTP capabilities from JSON string to dict for Socket.IO
+- Stale push notification filtering based on RoomId timestamp
+
+### Changed
+- `notification.py`: prefer FCM v2 registration token over legacy GCM token
+- `streaming.py`: full rewrite integrating pymediasoup + aiortc for actual video frame capture
+- `camera.py`: `async_camera_image` returns live frames when streaming, MJPEG stream support
+- `coordinator.py`: automatic stream session management on push notification with RoomId
+- New dependencies: `pymediasoup>=1.1.0`, `Pillow>=10.0.0`, `av==13.1.0`
+
 ## [0.3.1] - 2026-04-05
 
 ### Fixed

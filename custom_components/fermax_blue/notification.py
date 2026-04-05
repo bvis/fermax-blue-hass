@@ -15,6 +15,7 @@ from firebase_messaging.fcmregister import FcmRegister, FcmRegisterConfig
 from .const import (
     FIREBASE_API_KEY,
     FIREBASE_APP_ID,
+    FIREBASE_PACKAGE_NAME,
     FIREBASE_PROJECT_ID,
     FIREBASE_SENDER_ID,
 )
@@ -39,15 +40,22 @@ class FermaxNotificationListener:
             app_id=FIREBASE_APP_ID,
             api_key=FIREBASE_API_KEY,
             messaging_sender_id=str(FIREBASE_SENDER_ID),
+            bundle_id=FIREBASE_PACKAGE_NAME,
         )
         self._credentials_file = storage_path / "fermax_fcm_credentials.json"
 
     @property
     def fcm_token(self) -> str | None:
-        """Return the GCM/FCM token for this client."""
+        """Return the FCM registration token for push notifications."""
         if self._credentials:
-            token: str | None = self._credentials.get("gcm", {}).get("token")
-            return token
+            # Prefer FCM v2 registration token over legacy GCM token
+            fcm_reg = self._credentials.get("fcm", {}).get("registration", {})
+            token: str | None = fcm_reg.get("token")
+            if token:
+                return token
+            # Fallback to legacy GCM token
+            gcm_token: str | None = self._credentials.get("gcm", {}).get("token")
+            return gcm_token
         return None
 
     def _on_credentials_updated(self, new_creds: dict) -> None:

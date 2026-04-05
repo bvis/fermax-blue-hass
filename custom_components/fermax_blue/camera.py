@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
+from aiohttp import web
 from homeassistant.components.camera import Camera
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
@@ -34,14 +36,12 @@ async def async_setup_entry(
 
 
 class FermaxCamera(FermaxBlueEntity, Camera):
-    """Camera entity showing last visitor photo.
+    """Camera entity with live video streaming and visitor photo capture.
 
-    Supports on-demand camera preview via the auto-on feature.
-    When turned on, it triggers the intercom to start streaming
-    and captures the visitor photo.
-
-    Note: Full video streaming requires mediasoup/Socket.IO client
-    which is not yet implemented. Currently supports still image capture.
+    Supports two modes:
+    - Still image: shows the last captured visitor photo (from doorbell ring)
+    - Live stream: connects to the intercom camera via mediasoup and serves
+      MJPEG frames in real-time (triggered by turn_on / camera preview button)
     """
 
     _attr_translation_key = "visitor"
@@ -73,31 +73,67 @@ class FermaxCamera(FermaxBlueEntity, Camera):
     async def async_camera_image(
         self, width: int | None = None, height: int | None = None
     ) -> bytes | None:
-        """Return the last captured visitor photo."""
+        """Return the latest frame: live stream if active, else last visitor photo."""
+        stream = self.coordinator.stream_session
+        if stream and stream.is_active and stream.latest_frame:
+            return stream.latest_frame
         return self.coordinator.last_photo
 
+    async def handle_async_mjpeg_stream(
+        self, request: web.Request
+    ) -> web.StreamResponse | None:
+        """Serve live MJPEG stream from the intercom camera."""
+        stream = self.coordinator.stream_session
+        if not stream or not stream.is_active:
+            return await super().handle_async_mjpeg_stream(request)
+
+        response = web.StreamResponse(
+            status=200,
+            reason="OK",
+            headers={
+                "Content-Type": "multipart/x-mixed-replace;boundary=frameboundary",
+            },
+        )
+        await response.prepare(request)
+
+        try:
+            while stream.is_active:
+                frame = stream.latest_frame
+                if frame:
+                    await response.write(
+                        b"--frameboundary\r\n"
+                        b"Content-Type: image/jpeg\r\n"
+                        b"Content-Length: "
+                        + str(len(frame)).encode()
+                        + b"\r\n\r\n"
+                        + frame
+                        + b"\r\n"
+                    )
+                # ~10 fps
+                await asyncio.sleep(0.1)
+        except (ConnectionResetError, ConnectionError):
+            pass
+
+        return response
+
     async def async_turn_on(self) -> None:
-        """Start camera preview via auto-on.
-
-        This triggers the intercom to activate its camera and start
-        streaming. The video stream uses mediasoup over Socket.IO
-        (signaling server: signaling-pro-duoxme.fermax.io).
-
-        Currently captures a still image. Full video streaming support
-        is planned for a future release.
-        """
+        """Start live camera stream via auto-on + mediasoup."""
         result = await self.coordinator.start_camera_preview()
         if result:
             _LOGGER.info("Camera auto-on started: %s", result.description)
-            # Trigger a refresh to pick up new photos
-            await self.coordinator.async_request_refresh()
+            self._attr_is_streaming = True
+            self.async_write_ha_state()
         else:
             _LOGGER.error("Failed to start camera auto-on")
 
     async def async_turn_off(self) -> None:
-        """Stop camera preview (no-op, stream auto-expires)."""
+        """Stop live camera stream."""
+        await self.coordinator.stop_stream()
+        self._attr_is_streaming = False
+        self.async_write_ha_state()
 
     @property
     def is_on(self) -> bool:
-        """Return True if the camera preview is active."""
-        return self.coordinator.camera_active
+        """Return True if the camera is actively streaming."""
+        stream = self.coordinator.stream_session
+        return bool(stream and stream.is_active)

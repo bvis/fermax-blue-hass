@@ -10,8 +10,9 @@ This integration simulates a Fermax Blue mobile app client, connecting to the Fe
 
 - **Doorbell detection** — Real-time push notification when someone rings (via Firebase Cloud Messaging)
 - **Door opening** — Open your building's door remotely (lock entity + button)
+- **Live video streaming** — Real-time MJPEG video from the intercom camera (~720x480, ~10fps)
 - **Camera preview** — On-demand camera view via auto-on (triggers the intercom camera without a doorbell ring)
-- **Visitor camera** — View the last captured visitor photo
+- **Visitor camera** — View the last captured visitor photo (fallback when stream is inactive)
 - **F1 auxiliary button** — Trigger the intercom's F1 function
 - **Call guard** — Call the building's guard/janitor
 - **Do Not Disturb** — Toggle DND mode per device (useful for night automations)
@@ -192,8 +193,9 @@ automation:
 1. **Authentication**: The integration authenticates with the Fermax Blue cloud API (`pro-duoxme.fermax.io`) using your account credentials
 2. **Device Discovery**: It fetches all paired intercom devices and their accessible doors
 3. **Firebase Registration**: It registers a Firebase Cloud Messaging client (simulating the mobile app) to receive real-time doorbell push notifications
-4. **Camera Preview**: The auto-on feature sends a request to `/deviceaction/api/v2/device/{id}/autoon` which triggers the intercom camera
-5. **Push Notifications**: When someone rings your doorbell, Fermax sends a push notification via Firebase, which the integration receives instantly and acknowledges
+4. **Camera Preview**: The auto-on feature triggers the intercom camera. A push notification arrives with the media room ID and signaling server URL
+5. **Video Streaming**: The integration connects to the Fermax mediasoup SFU via Socket.IO, negotiates WebRTC transport, and receives live video frames (~720x480) that are served as MJPEG to the HA frontend
+6. **Push Notifications**: When someone rings your doorbell, Fermax sends a push notification via Firebase, which the integration receives instantly and acknowledges
 6. **Polling**: Device status (connection, signal) is polled at a configurable interval (default: 5 minutes)
 7. **Retry Logic**: API calls are automatically retried with exponential backoff on transient errors (5xx, connection failures)
 

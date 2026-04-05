@@ -15,3 +15,10 @@ venv/
 
 # APK analysis (local only, do not push)
 docs/apk-analysis-*.md
+
+# Test artifacts
+test_frame.jpg
+scripts/test_*_run.py
+
+# FCM credentials (never commit)
+**/fermax_fcm_credentials.json

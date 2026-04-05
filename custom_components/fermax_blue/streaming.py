@@ -1,36 +1,21 @@
-"""Mediasoup signaling client for Fermax Blue video streaming.
+"""Mediasoup video streaming client for Fermax Blue.
 
-Connects to the Fermax signaling server via Socket.IO and negotiates
-mediasoup transport parameters for receiving video/audio streams.
+Connects to the Fermax signaling server via Socket.IO, negotiates
+mediasoup transports, and receives video frames from the intercom camera.
 
-The Fermax Blue streaming architecture:
-1. Auto-on or doorbell ring triggers a call via the Fermax API
-2. A push notification arrives with roomId and signalingServerUrl
-3. This client connects via Socket.IO to the signaling server
-4. join_call returns mediasoup router capabilities and transport data
-5. transport_consume sets up the receive pipeline for video/audio
-6. pickup starts the actual media flow
-
-Signaling events (Socket.IO):
-  Client → Server:
-    - join_call: {roomId, pushToken, oauthToken, version}
-    - transport_consume: {transportId, producerId, rtpCapabilities}
-    - transport_connect: {transportId, dtlsParameters}
-    - pickup: {kind, rtpParameters, appData, rtpCapabilities}
-    - hang_up: {}
-
-  Server → Client:
-    - join_call ACK: {result: {producerIdVideo, producerIdAudio,
-        routerRtpCapabilities, recvTransportVideo, recvTransportAudio,
-        sendTransport}}
-    - transport_consume ACK: {result: {id, producerId, kind, rtpParameters}}
-    - end_up: {code}
-    - error: {code}
+Architecture:
+  1. API auto-on → push notification with roomId + signalingUrl
+  2. Socket.IO connect → join_call → transport params
+  3. pymediasoup Device creates RecvTransport
+  4. transport_consume → Consumer with aiortc video track
+  5. FrameGrabber reads frames, converts to JPEG for HA camera
 """
 
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import io
 import json
 import logging
 from collections.abc import Callable
@@ -75,71 +60,45 @@ class ConsumeResult:
     consumer_id: str
     producer_id: str
     kind: str
-    rtp_parameters: str
+    rtp_parameters: Any
 
 
 class FermaxSignalingClient:
-    """Socket.IO client for Fermax Blue mediasoup signaling.
-
-    Handles the signaling protocol to set up mediasoup transports
-    for receiving video and audio from the intercom.
-    """
+    """Socket.IO client for Fermax Blue mediasoup signaling."""
 
     def __init__(
         self,
         signaling_url: str = DEFAULT_SIGNALING_URL,
         oauth_token: str = "",
         fcm_token: str = "",
-        on_room_joined: Callable[[RoomJoinResult], None] | None = None,
-        on_consume: Callable[[ConsumeResult], None] | None = None,
-        on_end_up: Callable[[str], None] | None = None,
-        on_error: Callable[[str], None] | None = None,
     ) -> None:
         self._signaling_url = signaling_url
         self._oauth_token = oauth_token
         self._fcm_token = fcm_token
-        self._on_room_joined = on_room_joined
-        self._on_consume = on_consume
-        self._on_end_up = on_end_up
-        self._on_error = on_error
         self._sio: socketio.AsyncClient | None = None
         self._connected = False
         self._room_join_result: RoomJoinResult | None = None
+        self._on_end_up: Callable[[str], None] | None = None
 
     @property
     def is_connected(self) -> bool:
-        """Return True if connected to signaling server."""
         return self._connected
 
     @property
     def room_join_result(self) -> RoomJoinResult | None:
-        """Return the last room join result."""
         return self._room_join_result
 
     async def connect(self, room_id: str) -> RoomJoinResult | None:
-        """Connect to signaling server and join a room.
-
-        Returns the room join result with transport parameters,
-        or None if the connection failed.
-        """
+        """Connect to signaling server and join a room."""
         self._sio = socketio.AsyncClient(logger=False, engineio_logger=False)
-        join_future: asyncio.Future[RoomJoinResult | None] = asyncio.Future()
 
         @self._sio.event
         async def connect() -> None:
-            _LOGGER.info("Connected to signaling server")
             self._connected = True
 
         @self._sio.event
         async def disconnect() -> None:
-            _LOGGER.info("Disconnected from signaling server")
             self._connected = False
-
-        @self._sio.event
-        async def connect_error(data: Any) -> None:
-            _LOGGER.error("Signaling connection error: %s", data)
-            if not join_future.done():
-                join_future.set_result(None)
 
         @self._sio.on("end_up")
         async def on_end_up(data: Any) -> None:
@@ -148,45 +107,28 @@ class FermaxSignalingClient:
             if self._on_end_up:
                 self._on_end_up(code)
 
-        @self._sio.on("error")
-        async def on_error(data: Any) -> None:
-            code = data.get("code", "") if isinstance(data, dict) else str(data)
-            _LOGGER.error("Signaling error: %s", code)
-            if self._on_error:
-                self._on_error(code)
-
         try:
-            _LOGGER.info("Connecting to %s", self._signaling_url)
-            await self._sio.connect(
-                self._signaling_url,
-                transports=["websocket"],
+            await self._sio.connect(self._signaling_url, transports=["websocket"])
+
+            response = await self._sio.call(
+                "join_call",
+                {
+                    "roomId": room_id,
+                    "appToken": self._fcm_token,
+                    "fermaxOauthToken": self._oauth_token,
+                    "protocolVersion": SIGNALING_VERSION,
+                },
+                timeout=15,
             )
 
-            # Emit join_call and wait for ACK
-            join_data = {
-                "roomId": room_id,
-                "pushToken": self._fcm_token,
-                "oauthToken": self._oauth_token,
-                "version": SIGNALING_VERSION,
-            }
-
-            _LOGGER.debug("Emitting join_call for room %s", room_id)
-            response = await self._sio.call("join_call", join_data, timeout=15)
-
-            if not isinstance(response, dict):
-                _LOGGER.error("Unexpected join_call response: %s", response)
-                return None
-
-            if "error" in response:
-                _LOGGER.error("join_call error: %s", response["error"])
+            if not isinstance(response, dict) or "error" in response:
+                _LOGGER.error("join_call failed: %s", response)
                 return None
 
             result_data = response.get("result", {})
             if not result_data:
-                _LOGGER.error("join_call returned empty result")
                 return None
 
-            # Parse transport data
             recv_video = result_data.get("recvTransportVideo", {})
             recv_audio = result_data.get("recvTransportAudio", {})
             send = result_data.get("sendTransport", {})
@@ -197,25 +139,10 @@ class FermaxSignalingClient:
                 router_rtp_capabilities=json.dumps(
                     result_data.get("routerRtpCapabilities", {})
                 ),
-                recv_video_transport=TransportData(
-                    id=recv_video.get("id", ""),
-                    dtls_parameters=json.dumps(recv_video.get("dtlsParameters", {})),
-                    ice_candidates=json.dumps(recv_video.get("iceCandidates", [])),
-                    ice_parameters=json.dumps(recv_video.get("iceParameters", {})),
-                ),
-                recv_audio_transport=TransportData(
-                    id=recv_audio.get("id", ""),
-                    dtls_parameters=json.dumps(recv_audio.get("dtlsParameters", {})),
-                    ice_candidates=json.dumps(recv_audio.get("iceCandidates", [])),
-                    ice_parameters=json.dumps(recv_audio.get("iceParameters", {})),
-                ),
-                send_transport=TransportData(
-                    id=send.get("id", ""),
-                    dtls_parameters=json.dumps(send.get("dtlsParameters", {})),
-                    ice_candidates=json.dumps(send.get("iceCandidates", [])),
-                    ice_parameters=json.dumps(send.get("iceParameters", {})),
-                ),
-                ice_servers=result_data.get("iceServers"),
+                recv_video_transport=self._parse_transport(recv_video),
+                recv_audio_transport=self._parse_transport(recv_audio),
+                send_transport=self._parse_transport(send),
+                ice_servers=json.dumps(result_data.get("iceServers", [])),
             )
 
             _LOGGER.info(
@@ -223,35 +150,43 @@ class FermaxSignalingClient:
                 self._room_join_result.video_producer_id,
                 self._room_join_result.audio_producer_id,
             )
-
-            if self._on_room_joined:
-                self._on_room_joined(self._room_join_result)
-
             return self._room_join_result
 
         except Exception:
             _LOGGER.exception("Failed to connect to signaling server")
             return None
 
+    @staticmethod
+    def _parse_transport(data: dict) -> TransportData:
+        return TransportData(
+            id=data.get("id", ""),
+            dtls_parameters=json.dumps(data.get("dtlsParameters", {})),
+            ice_candidates=json.dumps(data.get("iceCandidates", [])),
+            ice_parameters=json.dumps(data.get("iceParameters", {})),
+        )
+
     async def consume_transport(
-        self,
-        transport_id: str,
-        producer_id: str,
-        rtp_capabilities: str,
+        self, transport_id: str, producer_id: str, rtp_capabilities: str
     ) -> ConsumeResult | None:
-        """Request to consume a media track from the server."""
+        """Request to consume a media track."""
         if not self._sio or not self._connected:
             return None
 
-        consume_data = {
-            "transportId": transport_id,
-            "producerId": producer_id,
-            "rtpCapabilities": rtp_capabilities,
-        }
-
         try:
+            # rtp_capabilities may be JSON string or dict
+            caps = (
+                json.loads(rtp_capabilities)
+                if isinstance(rtp_capabilities, str)
+                else rtp_capabilities
+            )
             response = await self._sio.call(
-                "transport_consume", consume_data, timeout=10
+                "transport_consume",
+                {
+                    "transportId": transport_id,
+                    "producerId": producer_id,
+                    "rtpCapabilities": caps,
+                },
+                timeout=10,
             )
 
             if not isinstance(response, dict) or "error" in response:
@@ -259,24 +194,12 @@ class FermaxSignalingClient:
                 return None
 
             result = response.get("result", {})
-            consume_result = ConsumeResult(
+            return ConsumeResult(
                 consumer_id=result.get("id", ""),
                 producer_id=result.get("producerId", ""),
                 kind=result.get("kind", ""),
-                rtp_parameters=result.get("rtpParameters", ""),
+                rtp_parameters=result.get("rtpParameters", {}),
             )
-
-            _LOGGER.info(
-                "Transport consume: %s (%s)",
-                consume_result.consumer_id,
-                consume_result.kind,
-            )
-
-            if self._on_consume:
-                self._on_consume(consume_result)
-
-            return consume_result
-
         except Exception:
             _LOGGER.exception("Failed to consume transport")
             return None
@@ -287,9 +210,14 @@ class FermaxSignalingClient:
             return False
 
         try:
+            dtls = (
+                json.loads(dtls_parameters)
+                if isinstance(dtls_parameters, str)
+                else dtls_parameters
+            )
             response = await self._sio.call(
                 "transport_connect",
-                {"transportId": transport_id, "dtlsParameters": dtls_parameters},
+                {"transportId": transport_id, "dtlsParameters": dtls},
                 timeout=10,
             )
             return isinstance(response, dict) and "error" not in response
@@ -297,35 +225,7 @@ class FermaxSignalingClient:
             _LOGGER.exception("Failed to connect transport")
             return False
 
-    async def pickup(
-        self,
-        kind: str,
-        rtp_parameters: str,
-        app_data: str,
-        rtp_capabilities: str,
-    ) -> bool:
-        """Answer the call (start sending audio to the intercom)."""
-        if not self._sio or not self._connected:
-            return False
-
-        try:
-            response = await self._sio.call(
-                "pickup",
-                {
-                    "kind": kind,
-                    "rtpParameters": rtp_parameters,
-                    "appData": app_data,
-                    "rtpCapabilities": rtp_capabilities,
-                },
-                timeout=10,
-            )
-            return isinstance(response, dict) and "error" not in response
-        except Exception:
-            _LOGGER.exception("Failed to pickup call")
-            return False
-
     async def hangup(self) -> None:
-        """Hang up the call."""
         if self._sio and self._connected:
             try:
                 await self._sio.emit("hang_up", {})
@@ -333,7 +233,6 @@ class FermaxSignalingClient:
                 _LOGGER.debug("Error during hangup", exc_info=True)
 
     async def disconnect(self) -> None:
-        """Disconnect from the signaling server."""
         if self._sio:
             try:
                 if self._connected:
@@ -345,3 +244,171 @@ class FermaxSignalingClient:
                 self._sio = None
                 self._connected = False
                 self._room_join_result = None
+
+
+class FermaxStreamSession:
+    """Full streaming session: signaling + mediasoup consumer + frame grabber.
+
+    Bridges the mediasoup SFU video to JPEG frames for the HA camera entity.
+    """
+
+    def __init__(
+        self,
+        signaling_url: str,
+        oauth_token: str,
+        fcm_token: str,
+        room_id: str,
+        on_end: Callable[[], None] | None = None,
+    ) -> None:
+        self._signaling = FermaxSignalingClient(
+            signaling_url=signaling_url,
+            oauth_token=oauth_token,
+            fcm_token=fcm_token,
+        )
+        self._room_id = room_id
+        self._on_end = on_end
+        self._device: Any = None
+        self._recv_transport: Any = None
+        self._consumer: Any = None
+        self._frame_task: asyncio.Task | None = None
+        self._latest_frame: bytes | None = None
+        self._active = False
+
+    @property
+    def is_active(self) -> bool:
+        return self._active
+
+    @property
+    def latest_frame(self) -> bytes | None:
+        """Return the latest JPEG frame, or None if no frames yet."""
+        return self._latest_frame
+
+    async def start(self) -> bool:
+        """Start the full streaming pipeline."""
+        try:
+            return await self._start_inner()
+        except Exception:
+            _LOGGER.exception("Failed to start stream session")
+            await self.stop()
+            return False
+
+    async def _start_inner(self) -> bool:
+        from pymediasoup import Device
+        from pymediasoup.handlers.aiortc_handler import AiortcHandler
+        from pymediasoup.models.transport import (
+            DtlsParameters,
+            IceCandidate,
+            IceParameters,
+        )
+        from pymediasoup.rtp_parameters import RtpCapabilities, RtpParameters
+
+        # 1. Signaling: join room
+        room = await self._signaling.connect(self._room_id)
+        if not room:
+            _LOGGER.error("Failed to join room %s", self._room_id)
+            return False
+
+        def _handle_end_up(_code: str) -> None:
+            asyncio.get_event_loop().call_soon_threadsafe(
+                lambda: asyncio.ensure_future(self.stop())
+            )
+
+        self._signaling._on_end_up = _handle_end_up
+
+        # 2. Create mediasoup Device
+        self._device = Device(handlerFactory=AiortcHandler.createFactory(tracks=[]))
+        router_caps = json.loads(room.router_rtp_capabilities)
+        await self._device.load(RtpCapabilities(**router_caps))
+
+        # 3. Create RecvTransport for video
+        video_tp = room.recv_video_transport
+        ice_params = json.loads(video_tp.ice_parameters)
+        ice_candidates = json.loads(video_tp.ice_candidates)
+        dtls_params = json.loads(video_tp.dtls_parameters)
+
+        self._recv_transport = self._device.createRecvTransport(
+            id=video_tp.id,
+            iceParameters=IceParameters(**ice_params),
+            iceCandidates=[IceCandidate(**c) for c in ice_candidates],
+            dtlsParameters=DtlsParameters(**dtls_params),
+        )
+
+        # Handle transport connect callback
+        @self._recv_transport.on("connect")
+        async def on_connect(dtls_parameters: DtlsParameters) -> None:
+            await self._signaling.connect_transport(
+                transport_id=video_tp.id,
+                dtls_parameters=json.dumps(dtls_parameters.dict(exclude_none=True)),
+            )
+
+        # 4. Consume video from SFU
+        device_caps = self._device.rtpCapabilities
+        consume_result = await self._signaling.consume_transport(
+            transport_id=video_tp.id,
+            producer_id=room.video_producer_id,
+            rtp_capabilities=json.dumps(device_caps.dict(exclude_none=True)),
+        )
+        if not consume_result:
+            _LOGGER.error("Failed to consume video")
+            return False
+
+        self._consumer = await self._recv_transport.consume(
+            id=consume_result.consumer_id,
+            producerId=consume_result.producer_id,
+            kind=consume_result.kind,
+            rtpParameters=RtpParameters(**consume_result.rtp_parameters)
+            if isinstance(consume_result.rtp_parameters, dict)
+            else consume_result.rtp_parameters,
+        )
+
+        # 5. Start frame grabber
+        self._active = True
+        self._frame_task = asyncio.create_task(self._grab_frames())
+        _LOGGER.info("Stream session started for room %s", self._room_id)
+        return True
+
+    async def _grab_frames(self) -> None:
+        """Read video frames from the consumer track, encode as JPEG."""
+        from aiortc.mediastreams import MediaStreamError
+
+        track = self._consumer.track
+        try:
+            while self._active:
+                frame = await track.recv()
+                img = frame.to_image()
+                buf = io.BytesIO()
+                img.save(buf, format="JPEG", quality=75)
+                self._latest_frame = buf.getvalue()
+        except MediaStreamError:
+            _LOGGER.info("Video track ended")
+        except asyncio.CancelledError:
+            pass
+        except Exception:
+            _LOGGER.exception("Frame grabber error")
+        finally:
+            self._active = False
+            if self._on_end:
+                self._on_end()
+
+    async def stop(self) -> None:
+        """Stop the streaming session and clean up."""
+        self._active = False
+
+        if self._frame_task and not self._frame_task.done():
+            self._frame_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._frame_task
+
+        if self._consumer:
+            with contextlib.suppress(Exception):
+                await self._consumer.close()
+            self._consumer = None
+
+        if self._recv_transport:
+            with contextlib.suppress(Exception):
+                await self._recv_transport.close()
+            self._recv_transport = None
+
+        await self._signaling.disconnect()
+        self._latest_frame = None
+        _LOGGER.info("Stream session stopped")

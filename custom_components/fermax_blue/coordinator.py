@@ -23,6 +23,7 @@ from .api import (
 )
 from .const import DOMAIN, SIGNAL_CALL_ENDED, SIGNAL_DOORBELL_RING
 from .notification import FermaxNotificationListener
+from .streaming import DEFAULT_SIGNALING_URL, FermaxStreamSession
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -60,6 +61,7 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         self._camera_timeout_unsub: CALLBACK_TYPE | None = None
         self._dnd_enabled: bool | None = None
         self._last_opening: OpeningRecord | None = None
+        self._stream_session: FermaxStreamSession | None = None
 
     @property
     def last_photo(self) -> bytes | None:
@@ -85,6 +87,11 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
     def last_opening(self) -> OpeningRecord | None:
         """Return the last door opening record."""
         return self._last_opening
+
+    @property
+    def stream_session(self) -> FermaxStreamSession | None:
+        """Return the active stream session, if any."""
+        return self._stream_session
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch data from the API.
@@ -181,6 +188,12 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
 
         self._doorbell_ringing = True
         self._photo_fetch_pending = True
+
+        # Start video stream if notification has room info
+        room_id = notification.get("RoomId")
+        if room_id and notification_type in ("Call", "Autoon"):
+            socket_url = notification.get("SocketUrl", DEFAULT_SIGNALING_URL)
+            self.hass.async_create_task(self._start_stream(room_id, socket_url))
 
         # Extract door key from notification if available
         door_key = notification.get("accessDoorKey", "GENERAL")
@@ -311,3 +324,42 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
                 is_monitor=self.device_info.is_monitor,
                 wireless_signal=self.device_info.wireless_signal,
             )
+
+    async def _start_stream(self, room_id: str, signaling_url: str) -> None:
+        """Start a video stream session for the given room."""
+        await self.stop_stream()
+
+        if not self.api._access_token or not self.notification_listener:
+            return
+        fcm_token = self.notification_listener.fcm_token
+        if not fcm_token:
+            return
+
+        @callback
+        def _on_stream_end() -> None:
+            self._stream_session = None
+            self._camera_active = False
+            self.async_set_updated_data(self.data)
+
+        self._stream_session = FermaxStreamSession(
+            signaling_url=signaling_url,
+            oauth_token=self.api._access_token,
+            fcm_token=fcm_token,
+            room_id=room_id,
+            on_end=_on_stream_end,
+        )
+
+        success = await self._stream_session.start()
+        if success:
+            self._camera_active = True
+            _LOGGER.info("Video stream started for room %s", room_id)
+        else:
+            _LOGGER.warning("Failed to start video stream for room %s", room_id)
+            self._stream_session = None
+
+    async def stop_stream(self) -> None:
+        """Stop the current video stream session."""
+        if self._stream_session:
+            await self._stream_session.stop()
+            self._stream_session = None
+            self._camera_active = False

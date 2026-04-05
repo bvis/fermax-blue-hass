@@ -1,0 +1,33 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:m.apkpure.com)",
+      "WebFetch(domain:fermax-blue-youre-at-home.en.uptodown.com)",
+      "Read(//private/tmp/fermax-apk/**)",
+      "Bash(/Users/basilio.vera/.cargo/bin/apkeep -a com.fermax.blue.app .)",
+      "WebSearch",
+      "WebFetch(domain:developers.home-assistant.io)",
+      "WebFetch(domain:www.home-assistant.io)",
+      "Bash(python3 -m pytest tests/test_api_new.py -v)",
+      "Bash(make test:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(gh run:*)",
+      "Bash(while read:*)",
+      "Bash(do echo:*)",
+      "Bash(done)",
+      "Bash(chmod +x scripts/pre-push.sh)",
+      "Bash(cp scripts/pre-push.sh .git/hooks/pre-push)",
+      "Bash(time docker:*)",
+      "Bash(time bash:*)",
+      "Bash(git push:*)",
+      "Bash(gh --version)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:pypi.org)",
+      "Bash(gh search:*)",
+      "Bash(pip show:*)",
+      "Bash(pip search:*)"
+    ]
+  }
+}

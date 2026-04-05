@@ -396,24 +396,27 @@ class FermaxBlueApi:
     async def register_app_token(self, fcm_token: str, active: bool = True) -> bool:
         """Register FCM token with Fermax for push notifications."""
         payload = {
-            "appTokenId": fcm_token,
-            "token": fcm_token,
-            "os": "ANDROID",
-            "appVersion": "4.3.0",
-            "appBuild": 1,
-            "phoneModel": "HA-Integration",
-            "phoneOS": "14.0",
-            "locale": "en_US",
             "active": active,
+            "token": fcm_token,
+            "appVersion": "4.3.0",
+            "locale": "en_US",
+            "os": "Android",
+            "osVersion": "14.0",
+            "appBuild": "721",
+            "phoneMobile": "HA-Integration",
         }
 
         try:
-            await self._api_post(
-                "/notification/api/v2/apptoken",
-                json=payload,
-            )
+            await self._api_post("/notification/api/v1/apptoken", json=payload)
             return True
-        except httpx.HTTPStatusError:
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 409:
+                _LOGGER.debug("Token conflict, updating existing token")
+                try:
+                    await self._api_post("/notification/api/v1/apptoken", json=payload)
+                    return True
+                except httpx.HTTPStatusError:
+                    pass
             return False
 
     async def get_dnd_status(self, device_id: str, fcm_token: str) -> bool:
@@ -422,8 +425,11 @@ class FermaxBlueApi:
             "/notification/api/v1/mutedevice/me",
             params={"deviceId": device_id, "token": fcm_token},
         )
-        data: dict = response.json()
-        return bool(data.get("muted", False))
+        data = response.json()
+        # API returns bare bool or dict with "muted" key
+        if isinstance(data, bool):
+            return data
+        return bool(data.get("muted", False)) if isinstance(data, dict) else bool(data)
 
     async def set_dnd(self, device_id: str, fcm_token: str, *, enabled: bool) -> None:
         """Set Do Not Disturb status for a device."""
