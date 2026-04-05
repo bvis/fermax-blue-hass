@@ -290,13 +290,26 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         self.hass.async_create_task(self.async_request_refresh())
 
     async def open_door(self, door_name: str = "GENERAL") -> bool:
-        """Open a specific door."""
+        """Open a specific door. Uses in-call endpoint if stream is active."""
+        # If there's an active stream, use the in-call endpoint
+        if self._stream_session and self._stream_session.is_active:
+            fcm_token = (
+                self.notification_listener.fcm_token
+                if self.notification_listener
+                else None
+            )
+            return await self.api.open_door_incall(
+                device_id=self.pairing.device_id,
+                room_id=self._stream_session._room_id,
+                fcm_token=fcm_token,
+                call_as=self.pairing.device_id,
+            )
+
         door = self.pairing.access_doors.get(door_name)
         if not door:
             for d in self.pairing.access_doors.values():
-                if d.visible:
-                    door = d
-                    break
+                door = d
+                break
 
         if not door:
             _LOGGER.error("No accessible door found for %s", door_name)

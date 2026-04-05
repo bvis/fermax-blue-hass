@@ -142,6 +142,29 @@ class TestF1Api:
             await authenticated_api.press_f1("dev1")
 
 
+class TestInCallOpenDoor:
+    @pytest.mark.asyncio
+    async def test_open_door_incall_success(self, authenticated_api):
+        resp = _mock_response(200, text="ok")
+        with patch("httpx.AsyncClient.post", return_value=resp) as mock_post:
+            result = await authenticated_api.open_door_incall(
+                "dev1", room_id="room_123", fcm_token="tok", call_as="dev1"
+            )
+        assert result is True
+        call_args = mock_post.call_args
+        body = call_args.kwargs.get("json", {})
+        assert body["deviceId"] == "dev1"
+        assert body["roomId"] == "room_123"
+        assert body["unitId"] == "dev1"
+
+    @pytest.mark.asyncio
+    async def test_open_door_incall_failure(self, authenticated_api):
+        resp = _mock_response(500, text="error")
+        with patch("httpx.AsyncClient.post", return_value=resp):
+            result = await authenticated_api.open_door_incall("dev1")
+        assert result is False
+
+
 class TestCallGuardApi:
     @pytest.mark.asyncio
     async def test_call_guard(self, authenticated_api):
