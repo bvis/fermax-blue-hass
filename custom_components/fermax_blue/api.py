@@ -293,6 +293,28 @@ class FermaxBlueApi:
         except httpx.HTTPStatusError:
             return False
 
+    async def open_door_incall(
+        self,
+        device_id: str,
+        room_id: str | None = None,
+        fcm_token: str | None = None,
+        call_as: str | None = None,
+    ) -> bool:
+        """Open a door during an active call/stream session."""
+        try:
+            await self._api_post(
+                "/deviceaction/api/v1/device/incall/opendoor",
+                json={
+                    "deviceId": device_id,
+                    "roomId": room_id,
+                    "appTokenId": fcm_token,
+                    "unitId": call_as,
+                },
+            )
+            return True
+        except httpx.HTTPStatusError:
+            return False
+
     async def get_call_log(self, fcm_token: str) -> list[CallLogEntry]:
         """Get call log entries."""
         try:

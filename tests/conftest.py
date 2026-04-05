@@ -81,6 +81,7 @@ def mock_api():
     api.get_call_log = AsyncMock(return_value=[])
     api.get_call_photo = AsyncMock(return_value=None)
     api.register_app_token = AsyncMock(return_value=True)
+    api.open_door_incall = AsyncMock(return_value=True)
     api.get_dnd_status = AsyncMock(return_value=False)
     api.set_dnd = AsyncMock()
     api.press_f1 = AsyncMock()
