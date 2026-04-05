@@ -1,6 +1,6 @@
 """Tests for the Fermax Blue coordinator."""
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -68,25 +68,50 @@ def pairing():
     )
 
 
+@pytest.fixture
+def coordinator(mock_hass, mock_api, pairing):
+    """Create a coordinator with patched HA internals."""
+    with patch(
+        "homeassistant.helpers.update_coordinator.DataUpdateCoordinator.__init__",
+        return_value=None,
+    ):
+        coord = FermaxBlueCoordinator.__new__(FermaxBlueCoordinator)
+        coord.api = mock_api
+        coord.pairing = pairing
+        coord.hass = mock_hass
+        coord.device_info = None
+        coord.notification_listener = None
+        coord._last_photo = None
+        coord._last_photo_id = None
+        coord._doorbell_ringing = False
+        coord._camera_active = False
+        coord._last_divert_response = None
+        coord._photo_fetch_pending = False
+        coord._doorbell_reset_unsub = None
+        coord._camera_timeout_unsub = None
+        coord._dnd_enabled = None
+        coord._last_opening = None
+        coord.update_interval = None
+    return coord
+
+
 class TestCoordinatorDnd:
     """Test DND coordination."""
 
     @pytest.mark.asyncio
-    async def test_set_dnd_calls_api(self, mock_hass, mock_api, pairing):
-        coord = FermaxBlueCoordinator(mock_hass, mock_api, pairing)
-        coord.notification_listener = MagicMock()
-        coord.notification_listener.fcm_token = "tok"
+    async def test_set_dnd_calls_api(self, coordinator, mock_api):
+        coordinator.notification_listener = MagicMock()
+        coordinator.notification_listener.fcm_token = "tok"
 
-        await coord.set_dnd(True)
+        await coordinator.set_dnd(True)
         mock_api.set_dnd.assert_called_once_with("dev1", "tok", enabled=True)
-        assert coord.dnd_enabled is True
+        assert coordinator.dnd_enabled is True
 
     @pytest.mark.asyncio
-    async def test_set_dnd_no_listener(self, mock_hass, mock_api, pairing):
-        coord = FermaxBlueCoordinator(mock_hass, mock_api, pairing)
-        coord.notification_listener = None
+    async def test_set_dnd_no_listener(self, coordinator, mock_api):
+        coordinator.notification_listener = None
 
-        await coord.set_dnd(True)
+        await coordinator.set_dnd(True)
         mock_api.set_dnd.assert_not_called()
 
 
@@ -94,9 +119,8 @@ class TestCoordinatorF1:
     """Test F1 coordination."""
 
     @pytest.mark.asyncio
-    async def test_press_f1_calls_api(self, mock_hass, mock_api, pairing):
-        coord = FermaxBlueCoordinator(mock_hass, mock_api, pairing)
-        await coord.press_f1()
+    async def test_press_f1_calls_api(self, coordinator, mock_api):
+        await coordinator.press_f1()
         mock_api.press_f1.assert_called_once_with("dev1")
 
 
@@ -104,9 +128,8 @@ class TestCoordinatorCallGuard:
     """Test call guard coordination."""
 
     @pytest.mark.asyncio
-    async def test_call_guard_calls_api(self, mock_hass, mock_api, pairing):
-        coord = FermaxBlueCoordinator(mock_hass, mock_api, pairing)
-        await coord.call_guard()
+    async def test_call_guard_calls_api(self, coordinator, mock_api):
+        await coordinator.call_guard()
         mock_api.call_guard.assert_called_once_with("dev1")
 
 
@@ -114,9 +137,8 @@ class TestCoordinatorPhotoCaller:
     """Test photo caller coordination."""
 
     @pytest.mark.asyncio
-    async def test_set_photo_caller_calls_api(self, mock_hass, mock_api, pairing):
-        coord = FermaxBlueCoordinator(mock_hass, mock_api, pairing)
-        coord.device_info = DeviceInfo(
+    async def test_set_photo_caller_calls_api(self, coordinator, mock_api):
+        coordinator.device_info = DeviceInfo(
             device_id="dev1",
             connection_state="Connected",
             status="ACTIVATED",
@@ -130,18 +152,26 @@ class TestCoordinatorPhotoCaller:
             wireless_signal=4,
         )
 
-        await coord.set_photo_caller(True)
+        await coordinator.set_photo_caller(True)
         mock_api.set_photo_caller.assert_called_once_with("dev1", enabled=True)
-        assert coord.device_info.photocaller is True
+        assert coordinator.device_info.photocaller is True
 
 
 class TestCoordinatorScanInterval:
     """Test configurable scan interval."""
 
     def test_default_interval(self, mock_hass, mock_api, pairing):
-        coord = FermaxBlueCoordinator(mock_hass, mock_api, pairing)
-        assert coord.update_interval.total_seconds() == 300  # 5 min
+        with patch(
+            "homeassistant.helpers.update_coordinator.DataUpdateCoordinator.__init__"
+        ) as mock_init:
+            FermaxBlueCoordinator(mock_hass, mock_api, pairing)
+            call_kwargs = mock_init.call_args
+            assert call_kwargs.kwargs["update_interval"].total_seconds() == 300
 
     def test_custom_interval(self, mock_hass, mock_api, pairing):
-        coord = FermaxBlueCoordinator(mock_hass, mock_api, pairing, scan_interval=10)
-        assert coord.update_interval.total_seconds() == 600  # 10 min
+        with patch(
+            "homeassistant.helpers.update_coordinator.DataUpdateCoordinator.__init__"
+        ) as mock_init:
+            FermaxBlueCoordinator(mock_hass, mock_api, pairing, scan_interval=10)
+            call_kwargs = mock_init.call_args
+            assert call_kwargs.kwargs["update_interval"].total_seconds() == 600

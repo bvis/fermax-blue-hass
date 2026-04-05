@@ -189,7 +189,9 @@ class FermaxBlueApi:
 
         for attempt in range(MAX_RETRIES + 1):
             try:
-                response = await getattr(client, method)(url, headers=headers, **kwargs)
+                response: httpx.Response = await getattr(client, method)(
+                    url, headers=headers, **kwargs
+                )
                 response.raise_for_status()
                 return response
             except (
@@ -420,7 +422,8 @@ class FermaxBlueApi:
             "/notification/api/v1/mutedevice/me",
             params={"deviceId": device_id, "token": fcm_token},
         )
-        return response.json().get("muted", False)
+        data: dict = response.json()
+        return bool(data.get("muted", False))
 
     async def set_dnd(self, device_id: str, fcm_token: str, *, enabled: bool) -> None:
         """Set Do Not Disturb status for a device."""
