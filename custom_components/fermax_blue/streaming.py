@@ -26,6 +26,9 @@ import socketio
 
 _LOGGER = logging.getLogger(__name__)
 
+# Suppress noisy H264 decode warnings (expected on stream start before first keyframe)
+logging.getLogger("aiortc.codecs.h264").setLevel(logging.ERROR)
+
 SIGNALING_VERSION = "0.8.2"
 DEFAULT_SIGNALING_URL = "http://signaling-pro-duoxme.fermax.io"
 
@@ -408,6 +411,8 @@ class FermaxStreamSession:
             with contextlib.suppress(asyncio.CancelledError):
                 await self._frame_task
 
+        # Close in order: consumer → transport → signaling
+        # Suppress aiortc internal errors during teardown
         if self._consumer:
             with contextlib.suppress(Exception):
                 await self._consumer.close()
@@ -419,5 +424,9 @@ class FermaxStreamSession:
             self._recv_transport = None
 
         await self._signaling.disconnect()
+
+        # Give aiortc a moment to clean up internal tasks
+        await asyncio.sleep(0.1)
+
         # Keep _latest_frame for preview after stream ends
         _LOGGER.info("Stream session stopped")

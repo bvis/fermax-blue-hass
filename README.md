@@ -100,7 +100,7 @@ For each paired intercom device, the integration creates:
 | `button.<name>_camera_preview` | Button | Start camera preview (auto-on) |
 | `button.<name>_f1` | Button | F1 auxiliary function |
 | `button.<name>_call_guard` | Button | Call the building's guard/janitor |
-| `camera.<name>_visitor` | Camera | Last captured visitor photo (supports turn_on for live preview) |
+| `camera.<name>_visitor` | Camera | Live video stream (MJPEG) when preview active; last frame as preview when idle |
 | `sensor.<name>_wifi_signal` | Sensor | WiFi signal strength (0-4 bars) |
 | `sensor.<name>_status` | Sensor | Device activation status |
 | `sensor.<name>_last_opening` | Sensor | Last door opening timestamp (with user, door, guest attributes) |
