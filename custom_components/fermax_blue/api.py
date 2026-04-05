@@ -117,23 +117,30 @@ class FermaxApiError(Exception):
 class FermaxBlueApi:
     """Client for the Fermax Blue API."""
 
-    def __init__(self, username: str, password: str) -> None:
+    def __init__(
+        self,
+        username: str,
+        password: str,
+        client: httpx.AsyncClient | None = None,
+    ) -> None:
         self._username = username
         self._password = password
         self._access_token: str | None = None
         self._token_expires_at: float = 0
         self._pairings: list[Pairing] = []
-        self._client: httpx.AsyncClient | None = None
+        self._client = client
+        self._owns_client = client is None
 
     async def _get_client(self) -> httpx.AsyncClient:
         """Get or create a persistent HTTP client."""
         if self._client is None or self._client.is_closed:
             self._client = httpx.AsyncClient(timeout=API_TIMEOUT)
+            self._owns_client = True
         return self._client
 
     async def close(self) -> None:
-        """Close the HTTP client."""
-        if self._client and not self._client.is_closed:
+        """Close the HTTP client if we own it."""
+        if self._owns_client and self._client and not self._client.is_closed:
             await self._client.aclose()
             self._client = None
 

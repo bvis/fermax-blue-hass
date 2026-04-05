@@ -13,6 +13,7 @@ from homeassistant.config_entries import (
     OptionsFlow,
 )
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
+from homeassistant.helpers.httpx_client import get_async_client
 
 from .api import FermaxAuthError, FermaxBlueApi
 from .const import (
@@ -45,9 +46,11 @@ class FermaxBlueConfigFlow(ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
 
         if user_input is not None:
+            client = get_async_client(self.hass)
             api = FermaxBlueApi(
                 user_input[CONF_USERNAME],
                 user_input[CONF_PASSWORD],
+                client=client,
             )
 
             pairings = []
@@ -59,8 +62,6 @@ class FermaxBlueConfigFlow(ConfigFlow, domain=DOMAIN):
             except Exception:
                 _LOGGER.exception("Unexpected error during authentication")
                 errors["base"] = "cannot_connect"
-            finally:
-                await api.close()
 
             if not errors:
                 if not pairings:
