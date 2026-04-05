@@ -1,6 +1,6 @@
 [project]
 name = "fermax-blue-hass"
-version = "0.1.1"
+version = "0.3.0"
 description = "Home Assistant integration for Fermax Blue intercoms"
 requires-python = ">=3.12"
 
@@ -16,6 +16,11 @@ dev = [
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+filterwarnings = [
+    "ignore::DeprecationWarning:josepy",
+    "ignore::DeprecationWarning:acme",
+    "ignore::DeprecationWarning:homeassistant",
+]
 
 [tool.mypy]
 python_version = "3.12"

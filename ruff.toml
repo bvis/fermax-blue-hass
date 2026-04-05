@@ -32,6 +32,7 @@ ignore = [
 
 [lint.per-file-ignores]
 "tests/*" = ["B018", "PT004", "PT012"]
+"scripts/*" = ["T20", "ASYNC250", "E402"]
 
 [lint.isort]
 known-first-party = ["custom_components.fermax_blue"]

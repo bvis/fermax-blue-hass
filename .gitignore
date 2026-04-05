@@ -12,3 +12,6 @@ build/
 venv/
 .env
 *.log
+
+# APK analysis (local only, do not push)
+docs/apk-analysis-*.md

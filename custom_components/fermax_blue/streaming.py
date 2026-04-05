@@ -33,8 +33,9 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from dataclasses import dataclass, field
-from typing import Any, Callable
+from collections.abc import Callable
+from dataclasses import dataclass
+from typing import Any
 
 import socketio
 
@@ -198,39 +199,21 @@ class FermaxSignalingClient:
                 ),
                 recv_video_transport=TransportData(
                     id=recv_video.get("id", ""),
-                    dtls_parameters=json.dumps(
-                        recv_video.get("dtlsParameters", {})
-                    ),
-                    ice_candidates=json.dumps(
-                        recv_video.get("iceCandidates", [])
-                    ),
-                    ice_parameters=json.dumps(
-                        recv_video.get("iceParameters", {})
-                    ),
+                    dtls_parameters=json.dumps(recv_video.get("dtlsParameters", {})),
+                    ice_candidates=json.dumps(recv_video.get("iceCandidates", [])),
+                    ice_parameters=json.dumps(recv_video.get("iceParameters", {})),
                 ),
                 recv_audio_transport=TransportData(
                     id=recv_audio.get("id", ""),
-                    dtls_parameters=json.dumps(
-                        recv_audio.get("dtlsParameters", {})
-                    ),
-                    ice_candidates=json.dumps(
-                        recv_audio.get("iceCandidates", [])
-                    ),
-                    ice_parameters=json.dumps(
-                        recv_audio.get("iceParameters", {})
-                    ),
+                    dtls_parameters=json.dumps(recv_audio.get("dtlsParameters", {})),
+                    ice_candidates=json.dumps(recv_audio.get("iceCandidates", [])),
+                    ice_parameters=json.dumps(recv_audio.get("iceParameters", {})),
                 ),
                 send_transport=TransportData(
                     id=send.get("id", ""),
-                    dtls_parameters=json.dumps(
-                        send.get("dtlsParameters", {})
-                    ),
-                    ice_candidates=json.dumps(
-                        send.get("iceCandidates", [])
-                    ),
-                    ice_parameters=json.dumps(
-                        send.get("iceParameters", {})
-                    ),
+                    dtls_parameters=json.dumps(send.get("dtlsParameters", {})),
+                    ice_candidates=json.dumps(send.get("iceCandidates", [])),
+                    ice_parameters=json.dumps(send.get("iceParameters", {})),
                 ),
                 ice_servers=result_data.get("iceServers"),
             )
@@ -298,9 +281,7 @@ class FermaxSignalingClient:
             _LOGGER.exception("Failed to consume transport")
             return None
 
-    async def connect_transport(
-        self, transport_id: str, dtls_parameters: str
-    ) -> bool:
+    async def connect_transport(self, transport_id: str, dtls_parameters: str) -> bool:
         """Connect a transport with DTLS parameters."""
         if not self._sio or not self._connected:
             return False
