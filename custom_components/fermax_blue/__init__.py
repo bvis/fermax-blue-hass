@@ -10,7 +10,7 @@ from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, EVENT_HOMEASSISTAN
 from homeassistant.core import Event, HomeAssistant
 
 from .api import FermaxBlueApi
-from .const import DOMAIN, PLATFORMS
+from .const import CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL, DOMAIN, PLATFORMS
 from .coordinator import FermaxBlueCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -32,10 +32,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: FermaxBlueConfigEntry) -
         await api.close()
         raise
 
+    scan_interval = entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
     coordinators: list[FermaxBlueCoordinator] = []
 
     for pairing in pairings:
-        coordinator = FermaxBlueCoordinator(hass, api, pairing)
+        coordinator = FermaxBlueCoordinator(hass, api, pairing, scan_interval)
         await coordinator.async_config_entry_first_refresh()
 
         storage_path = Path(hass.config.config_dir) / ".storage" / DOMAIN
@@ -57,8 +58,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: FermaxBlueConfigEntry) -
     entry.async_on_unload(
         hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, _async_shutdown)
     )
+    entry.async_on_unload(entry.add_update_listener(_async_options_updated))
 
     return True
+
+
+async def _async_options_updated(
+    hass: HomeAssistant, entry: FermaxBlueConfigEntry
+) -> None:
+    """Handle options update."""
+    await hass.config_entries.async_reload(entry.entry_id)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: FermaxBlueConfigEntry) -> bool:
