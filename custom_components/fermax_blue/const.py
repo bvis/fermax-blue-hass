@@ -58,7 +58,14 @@ PLATFORMS = [
     "binary_sensor",
     "button",
     "camera",
+    "event",
     "lock",
     "sensor",
     "switch",
 ]
+
+# Options flow defaults
+DEFAULT_SCAN_INTERVAL = 5  # minutes
+MIN_SCAN_INTERVAL = 1
+MAX_SCAN_INTERVAL = 30
+CONF_SCAN_INTERVAL = "scan_interval"

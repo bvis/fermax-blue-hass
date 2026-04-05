@@ -19,13 +19,32 @@
       "already_configured": "This account is already configured."
     }
   },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Fermax Blue Options",
+        "data": {
+          "scan_interval": "Polling interval (minutes)"
+        }
+      }
+    }
+  },
   "entity": {
     "binary_sensor": {
       "connection": {
         "name": "Connection"
-      },
+      }
+    },
+    "event": {
       "doorbell": {
-        "name": "Doorbell"
+        "name": "Doorbell",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "ring": "Ring"
+            }
+          }
+        }
       }
     },
     "lock": {
@@ -44,6 +63,9 @@
       },
       "status": {
         "name": "Status"
+      },
+      "last_opening": {
+        "name": "Last door opening"
       }
     },
     "button": {
@@ -52,11 +74,23 @@
       },
       "camera_preview": {
         "name": "Camera preview"
+      },
+      "f1": {
+        "name": "F1 auxiliary"
+      },
+      "call_guard": {
+        "name": "Call guard"
       }
     },
     "switch": {
       "notifications": {
         "name": "Doorbell notifications"
+      },
+      "dnd": {
+        "name": "Do not disturb"
+      },
+      "photo_caller": {
+        "name": "Photo caller"
       }
     }
   }

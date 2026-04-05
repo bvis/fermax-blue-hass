@@ -19,6 +19,13 @@ class FermaxBlueEntity(CoordinatorEntity[FermaxBlueCoordinator]):
         self._device_id = coordinator.pairing.device_id
 
     @property
+    def available(self) -> bool:
+        """Return True if entity is available."""
+        if not self.coordinator.data:
+            return False
+        return self.coordinator.data.get("connection_state") == "Connected"
+
+    @property
     def device_info(self) -> DeviceInfo:
         """Return device information."""
         info = self.coordinator.device_info
