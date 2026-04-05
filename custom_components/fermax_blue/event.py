@@ -8,7 +8,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN, SIGNAL_DOOR_OPENED, SIGNAL_DOORBELL_RING
+from .const import DOMAIN, SIGNAL_CAMERA_ON, SIGNAL_DOOR_OPENED, SIGNAL_DOORBELL_RING
 from .coordinator import FermaxBlueCoordinator
 from .entity import FermaxBlueEntity
 
@@ -32,7 +32,7 @@ class FermaxDoorbellEvent(FermaxBlueEntity, EventEntity):
     """Event entity for doorbell rings."""
 
     _attr_translation_key = "doorbell"
-    _attr_event_types = ["ring", "door_opened"]
+    _attr_event_types = ["ring", "door_opened", "camera_on"]
 
     def __init__(self, coordinator: FermaxBlueCoordinator) -> None:
         super().__init__(coordinator)
@@ -57,6 +57,13 @@ class FermaxDoorbellEvent(FermaxBlueEntity, EventEntity):
                 self._handle_door_opened,
             )
         )
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass,
+                SIGNAL_CAMERA_ON.format(self._device_id),
+                self._handle_camera_on,
+            )
+        )
 
     @callback
     def _handle_ring(self) -> None:
@@ -68,4 +75,10 @@ class FermaxDoorbellEvent(FermaxBlueEntity, EventEntity):
     def _handle_door_opened(self) -> None:
         """Handle a door opened event."""
         self._trigger_event("door_opened")
+        self.async_write_ha_state()
+
+    @callback
+    def _handle_camera_on(self) -> None:
+        """Handle a camera preview started event."""
+        self._trigger_event("camera_on")
         self.async_write_ha_state()

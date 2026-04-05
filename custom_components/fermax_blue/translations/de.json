@@ -42,7 +42,8 @@
           "event_type": {
             "state": {
               "ring": "Klingeln",
-              "door_opened": "Tür geöffnet"
+              "door_opened": "Tür geöffnet",
+              "camera_on": "Kameravorschau"
             }
           }
         }

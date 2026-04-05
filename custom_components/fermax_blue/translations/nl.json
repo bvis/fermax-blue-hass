@@ -42,7 +42,8 @@
           "event_type": {
             "state": {
               "ring": "Bel",
-              "door_opened": "Deur geopend"
+              "door_opened": "Deur geopend",
+              "camera_on": "Camera voorbeeld"
             }
           }
         }

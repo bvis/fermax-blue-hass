@@ -42,7 +42,8 @@
           "event_type": {
             "state": {
               "ring": "Sonnerie",
-              "door_opened": "Porte ouverte"
+              "door_opened": "Porte ouverte",
+              "camera_on": "Aperçu caméra"
             }
           }
         }

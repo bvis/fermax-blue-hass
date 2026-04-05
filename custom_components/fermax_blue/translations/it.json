@@ -42,7 +42,8 @@
           "event_type": {
             "state": {
               "ring": "Suonata",
-              "door_opened": "Porta aperta"
+              "door_opened": "Porta aperta",
+              "camera_on": "Anteprima telecamera"
             }
           }
         }

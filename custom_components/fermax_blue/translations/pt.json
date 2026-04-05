@@ -42,7 +42,8 @@
           "event_type": {
             "state": {
               "ring": "Toque",
-              "door_opened": "Porta aberta"
+              "door_opened": "Porta aberta",
+              "camera_on": "Pré-visualização"
             }
           }
         }

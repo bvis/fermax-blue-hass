@@ -42,7 +42,8 @@
           "event_type": {
             "state": {
               "ring": "Dzwonienie",
-              "door_opened": "Drzwi otwarte"
+              "door_opened": "Drzwi otwarte",
+              "camera_on": "Podgląd kamery"
             }
           }
         }

@@ -23,7 +23,13 @@ from .api import (
     OpeningRecord,
     Pairing,
 )
-from .const import DOMAIN, SIGNAL_CALL_ENDED, SIGNAL_DOOR_OPENED, SIGNAL_DOORBELL_RING
+from .const import (
+    DOMAIN,
+    SIGNAL_CALL_ENDED,
+    SIGNAL_CAMERA_ON,
+    SIGNAL_DOOR_OPENED,
+    SIGNAL_DOORBELL_RING,
+)
 from .notification import FermaxNotificationListener
 from .streaming import DEFAULT_SIGNALING_URL, FermaxStreamSession
 
@@ -449,6 +455,7 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         if success:
             self._camera_active = True
             _LOGGER.info("Video stream started for room %s", room_id)
+            dispatcher_send(self.hass, SIGNAL_CAMERA_ON.format(self.pairing.device_id))
         else:
             _LOGGER.warning("Failed to start video stream for room %s", room_id)
             self._stream_session = None

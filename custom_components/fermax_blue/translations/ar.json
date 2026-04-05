@@ -42,7 +42,8 @@
           "event_type": {
             "state": {
               "ring": "رنين",
-              "door_opened": "تم فتح الباب"
+              "door_opened": "تم فتح الباب",
+              "camera_on": "معاينة الكاميرا"
             }
           }
         }

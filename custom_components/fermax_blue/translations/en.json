@@ -42,7 +42,8 @@
           "event_type": {
             "state": {
               "ring": "Ring",
-              "door_opened": "Door opened"
+              "door_opened": "Door opened",
+              "camera_on": "Camera preview"
             }
           }
         }

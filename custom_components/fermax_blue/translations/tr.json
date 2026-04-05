@@ -42,7 +42,8 @@
           "event_type": {
             "state": {
               "ring": "Çalma",
-              "door_opened": "Kapı açıldı"
+              "door_opened": "Kapı açıldı",
+              "camera_on": "Kamera önizleme"
             }
           }
         }
