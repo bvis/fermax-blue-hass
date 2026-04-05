@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.4.1] - 2026-04-05
+
+### Fixed
+- **SSL blocking call warning** — Use HA's `create_async_httpx_client` / `get_async_client` helpers instead of creating `httpx.AsyncClient` directly, which triggered `Detected blocking call to load_verify_locations` on the event loop
+- **`av==13.1.0` dependency conflict** — Removed pinned `av` version from requirements; it's a transitive dependency of pymediasoup/aiortc and conflicts with HA's bundled version on Python 3.14
+
+### Added
+- **Hassfest validation** in CI — Official HA integration validator now runs on every push/PR
+- API client now accepts an injected `httpx.AsyncClient` for proper HA integration; falls back to creating its own for standalone usage (CLI, tests)
+
 ## [0.4.0] - 2026-04-05
 
 ### Added
