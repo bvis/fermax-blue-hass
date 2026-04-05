@@ -4,6 +4,7 @@
 
 ### Added
 - **Open door during active stream** — Door can now be opened while viewing the camera. Uses the in-call API endpoint (`/device/incall/opendoor`) automatically when a stream session is active, falling back to the standard endpoint otherwise
+- **LIVE indicator overlay** — Red `● LIVE HH:MM:SS` badge on stream frames so you can always distinguish live video from a static preview
 - 84 unit tests (up from 82)
 
 ## [0.5.0] - 2026-04-05
