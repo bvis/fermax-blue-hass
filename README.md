@@ -10,9 +10,9 @@ This integration simulates a Fermax Blue mobile app client, connecting to the Fe
 
 - **Doorbell detection** — Real-time push notification when someone rings (via Firebase Cloud Messaging)
 - **Door opening** — Open your building's door remotely (lock entity + button)
-- **Live video streaming** — Real-time MJPEG video from the intercom camera (~720x480, ~10fps)
-- **Camera preview** — On-demand camera view via auto-on (triggers the intercom camera without a doorbell ring)
-- **Visitor camera** — View the last captured visitor photo (fallback when stream is inactive)
+- **Live video streaming** — Real-time MJPEG video from the intercom camera (~720x480, ~24fps). Press "Ver cámara" and the card auto-switches from preview to live stream
+- **Camera preview** — Last captured frame persists across HA restarts, always visible in the camera card
+- **On-demand camera** — Triggers the intercom camera without a doorbell ring via auto-on
 - **F1 auxiliary button** — Trigger the intercom's F1 function
 - **Call guard** — Call the building's guard/janitor
 - **Do Not Disturb** — Toggle DND mode per device (useful for night automations)
