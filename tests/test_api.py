@@ -1,6 +1,6 @@
 """Tests for the Fermax Blue API client."""
 
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import httpx
 import pytest
@@ -200,7 +200,10 @@ class TestDoorControl:
         """Test door opening failure."""
         resp = _mock_response(500, text="error")
 
-        with patch("httpx.AsyncClient.post", return_value=resp):
+        with (
+            patch("httpx.AsyncClient.post", return_value=resp),
+            patch("asyncio.sleep", new_callable=AsyncMock),
+        ):
             result = await authenticated_api.open_door(
                 "device_123",
                 {"block": 100, "subblock": -1, "number": 0},
@@ -246,7 +249,10 @@ class TestAutoOn:
         """Test auto-on when server returns error."""
         resp = _mock_response(500, json={"title": "Internal Server Error"})
 
-        with patch("httpx.AsyncClient.post", return_value=resp):
+        with (
+            patch("httpx.AsyncClient.post", return_value=resp),
+            patch("asyncio.sleep", new_callable=AsyncMock),
+        ):
             result = await authenticated_api.auto_on("device_123", "fcm_token_123")
 
         assert result is None
@@ -278,7 +284,10 @@ class TestAutoOn:
         """Test video source change failure."""
         resp = _mock_response(500, text="error")
 
-        with patch("httpx.AsyncClient.post", return_value=resp):
+        with (
+            patch("httpx.AsyncClient.post", return_value=resp),
+            patch("asyncio.sleep", new_callable=AsyncMock),
+        ):
             result = await authenticated_api.change_video_source(
                 "device_123", "fcm_token_123"
             )
@@ -344,7 +353,10 @@ class TestCallLog:
         """Test call log fetch error returns empty list."""
         resp = _mock_response(500, text="error")
 
-        with patch("httpx.AsyncClient.get", return_value=resp):
+        with (
+            patch("httpx.AsyncClient.get", return_value=resp),
+            patch("asyncio.sleep", new_callable=AsyncMock),
+        ):
             entries = await authenticated_api.get_call_log("fcm_token")
 
         assert len(entries) == 0

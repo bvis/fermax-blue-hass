@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 import logging
@@ -23,6 +24,8 @@ _LOGGER = logging.getLogger(__name__)
 
 OAUTH_TIMEOUT = 15.0
 API_TIMEOUT = 10.0
+MAX_RETRIES = 3
+RETRY_BACKOFF_BASE = 1.0
 
 
 @dataclass
@@ -84,6 +87,23 @@ class DivertResponse:
     directed_to: str
     local_address: str = ""
     remote_address: str = ""
+
+
+@dataclass
+class OpeningRecord:
+    """A door opening history entry."""
+
+    timestamp: str
+    user: str
+    door: str
+    guest_email: str | None = None
+
+
+def _is_retryable(exc: Exception) -> bool:
+    """Return True if the exception is transient and worth retrying."""
+    if isinstance(exc, (httpx.ConnectError, httpx.TimeoutException)):
+        return True
+    return isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code >= 500
 
 
 class FermaxAuthError(Exception):
@@ -159,30 +179,57 @@ class FermaxBlueApi:
         if not self.is_authenticated:
             await self.authenticate()
 
-    async def _api_get(self, path: str, **kwargs) -> httpx.Response:
-        """Make an authenticated GET request."""
+    async def _api_request(self, method: str, path: str, **kwargs) -> httpx.Response:
+        """Make an authenticated request with retry on transient errors."""
         await self._ensure_authenticated()
         client = await self._get_client()
-        return await client.get(
-            f"{FERMAX_BASE_URL}{path}",
-            headers=self._get_auth_headers(),
-            **kwargs,
-        )
+        url = f"{FERMAX_BASE_URL}{path}"
+        headers = self._get_auth_headers()
+        last_exc: Exception | None = None
+
+        for attempt in range(MAX_RETRIES + 1):
+            try:
+                response = await getattr(client, method)(url, headers=headers, **kwargs)
+                response.raise_for_status()
+                return response
+            except (
+                httpx.HTTPStatusError,
+                httpx.ConnectError,
+                httpx.TimeoutException,
+            ) as exc:
+                last_exc = exc
+                if not _is_retryable(exc) or attempt >= MAX_RETRIES:
+                    raise
+                delay = RETRY_BACKOFF_BASE * (2**attempt)
+                _LOGGER.debug(
+                    "Retryable error on %s %s (attempt %d/%d), retrying in %.1fs: %s",
+                    method.upper(),
+                    path,
+                    attempt + 1,
+                    MAX_RETRIES,
+                    delay,
+                    exc,
+                )
+                await asyncio.sleep(delay)
+
+        # Should not reach here, but satisfy type checker
+        raise last_exc  # type: ignore[misc]
+
+    async def _api_get(self, path: str, **kwargs) -> httpx.Response:
+        """Make an authenticated GET request with retry."""
+        return await self._api_request("get", path, **kwargs)
 
     async def _api_post(self, path: str, **kwargs) -> httpx.Response:
-        """Make an authenticated POST request."""
-        await self._ensure_authenticated()
-        client = await self._get_client()
-        return await client.post(
-            f"{FERMAX_BASE_URL}{path}",
-            headers=self._get_auth_headers(),
-            **kwargs,
-        )
+        """Make an authenticated POST request with retry."""
+        return await self._api_request("post", path, **kwargs)
+
+    async def _api_put(self, path: str, **kwargs) -> httpx.Response:
+        """Make an authenticated PUT request with retry."""
+        return await self._api_request("put", path, **kwargs)
 
     async def get_pairings(self) -> list[Pairing]:
         """Get all paired devices."""
         response = await self._api_get("/pairing/api/v4/pairings/me")
-        response.raise_for_status()
         pairings = []
 
         for item in response.json():
@@ -210,7 +257,6 @@ class FermaxBlueApi:
     async def get_device_info(self, device_id: str) -> DeviceInfo:
         """Get device information."""
         response = await self._api_get(f"/deviceaction/api/v1/device/{device_id}")
-        response.raise_for_status()
         data = response.json()
 
         return DeviceInfo(
@@ -229,20 +275,23 @@ class FermaxBlueApi:
 
     async def open_door(self, device_id: str, access_id: dict) -> bool:
         """Open a door."""
-        response = await self._api_post(
-            f"/deviceaction/api/v1/device/{device_id}/directed-opendoor",
-            content=json.dumps(access_id),
-        )
-        return response.is_success
+        try:
+            await self._api_post(
+                f"/deviceaction/api/v1/device/{device_id}/directed-opendoor",
+                content=json.dumps(access_id),
+            )
+            return True
+        except httpx.HTTPStatusError:
+            return False
 
     async def get_call_log(self, fcm_token: str) -> list[CallLogEntry]:
         """Get call log entries."""
-        response = await self._api_get(
-            "/callmanager/api/v1/callregistry/participant",
-            params={"appToken": fcm_token, "callRegistryType": "all"},
-        )
-
-        if not response.is_success:
+        try:
+            response = await self._api_get(
+                "/callmanager/api/v1/callregistry/participant",
+                params={"appToken": fcm_token, "callRegistryType": "all"},
+            )
+        except httpx.HTTPStatusError:
             return []
 
         entries = []
@@ -262,12 +311,12 @@ class FermaxBlueApi:
 
     async def get_call_photo(self, photo_id: str) -> bytes | None:
         """Get a photo from a call."""
-        response = await self._api_get(
-            "/callmanager/api/v1/photocall",
-            params={"photoId": photo_id},
-        )
-
-        if not response.is_success:
+        try:
+            response = await self._api_get(
+                "/callmanager/api/v1/photocall",
+                params={"photoId": photo_id},
+            )
+        except httpx.HTTPStatusError:
             return None
 
         try:
@@ -291,13 +340,13 @@ class FermaxBlueApi:
             "callAs": None,
         }
 
-        response = await self._api_post(
-            f"/deviceaction/api/v2/device/{device_id}/autoon",
-            json=payload,
-        )
-
-        if not response.is_success:
-            _LOGGER.error("autoOn failed: %s %s", response.status_code, response.text)
+        try:
+            response = await self._api_post(
+                f"/deviceaction/api/v2/device/{device_id}/autoon",
+                json=payload,
+            )
+        except httpx.HTTPStatusError as exc:
+            _LOGGER.error("autoOn failed: %s", exc)
             return None
 
         data = response.json()
@@ -325,12 +374,12 @@ class FermaxBlueApi:
             "callAs": None,
         }
 
-        response = await self._api_post(
-            f"/deviceaction/api/v2/device/{device_id}/changevideosource",
-            json=payload,
-        )
-
-        if not response.is_success:
+        try:
+            response = await self._api_post(
+                f"/deviceaction/api/v2/device/{device_id}/changevideosource",
+                json=payload,
+            )
+        except httpx.HTTPStatusError:
             return None
 
         data = response.json()
@@ -356,8 +405,82 @@ class FermaxBlueApi:
             "active": active,
         }
 
-        response = await self._api_post(
-            "/notification/api/v2/apptoken",
-            json=payload,
+        try:
+            await self._api_post(
+                "/notification/api/v2/apptoken",
+                json=payload,
+            )
+            return True
+        except httpx.HTTPStatusError:
+            return False
+
+    async def get_dnd_status(self, device_id: str, fcm_token: str) -> bool:
+        """Get Do Not Disturb status for a device."""
+        response = await self._api_get(
+            "/notification/api/v1/mutedevice/me",
+            params={"deviceId": device_id, "token": fcm_token},
         )
-        return response.is_success
+        return response.json().get("muted", False)
+
+    async def set_dnd(self, device_id: str, fcm_token: str, *, enabled: bool) -> None:
+        """Set Do Not Disturb status for a device."""
+        await self._api_post(
+            "/notification/api/v1/mutedevice/me",
+            json={"deviceId": device_id, "token": fcm_token, "muted": enabled},
+        )
+
+    async def press_f1(self, device_id: str) -> None:
+        """Press the F1 button on the intercom."""
+        await self._api_post(
+            f"/deviceaction/api/v1/device/{device_id}/f1",
+        )
+
+    async def call_guard(self, device_id: str) -> None:
+        """Call the guard/concierge."""
+        await self._api_post(
+            f"/deviceaction/api/v1/device/{device_id}/callguard",
+        )
+
+    async def ack_notification(self, message_id: str, *, is_call: bool) -> None:
+        """Acknowledge a notification (call or info)."""
+        path = (
+            "/callmanager/api/v1/message/ack"
+            if is_call
+            else "/notification/api/v1/message/ack"
+        )
+        body = {"attended": True, "fcmMessageId": message_id}
+        try:
+            await self._api_post(path, json=body)
+        except httpx.HTTPStatusError:
+            _LOGGER.debug("Failed to ack notification %s", message_id)
+
+    async def set_photo_caller(self, device_id: str, *, enabled: bool) -> None:
+        """Enable or disable photo caller on a device."""
+        await self._api_put(
+            f"/deviceaction/api/v1/{device_id}/photocaller",
+            params={"value": "true" if enabled else "false"},
+        )
+
+    async def get_opening_history(
+        self, device_id: str, user_id: str
+    ) -> list[OpeningRecord]:
+        """Get door opening history."""
+        try:
+            response = await self._api_get(
+                "/rexistro/api/v1/opendoorregistry",
+                params={"deviceId": device_id, "userId": user_id},
+            )
+        except Exception:
+            _LOGGER.debug("Failed to get opening history", exc_info=True)
+            return []
+
+        entries = response.json().get("entries", [])
+        return [
+            OpeningRecord(
+                timestamp=entry["timestamp"],
+                user=entry["user"],
+                door=entry["door"],
+                guest_email=entry.get("guestEmail"),
+            )
+            for entry in entries
+        ]
