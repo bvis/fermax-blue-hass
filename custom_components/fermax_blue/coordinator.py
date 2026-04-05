@@ -248,9 +248,6 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
             self.api.ack_notification(fcm_message_id, is_call=is_call)
         )
 
-        self._doorbell_ringing = True
-        self._photo_fetch_pending = True
-
         # Start video stream if notification has room info
         room_id = data.get("RoomId")
         if room_id and notification_type in ("Call", "Autoon"):
@@ -260,34 +257,38 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
                 self._start_stream(room_id, socket_url, fermax_token)
             )
 
-        # Extract door key from notification if available
-        door_key = data.get("AccessDoorKey", data.get("accessDoorKey", "GENERAL"))
-        dispatcher_send(
-            self.hass,
-            SIGNAL_DOORBELL_RING.format(self.pairing.device_id, door_key),
-        )
+        # Only trigger doorbell ring for actual calls, not auto-on
+        if notification_type == "Call":
+            self._doorbell_ringing = True
+            self._photo_fetch_pending = True
 
-        # Cancel previous reset timer if still pending
-        if self._doorbell_reset_unsub:
-            self._doorbell_reset_unsub()
-
-        @callback
-        def _reset_ringing(_now: Any) -> None:
-            """Reset doorbell ringing state."""
-            self._doorbell_ringing = False
+            door_key = data.get("AccessDoorKey", data.get("accessDoorKey", "GENERAL"))
             dispatcher_send(
                 self.hass,
-                SIGNAL_CALL_ENDED.format(self.pairing.device_id),
+                SIGNAL_DOORBELL_RING.format(self.pairing.device_id, door_key),
             )
-            self.async_set_updated_data(self.data)
-            self._doorbell_reset_unsub = None
 
-        self._doorbell_reset_unsub = async_call_later(
-            self.hass, DOORBELL_RESET_SECONDS, _reset_ringing
-        )
+            # Cancel previous reset timer if still pending
+            if self._doorbell_reset_unsub:
+                self._doorbell_reset_unsub()
 
-        # Trigger a data refresh to get any new photos
-        self.hass.async_create_task(self.async_request_refresh())
+            @callback
+            def _reset_ringing(_now: Any) -> None:
+                """Reset doorbell ringing state."""
+                self._doorbell_ringing = False
+                dispatcher_send(
+                    self.hass,
+                    SIGNAL_CALL_ENDED.format(self.pairing.device_id),
+                )
+                self.async_set_updated_data(self.data)
+                self._doorbell_reset_unsub = None
+
+            self._doorbell_reset_unsub = async_call_later(
+                self.hass, DOORBELL_RESET_SECONDS, _reset_ringing
+            )
+
+            # Trigger a data refresh to get any new photos
+            self.hass.async_create_task(self.async_request_refresh())
 
     async def open_door(self, door_name: str = "GENERAL") -> bool:
         """Open a specific door. Uses in-call endpoint if stream is active."""
