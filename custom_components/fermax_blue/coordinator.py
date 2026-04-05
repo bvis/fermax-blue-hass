@@ -358,6 +358,9 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
 
         @callback
         def _on_stream_end() -> None:
+            # Save last frame as photo preview before releasing the session
+            if self._stream_session and self._stream_session.latest_frame:
+                self._last_photo = self._stream_session.latest_frame
             self._stream_session = None
             self._camera_active = False
             self.async_set_updated_data(self.data)
