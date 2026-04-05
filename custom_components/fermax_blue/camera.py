@@ -50,7 +50,6 @@ class FermaxCamera(FermaxBlueEntity, Camera):
         FermaxBlueEntity.__init__(self, coordinator)
         Camera.__init__(self)
         self._attr_unique_id = f"{self._device_id}_camera"
-        self._attr_is_streaming = False
 
     async def async_added_to_hass(self) -> None:
         """Register for doorbell ring events."""
@@ -155,21 +154,22 @@ class FermaxCamera(FermaxBlueEntity, Camera):
         result = await self.coordinator.start_camera_preview()
         if result:
             _LOGGER.info("Camera auto-on started: %s", result.description)
-            self._attr_is_streaming = True
-            self.async_write_ha_state()
         else:
             _LOGGER.error("Failed to start camera auto-on")
 
     async def async_turn_off(self) -> None:
         """Stop live camera stream."""
         await self.coordinator.stop_stream()
-        self._attr_is_streaming = False
-        self.async_write_ha_state()
+
+    @property
+    def is_streaming(self) -> bool:
+        """Return True if live video stream is active."""
+        stream = self.coordinator.stream_session
+        return bool(stream and stream.is_active)
 
     @property
     def is_on(self) -> bool:
         """Return True if the camera can serve an image."""
-        stream = self.coordinator.stream_session
-        if stream and stream.is_active:
+        if self.is_streaming:
             return True
         return self.coordinator.last_photo is not None
