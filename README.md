@@ -8,10 +8,10 @@ This integration simulates a Fermax Blue mobile app client, connecting to the Fe
 
 ## Features
 
+- **Live video streaming** — Real-time MJPEG video from the intercom camera (~720x480, ~24fps). The card auto-switches between static preview and live stream
+- **Camera preview** — Last captured frame persists across HA restarts, always visible in the camera card
 - **Doorbell detection** — Real-time push notification when someone rings (via Firebase Cloud Messaging)
 - **Door opening** — Open your building's door remotely (lock entity + button)
-- **Live video streaming** — Real-time MJPEG video from the intercom camera (~720x480, ~24fps). Press "Ver cámara" and the card auto-switches from preview to live stream
-- **Camera preview** — Last captured frame persists across HA restarts, always visible in the camera card
 - **On-demand camera** — Triggers the intercom camera without a doorbell ring via auto-on
 - **F1 auxiliary button** — Trigger the intercom's F1 function
 - **Call guard** — Call the building's guard/janitor
@@ -22,7 +22,7 @@ This integration simulates a Fermax Blue mobile app client, connecting to the Fe
 - **WiFi signal** — Track the intercom's wireless signal strength
 - **Notification control** — Enable/disable doorbell notifications
 - **Diagnostics** — Built-in troubleshooting data (with redacted credentials)
-- **Configurable polling** — Adjust the status polling interval (1–30 minutes)
+- **Configurable polling** — Adjust the status polling interval (1-30 minutes)
 
 ## Supported Devices
 
@@ -67,7 +67,7 @@ After setup, you can configure the integration options:
 
 1. Go to **Settings** > **Devices & Services**
 2. Click **Configure** on your Fermax Blue integration
-3. Adjust the **polling interval** (1–30 minutes, default: 5)
+3. Adjust the **polling interval** (1-30 minutes, default: 5)
 
 ### Dedicated User for Doorbell Notifications (Recommended)
 
@@ -93,14 +93,14 @@ For each paired intercom device, the integration creates:
 
 | Entity | Type | Description |
 |--------|------|-------------|
-| `binary_sensor.<name>_connection` | Binary Sensor | Device connectivity (entities go unavailable when disconnected) |
+| `camera.<name>_visitor` | Camera | Live MJPEG stream when active; last frame as preview when idle |
 | `event.<name>_doorbell` | Event | Fires `ring` event when someone rings the doorbell |
+| `binary_sensor.<name>_connection` | Binary Sensor | Device connectivity (entities go unavailable when disconnected) |
 | `lock.<name>_<door>_lock` | Lock | Lock/unlock (open) the door |
 | `button.<name>_<door>_open` | Button | One-press door opening |
-| `button.<name>_camera_preview` | Button | Start camera preview (auto-on) |
+| `button.<name>_camera_preview` | Button | Start camera preview / live stream |
 | `button.<name>_f1` | Button | F1 auxiliary function |
 | `button.<name>_call_guard` | Button | Call the building's guard/janitor |
-| `camera.<name>_visitor` | Camera | Live video stream (MJPEG) when preview active; last frame as preview when idle |
 | `sensor.<name>_wifi_signal` | Sensor | WiFi signal strength (0-4 bars) |
 | `sensor.<name>_status` | Sensor | Device activation status |
 | `sensor.<name>_last_opening` | Sensor | Last door opening timestamp (with user, door, guest attributes) |
@@ -108,7 +108,43 @@ For each paired intercom device, the integration creates:
 | `switch.<name>_dnd` | Switch | Do Not Disturb mode |
 | `switch.<name>_photo_caller` | Switch | Enable/disable automatic visitor photos |
 
-## Automations
+## Dashboard Card
+
+A ready-to-use dashboard card template is included in [`blueprints/fermax_dashboard_card.yaml`](blueprints/fermax_dashboard_card.yaml). It provides a complete intercom control panel with:
+
+- Live camera / preview image
+- Door open + camera preview buttons
+- F1 + call guard buttons
+- Doorbell event, connection status, door lock
+- DND, photo caller, notification switches
+- WiFi signal + last opening info
+
+**To use it:**
+
+1. Install [mushroom-cards](https://github.com/piitaya/lovelace-mushroom) via HACS (for status indicators)
+2. Copy the content of `blueprints/fermax_dashboard_card.yaml`
+3. Edit your dashboard > Add card > Manual YAML
+4. Paste and replace `DEVICE_NAME` and `DOOR` with your entity names
+
+> **Tip:** To find your entity IDs, go to **Settings** > **Devices & Services** > **Fermax Blue** > click your device.
+
+## Automation Blueprint
+
+A doorbell notification blueprint is available at [`blueprints/fermax_doorbell_notification.yaml`](blueprints/fermax_doorbell_notification.yaml).
+
+**To install:**
+
+1. Copy `blueprints/fermax_doorbell_notification.yaml` to your HA `config/blueprints/automation/fermax_blue/` folder
+2. Go to **Settings** > **Automations** > **Create Automation** > **Use Blueprint**
+3. Select "Fermax: Doorbell notification"
+4. Configure your doorbell event entity, camera, and notification service
+
+The blueprint supports:
+- Mobile push notification on doorbell ring
+- Optional camera snapshot attachment
+- Customizable title and message
+
+## Automation Examples
 
 ### Flash lights when doorbell rings
 
@@ -125,29 +161,6 @@ automation:
           entity_id: light.hallway
         data:
           flash: long
-```
-
-### Send notification with visitor photo
-
-```yaml
-automation:
-  - alias: "Notify on doorbell with photo"
-    trigger:
-      - platform: state
-        entity_id: event.fermax_your_home_doorbell
-        attribute: event_type
-    action:
-      - service: camera.snapshot
-        target:
-          entity_id: camera.fermax_your_home_visitor
-        data:
-          filename: /config/www/snapshots/visitor.jpg
-      - service: notify.mobile_app_your_phone
-        data:
-          title: "Doorbell"
-          message: "Someone is at the door!"
-          data:
-            image: /local/snapshots/visitor.jpg
 ```
 
 ### Enable Do Not Disturb at night
@@ -173,21 +186,6 @@ automation:
           entity_id: switch.fermax_your_home_dnd
 ```
 
-### View camera on demand
-
-```yaml
-automation:
-  - alias: "View intercom camera"
-    trigger:
-      - platform: state
-        entity_id: input_boolean.view_intercom
-        to: "on"
-    action:
-      - service: button.press
-        target:
-          entity_id: button.fermax_your_home_camera_preview
-```
-
 ## How It Works
 
 1. **Authentication**: The integration authenticates with the Fermax Blue cloud API (`pro-duoxme.fermax.io`) using your account credentials
@@ -196,8 +194,9 @@ automation:
 4. **Camera Preview**: The auto-on feature triggers the intercom camera. A push notification arrives with the media room ID and signaling server URL
 5. **Video Streaming**: The integration connects to the Fermax mediasoup SFU via Socket.IO, negotiates WebRTC transport, and receives live video frames (~720x480) that are served as MJPEG to the HA frontend
 6. **Push Notifications**: When someone rings your doorbell, Fermax sends a push notification via Firebase, which the integration receives instantly and acknowledges
-6. **Polling**: Device status (connection, signal) is polled at a configurable interval (default: 5 minutes)
-7. **Retry Logic**: API calls are automatically retried with exponential backoff on transient errors (5xx, connection failures)
+7. **Frame Persistence**: The last video frame is saved to disk so the camera card always shows a preview, even after HA restarts
+8. **Polling**: Device status (connection, signal, opening history) is polled at a configurable interval (default: 5 minutes)
+9. **Retry Logic**: API calls are automatically retried with exponential backoff on transient errors (5xx, connection failures)
 
 ## Troubleshooting
 
@@ -208,7 +207,7 @@ Make sure you're using the same email and password you use in the Fermax Blue mo
 The integration needs to register with Firebase Cloud Messaging. This happens automatically but can take a few minutes on first setup. Check the Home Assistant logs for `fermax_blue` entries.
 
 ### Camera shows no image
-The visitor camera only shows photos captured when someone rings the doorbell. If no one has rung since the integration was set up, the camera will be empty.
+Press the "Camera preview" button to trigger the first stream. After that, the last frame will be saved and shown as preview even after restarts.
 
 ### Diagnostics
 For troubleshooting, you can download diagnostics from **Settings** > **Devices & Services** > **Fermax Blue** > **3 dots menu** > **Download diagnostics**. Credentials are automatically redacted.
@@ -225,21 +224,7 @@ make cli
 FERMAX_USER=your@email.com FERMAX_PASS=yourpassword make cli
 ```
 
-This launches a Docker container with a menu-driven interface to:
-
-| Option | Description |
-|--------|-------------|
-| Open door | Select a door and open it |
-| Device info | View connection state, WiFi signal, status |
-| Press F1 | Trigger the F1 auxiliary function |
-| Call guard | Call the building's guard/janitor |
-| DND status | Check Do Not Disturb mode |
-| Toggle DND | Enable/disable Do Not Disturb |
-| Photo caller | Enable/disable automatic visitor photos |
-| Opening history | View who opened the door and when |
-| Camera preview | Start auto-on (requires FCM token) |
-| Call log | View recent call entries |
-| Raw GET/POST | Make arbitrary API calls for debugging |
+This launches a Docker container with a menu-driven interface to test door opening, F1, call guard, DND, photo caller, opening history, camera preview, call log, and raw API calls.
 
 No local Python installation needed — everything runs in Docker.
 
@@ -250,16 +235,14 @@ All development tools run via Docker — no local Python dependencies needed. On
 See [CONTRIBUTING.md](CONTRIBUTING.md) for full guidelines.
 
 ```bash
-# Run all checks (lint + format + type-check + tests)
-make check
-
-# Individual commands
-make lint          # Ruff linting
-make format        # Auto-format code
-make format-check  # Verify formatting (CI mode)
-make typecheck     # Mypy type checking
-make test          # Pytest with coverage
-make cli           # Interactive API tester
+make check         # Run all checks (lint + format + type-check + tests)
+make lint           # Ruff linting
+make format         # Auto-format code
+make format-check   # Verify formatting (CI mode)
+make typecheck      # Mypy type checking
+make test           # Pytest with coverage
+make cli            # Interactive API tester
+make pre-push       # Full CI replica (same as GitHub Actions)
 ```
 
 This project uses [Conventional Commits](https://www.conventionalcommits.org/).

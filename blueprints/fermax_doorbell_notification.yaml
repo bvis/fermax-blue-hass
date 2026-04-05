@@ -1,0 +1,76 @@
+blueprint:
+  name: "Fermax: Doorbell notification"
+  description: >
+    Send a mobile notification with optional camera snapshot when someone rings
+    the Fermax doorbell. Uses the event entity (not binary_sensor).
+  domain: automation
+  input:
+    doorbell_event:
+      name: Doorbell event entity
+      description: The Fermax doorbell event entity
+      selector:
+        entity:
+          filter:
+            domain: event
+            integration: fermax_blue
+    camera_entity:
+      name: Camera entity (optional)
+      description: The Fermax camera entity for snapshot attachment
+      default: ""
+      selector:
+        entity:
+          filter:
+            domain: camera
+            integration: fermax_blue
+    notify_service:
+      name: Notification service
+      description: "The mobile app notification service (e.g., notify.mobile_app_your_phone)"
+      selector:
+        text:
+    notification_title:
+      name: Notification title
+      default: "Doorbell"
+      selector:
+        text:
+    notification_message:
+      name: Notification message
+      default: "Someone is at the door!"
+      selector:
+        text:
+
+trigger:
+  - platform: state
+    entity_id: !input doorbell_event
+    attribute: event_type
+
+action:
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: "{{ camera_entity != '' }}"
+        sequence:
+          - action: camera.snapshot
+            target:
+              entity_id: !input camera_entity
+            data:
+              filename: /config/www/snapshots/fermax_visitor.jpg
+          - action: !input notify_service
+            data:
+              title: !input notification_title
+              message: !input notification_message
+              data:
+                image: /local/snapshots/fermax_visitor.jpg
+                push:
+                  sound: default
+    default:
+      - action: !input notify_service
+        data:
+          title: !input notification_title
+          message: !input notification_message
+          data:
+            push:
+              sound: default
+
+mode: single
+variables:
+  camera_entity: !input camera_entity

@@ -1,0 +1,124 @@
+# Fermax Blue Dashboard Card
+#
+# This is a Lovelace card template (not a blueprint — HA doesn't support Lovelace blueprints).
+# Copy and paste into your dashboard YAML, replacing entity IDs with your own.
+#
+# Prerequisites:
+# - Fermax Blue integration installed and configured
+# - mushroom-cards installed via HACS (for status indicators)
+#
+# To find your entity IDs, go to Settings > Devices > your Fermax device
+
+type: vertical-stack
+title: Videoportero
+cards:
+  # Camera with live stream support
+  - type: picture-entity
+    entity: camera.DEVICE_NAME_visitor     # Replace DEVICE_NAME
+    camera_view: auto
+    show_state: false
+    show_name: true
+
+  # Main actions: camera preview + open door
+  - type: horizontal-stack
+    cards:
+      - type: button
+        entity: button.DEVICE_NAME_camera_preview   # Replace
+        name: Ver cámara
+        icon: mdi:cctv
+        tap_action:
+          action: call-service
+          service: button.press
+          target:
+            entity_id: button.DEVICE_NAME_camera_preview   # Replace
+      - type: button
+        entity: button.DEVICE_NAME_open_DOOR   # Replace DOOR with your door name
+        name: Abrir portal
+        icon: mdi:door-open
+        tap_action:
+          action: call-service
+          service: button.press
+          target:
+            entity_id: button.DEVICE_NAME_open_DOOR   # Replace
+
+  # Auxiliary actions: F1 + call guard
+  - type: horizontal-stack
+    cards:
+      - type: button
+        entity: button.DEVICE_NAME_f1   # Replace
+        name: F1
+        icon: mdi:numeric-1-box
+        tap_action:
+          action: call-service
+          service: button.press
+          target:
+            entity_id: button.DEVICE_NAME_f1   # Replace
+      - type: button
+        entity: button.DEVICE_NAME_call_guard   # Replace
+        name: Portero
+        icon: mdi:account-tie
+        tap_action:
+          action: call-service
+          service: button.press
+          target:
+            entity_id: button.DEVICE_NAME_call_guard   # Replace
+
+  # Status indicators (requires mushroom-cards)
+  - type: horizontal-stack
+    cards:
+      - type: custom:mushroom-entity-card
+        entity: event.DEVICE_NAME_doorbell   # Replace
+        name: Timbre
+        icon: mdi:bell-ring
+        layout: vertical
+      - type: custom:mushroom-entity-card
+        entity: binary_sensor.DEVICE_NAME_connection   # Replace
+        name: Conexión
+        icon: mdi:wifi
+        layout: vertical
+      - type: custom:mushroom-entity-card
+        entity: lock.DEVICE_NAME_DOOR_lock   # Replace
+        name: Portal
+        icon: mdi:door
+        layout: vertical
+        tap_action:
+          action: toggle
+
+  # Switches: DND, photo caller, notifications
+  - type: horizontal-stack
+    cards:
+      - type: custom:mushroom-entity-card
+        entity: switch.DEVICE_NAME_dnd   # Replace
+        name: No molestar
+        icon: mdi:bell-off
+        layout: vertical
+        tap_action:
+          action: toggle
+      - type: custom:mushroom-entity-card
+        entity: switch.DEVICE_NAME_photo_caller   # Replace
+        name: Foto visitante
+        icon: mdi:camera-account
+        layout: vertical
+        tap_action:
+          action: toggle
+      - type: custom:mushroom-entity-card
+        entity: switch.DEVICE_NAME_notifications   # Replace
+        name: Notificaciones
+        icon: mdi:bell
+        layout: vertical
+        tap_action:
+          action: toggle
+
+  # Info: WiFi signal + last door opening
+  - type: horizontal-stack
+    cards:
+      - type: custom:mushroom-entity-card
+        entity: sensor.DEVICE_NAME_wifi_signal   # Replace
+        name: WiFi
+        icon: mdi:wifi
+        layout: vertical
+      - type: custom:mushroom-entity-card
+        entity: sensor.DEVICE_NAME_last_opening   # Replace
+        name: Última apertura
+        icon: mdi:door-open
+        layout: vertical
