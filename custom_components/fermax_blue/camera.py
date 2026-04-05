@@ -70,6 +70,16 @@ class FermaxCamera(FermaxBlueEntity, Camera):
         """Handle doorbell ring - trigger image refresh."""
         self.async_write_ha_state()
 
+    @property
+    def available(self) -> bool:
+        """Camera is available if we have any image to serve."""
+        if self.coordinator.last_photo:
+            return True
+        stream = self.coordinator.stream_session
+        if stream and stream.latest_frame:
+            return True
+        return super().available
+
     async def async_camera_image(
         self, width: int | None = None, height: int | None = None
     ) -> bytes | None:
