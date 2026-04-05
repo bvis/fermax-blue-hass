@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.6.1] - 2026-04-06
+
+### Fixed
+- Remove dead code: unused OAUTH_TIMEOUT, _pairings cache, _last_divert_response, mock_pairing fixture
+- Verified with vulture (dead code detector) — no remaining dead code at 80% confidence
+
 ## [0.6.0] - 2026-04-06
 
 ### Added
