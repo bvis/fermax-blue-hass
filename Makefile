@@ -2,7 +2,7 @@ DOCKER_IMG = python:3.12-slim
 DOCKER_RUN = docker run --rm -v $(PWD):/app -w /app $(DOCKER_IMG)
 DOCKER_DEPS = pip install -q ruff mypy pytest pytest-asyncio pytest-cov httpx firebase-messaging homeassistant 2>/dev/null
 
-.PHONY: lint format format-check typecheck test check cli
+.PHONY: lint format format-check typecheck test check cli pre-push
 
 lint:
 	$(DOCKER_RUN) sh -c "pip install -q ruff 2>/dev/null && ruff check custom_components/ tests/"
@@ -24,3 +24,6 @@ check: lint format-check typecheck test
 
 cli:
 	docker run --rm -it -v $(PWD):/app -w /app -e FERMAX_USER -e FERMAX_PASS python:3.12-slim sh -c "pip install -q httpx 2>/dev/null && python scripts/cli.py"
+
+pre-push:
+	bash scripts/pre-push.sh
