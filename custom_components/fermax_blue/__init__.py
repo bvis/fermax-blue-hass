@@ -8,6 +8,7 @@ from pathlib import Path
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, EVENT_HOMEASSISTANT_STOP
 from homeassistant.core import Event, HomeAssistant
+from homeassistant.helpers.httpx_client import create_async_httpx_client
 
 from .api import FermaxBlueApi
 from .const import CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL, DOMAIN, PLATFORMS
@@ -20,9 +21,11 @@ type FermaxBlueConfigEntry = ConfigEntry[list[FermaxBlueCoordinator]]
 
 async def async_setup_entry(hass: HomeAssistant, entry: FermaxBlueConfigEntry) -> bool:
     """Set up Fermax Blue from a config entry."""
+    client = create_async_httpx_client(hass)
     api = FermaxBlueApi(
         entry.data[CONF_USERNAME],
         entry.data[CONF_PASSWORD],
+        client=client,
     )
 
     try:

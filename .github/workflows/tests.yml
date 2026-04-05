@@ -47,6 +47,14 @@ jobs:
       - name: Type check
         run: docker run --rm -v $PWD:/app -w /app fermax-blue-dev mypy custom_components/fermax_blue/ --ignore-missing-imports
 
+  hassfest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Hassfest validation
+        uses: home-assistant/actions/hassfest@master
+
   validate:
     runs-on: ubuntu-latest
     steps:
