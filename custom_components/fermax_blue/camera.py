@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import logging
 
 from aiohttp import web
@@ -91,36 +90,12 @@ class FermaxCamera(FermaxBlueEntity, Camera):
     async def handle_async_mjpeg_stream(
         self, request: web.Request
     ) -> web.StreamResponse | None:
-        """Serve live MJPEG stream from the intercom camera."""
-        stream = self.coordinator.stream_session
+        """Serve MJPEG stream: live frames when streaming, last photo otherwise.
 
-        # If no active stream, serve last photo as single MJPEG frame
-        if not stream or not stream.is_active:
-            image = await self.async_camera_image()
-            if not image:
-                return None
-
-            response = web.StreamResponse(
-                status=200,
-                reason="OK",
-                headers={
-                    "Content-Type": "multipart/x-mixed-replace;boundary=frameboundary",
-                },
-            )
-            await response.prepare(request)
-            with contextlib.suppress(ConnectionResetError, ConnectionError):
-                await response.write(
-                    b"--frameboundary\r\n"
-                    b"Content-Type: image/jpeg\r\n"
-                    b"Content-Length: "
-                    + str(len(image)).encode()
-                    + b"\r\n\r\n"
-                    + image
-                    + b"\r\n"
-                )
-            return response
-
-        # Active stream: serve live frames
+        The stream serves continuously — when a live stream starts or stops,
+        the MJPEG output switches seamlessly between live frames and the
+        static preview without dropping the connection.
+        """
         response = web.StreamResponse(
             status=200,
             reason="OK",
@@ -130,10 +105,19 @@ class FermaxCamera(FermaxBlueEntity, Camera):
         )
         await response.prepare(request)
 
+        last_written_id = 0
         try:
-            while stream.is_active:
-                frame = stream.latest_frame
-                if frame:
+            while True:
+                stream = self.coordinator.stream_session
+                frame = None
+
+                # Prefer live stream frame
+                if stream and stream.latest_frame:
+                    frame = stream.latest_frame
+                elif self.coordinator.last_photo:
+                    frame = self.coordinator.last_photo
+
+                if frame and id(frame) != last_written_id:
                     await response.write(
                         b"--frameboundary\r\n"
                         b"Content-Type: image/jpeg\r\n"
@@ -143,8 +127,14 @@ class FermaxCamera(FermaxBlueEntity, Camera):
                         + frame
                         + b"\r\n"
                     )
-                await asyncio.sleep(0.1)
-        except (ConnectionResetError, ConnectionError):
+                    last_written_id = id(frame)
+
+                # Fast poll during stream, slow poll for static preview
+                if stream and stream.is_active:
+                    await asyncio.sleep(0.04)  # ~25fps
+                else:
+                    await asyncio.sleep(1)  # 1fps for static preview
+        except (ConnectionResetError, ConnectionError, asyncio.CancelledError):
             pass
 
         return response
