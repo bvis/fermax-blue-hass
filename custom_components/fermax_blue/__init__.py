@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import tempfile
 from datetime import timedelta
@@ -170,16 +171,25 @@ async def async_setup_entry(hass: HomeAssistant, entry: FermaxBlueConfigEntry) -
 
         media_root = hass.config.media_dirs.get("local", "/media")
         recordings_path = Path(media_root) / RECORDINGS_DIR
-        if not recordings_path.exists():
-            return
         retention = entry.options.get(
             CONF_RECORDING_RETENTION, DEFAULT_RECORDING_RETENTION
         )
         cutoff = time.time() - (retention * 86400)
-        for f in recordings_path.iterdir():
-            if f.is_file() and f.stat().st_mtime < cutoff:
-                f.unlink()
-                _LOGGER.debug("Deleted old recording: %s", f.name)
+
+        def _do_cleanup() -> list[str]:
+            """Perform blocking filesystem cleanup; return list of deleted filenames."""
+            if not recordings_path.exists():
+                return []
+            deleted: list[str] = []
+            for f in recordings_path.iterdir():
+                if f.is_file() and f.stat().st_mtime < cutoff:
+                    f.unlink()
+                    deleted.append(f.name)
+            return deleted
+
+        deleted_files = await asyncio.to_thread(_do_cleanup)
+        for name in deleted_files:
+            _LOGGER.debug("Deleted old recording: %s", name)
 
     # Run cleanup once at startup and daily
     await _cleanup_old_recordings()
