@@ -84,12 +84,12 @@ def _create_switchable_audio_track() -> Any:
 
             import av
 
-            frame = av.AudioFrame(format="s16", layout="mono", samples=160)
+            frame = av.AudioFrame(format="s16", layout="mono", samples=960)
             for p in frame.planes:
                 p.update(bytes(p.buffer_size))
-            frame.sample_rate = 8000
+            frame.sample_rate = 48000
             frame.pts = self._pts
-            self._pts += 160
+            self._pts += 960
             await asyncio.sleep(0.02)
             return frame
 
@@ -297,10 +297,15 @@ class FermaxSignalingClient:
         rtp_parameters: str,
         app_data: str,
         rtp_capabilities: str,
-    ) -> bool:
-        """Signal pickup to keep the call alive."""
+    ) -> dict | None:
+        """Signal pickup — matches APK's PickupCall JSON structure.
+
+        Returns the pickup ACK result dict with:
+          - producerId: server-assigned ID for our audio producer
+          - consumer.producerId: remote audio producer ID to consume
+        """
         if not self._sio or not self._connected:
-            return False
+            return None
 
         try:
             caps = (
@@ -314,21 +319,32 @@ class FermaxSignalingClient:
                 else rtp_parameters
             )
             app = json.loads(app_data) if isinstance(app_data, str) else app_data
+
+            # APK sends: {"parameters": {kind, rtpParameters, appData}, "rtpCapabilities": ...}
             response = await self._sio.call(
                 "pickup",
                 {
-                    "kind": kind,
-                    "rtpParameters": rtp,
-                    "appData": app,
+                    "parameters": {
+                        "kind": kind,
+                        "rtpParameters": rtp,
+                        "appData": app,
+                    },
                     "rtpCapabilities": caps,
                 },
                 timeout=10,
             )
-            _LOGGER.info("Pickup sent: %s", "OK" if response else "no response")
-            return isinstance(response, dict) and "error" not in response
+            _LOGGER.info(
+                "Pickup response: %s",
+                json.dumps(response)[:300] if response else "None",
+            )
+
+            if isinstance(response, dict) and "error" not in response:
+                result: dict = response.get("result", {})
+                return result
+            return None
         except Exception:
             _LOGGER.debug("Pickup failed", exc_info=True)
-            return False
+            return None
 
     async def hangup(self) -> None:
         if self._sio and self._connected:
@@ -473,7 +489,7 @@ class FermaxStreamSession:
             else consume_result.rtp_parameters,
         )
 
-        # 4b. Create dedicated RecvTransport for audio
+        # 4b. Create RecvTransport for audio (but DON'T consume yet — app does this after pickup)
         if room.audio_producer_id:
             audio_tp = room.recv_audio_transport
             audio_ice = json.loads(audio_tp.ice_parameters)
@@ -494,23 +510,7 @@ class FermaxStreamSession:
                     dtls_parameters=json.dumps(dtls_parameters.dict(exclude_none=True)),
                 )
 
-            audio_consume = await self._signaling.consume_transport(
-                transport_id=audio_tp.id,
-                producer_id=room.audio_producer_id,
-                rtp_capabilities=json.dumps(device_caps.dict(exclude_none=True)),
-            )
-            if audio_consume:
-                self._audio_consumer = await self._recv_audio_transport.consume(
-                    id=audio_consume.consumer_id,
-                    producerId=audio_consume.producer_id,
-                    kind=audio_consume.kind,
-                    rtpParameters=RtpParameters(**audio_consume.rtp_parameters)
-                    if isinstance(audio_consume.rtp_parameters, dict)
-                    else audio_consume.rtp_parameters,
-                )
-                _LOGGER.info("Audio consumer created on dedicated transport")
-
-        # 5. Create SendTransport for audio
+        # 5. Create SendTransport for audio (app creates this during preview, before pickup)
         self._room = room
         send_tp = room.send_transport
         send_ice = json.loads(send_tp.ice_parameters)
@@ -538,30 +538,55 @@ class FermaxStreamSession:
             rtp_parameters: Any,
             app_data: Any,
         ) -> str:
-            # Server-side producer creation via signaling
-            result = await self._signaling.pickup(
-                kind=kind,
-                rtp_parameters=json.dumps(rtp_parameters.dict(exclude_none=True))
+            # Pickup: send produce params to server (matching APK structure)
+            rtp_json = (
+                json.dumps(rtp_parameters.dict(exclude_none=True))
                 if hasattr(rtp_parameters, "dict")
-                else json.dumps(rtp_parameters),
+                else json.dumps(rtp_parameters)
+            )
+            pickup_result = await self._signaling.pickup(
+                kind=kind,
+                rtp_parameters=rtp_json,
                 app_data=json.dumps(app_data) if app_data else "{}",
                 rtp_capabilities=json.dumps(device_caps.dict(exclude_none=True)),
             )
-            _LOGGER.info("Pickup/produce for %s: %s", kind, result)
-            # Return producer ID from pickup response (or empty)
-            return room.audio_producer_id or ""
+            if not pickup_result:
+                _LOGGER.error("Pickup failed for %s", kind)
+                return ""
 
-        # 6. Produce audio to activate the call (triggers pickup)
+            # Extract our producer ID (server-assigned)
+            our_producer_id = pickup_result.get("producerId", "")
+            _LOGGER.info("Pickup OK: our_producer=%s", our_producer_id)
+
+            # After pickup ACK: consume remote audio (matching APK sequence)
+            remote_audio_id = pickup_result.get("consumer", {}).get("producerId", "")
+            if remote_audio_id and self._recv_audio_transport:
+                audio_consume = await self._signaling.consume_transport(
+                    transport_id=audio_tp.id,
+                    producer_id=remote_audio_id,
+                    rtp_capabilities=json.dumps(device_caps.dict(exclude_none=True)),
+                )
+                if audio_consume:
+                    self._audio_consumer = await self._recv_audio_transport.consume(
+                        id=audio_consume.consumer_id,
+                        producerId=audio_consume.producer_id,
+                        kind=audio_consume.kind,
+                        rtpParameters=RtpParameters(**audio_consume.rtp_parameters)
+                        if isinstance(audio_consume.rtp_parameters, dict)
+                        else audio_consume.rtp_parameters,
+                    )
+                    _LOGGER.info("Audio consumer created after pickup")
+
+            return str(our_producer_id)
+
+        # 6. Produce audio (48kHz like the APK) — triggers onProduce → pickup
         self._switchable_track = _create_switchable_audio_track()
         self._audio_producer = await self._send_transport.produce(
             track=self._switchable_track,
             stopTracks=False,
             appData={},
         )
-        _LOGGER.info("Audio producer started (silence), pickup sent")
-
-        # Wait for intercom to start sending audio after pickup
-        await asyncio.sleep(1)
+        _LOGGER.info("Audio producer started, pickup completed")
 
         # 8. Initialize recording (frames collected in _grab_frames)
         self._init_recording()
