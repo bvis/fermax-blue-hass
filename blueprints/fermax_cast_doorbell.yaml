@@ -70,7 +70,7 @@ action:
   - choose:
       - conditions:
           - condition: template
-            value_template: "{{ display_device != '' }}"
+            value_template: "{{ display_device is defined and display_device not in ['', none, 'None'] }}"
         sequence:
           - delay: 3  # Wait for stream to start
           - action: media_player.play_media
@@ -84,7 +84,7 @@ action:
   - choose:
       - conditions:
           - condition: template
-            value_template: "{{ speaker_devices | length > 0 }}"
+            value_template: "{{ speaker_devices is defined and speaker_devices | length > 0 }}"
         sequence:
           - action: tts.google_translate_say
             data:
@@ -96,7 +96,7 @@ action:
   - choose:
       - conditions:
           - condition: template
-            value_template: "{{ auto_response != '' }}"
+            value_template: "{{ auto_response is defined and auto_response not in ['', none, 'None'] }}"
         sequence:
           - delay: 5  # Wait for stream to be ready
           - action: fermax_blue.send_audio
