@@ -43,7 +43,10 @@
       "Bash(pip3 show:*)",
       "WebFetch(domain:deepwiki.com)",
       "WebFetch(domain:mediasoup.org)",
-      "WebFetch(domain:community.home-assistant.io)"
+      "WebFetch(domain:community.home-assistant.io)",
+      "Bash(scp /tmp/mi_mensaje.wav bvis-home:/tmp/mi_mensaje.wav)",
+      "WebFetch(domain:aiortc.readthedocs.io)",
+      "WebFetch(domain:developers.google.com)"
     ]
   }
 }
