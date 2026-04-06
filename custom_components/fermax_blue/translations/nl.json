@@ -24,7 +24,10 @@
       "init": {
         "title": "Fermax Blue Opties",
         "data": {
-          "scan_interval": "Polling-interval (minuten)"
+          "scan_interval": "Polling-interval (minuten)",
+          "recording_retention": "Opnames bewaren (dagen)",
+          "auto_response": "Automatisch antwoorden met audio",
+          "auto_response_file": "Pad naar audiobestand"
         }
       }
     }

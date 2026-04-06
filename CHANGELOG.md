@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.9.0] - 2026-04-06
+
+### Added
+- **Call recording** — Every video stream session is automatically recorded to MP4 (video + intercom audio) in `/config/media/fermax_recordings/`
+- **Auto-cleanup** — Recordings older than the retention period are automatically deleted (default: 10 days, configurable in options)
+- **Auto-response on doorbell** — Configurable in options: when enabled, plays a pre-recorded audio file through the intercom speaker when someone rings
+- **`fermax_blue.send_audio` service** — Send audio file (WAV/MP3) or TTS text to the intercom during an active stream
+- **Cast doorbell blueprint** — Show camera on Google Nest Hub + announce on speakers when doorbell rings (`blueprints/fermax_cast_doorbell.yaml`)
+- **Options flow expanded** — Recording retention (days), auto-response toggle, audio file path
+- Two-way audio via mediasoup sendTransport (PCMA codec, patched pymediasoup channels bug)
+- Intercom audio consumer for recording the visitor's voice
+- New dependency: `gTTS>=2.5.0` for text-to-speech
+
+### Fixed
+- pymediasoup `canProduce("audio")=False` bug: `channels=None` vs `channels=1` normalization patch
+- Options flow: removed manual config_entry assignment (HA sets it automatically)
+- Blueprint: robust null/empty checks for optional inputs
+- Blueprint: use `tts.google_translate_say` with correct field names
+
+### Changed
+- Dashboard card updated: audio send button, events row, recordings link
+- Separate event entities for doorbell, door opened, camera on
+
 ## [0.8.0] - 2026-04-06
 
 ### Added

@@ -24,7 +24,10 @@
       "init": {
         "title": "Opções Fermax Blue",
         "data": {
-          "scan_interval": "Intervalo de consulta (minutos)"
+          "scan_interval": "Intervalo de consulta (minutos)",
+          "recording_retention": "Retenção de gravações (dias)",
+          "auto_response": "Responder automaticamente com áudio",
+          "auto_response_file": "Caminho do arquivo de áudio"
         }
       }
     }

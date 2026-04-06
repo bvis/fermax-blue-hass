@@ -24,7 +24,10 @@
       "init": {
         "title": "خيارات Fermax Blue",
         "data": {
-          "scan_interval": "فترة الاستعلام (دقائق)"
+          "scan_interval": "فترة الاستعلام (دقائق)",
+          "recording_retention": "مدة الاحتفاظ بالتسجيلات (أيام)",
+          "auto_response": "الرد التلقائي بالصوت",
+          "auto_response_file": "مسار ملف الصوت"
         }
       }
     }
