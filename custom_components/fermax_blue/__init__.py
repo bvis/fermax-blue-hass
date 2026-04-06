@@ -38,6 +38,33 @@ _LOGGER = logging.getLogger(__name__)
 type FermaxBlueConfigEntry = ConfigEntry[list[FermaxBlueCoordinator]]
 
 
+async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
+    """Migrate a config entry to the current version.
+
+    Version history:
+      1 — Original format: only username + password (credentials were hardcoded in source).
+      2 — API URL, auth basic, and Firebase credentials are now supplied by the user.
+
+    v1 → v2 cannot be automated because the new fields require credentials obtained
+    by running extract_credentials.py against the official Fermax app.  The entry is
+    disabled so that HA shows a clear error rather than crashing on startup.
+    The user must delete and re-add the integration.
+    """
+    _LOGGER.debug("Migrating Fermax Blue config entry from version %s", config_entry.version)
+
+    if config_entry.version < 2:
+        _LOGGER.error(
+            "Fermax Blue config entry (version %s) cannot be automatically migrated to "
+            "version 2. The integration now requires API and Firebase credentials that "
+            "must be supplied manually (run extract_credentials.py from the upstream repo "
+            "to obtain them). Please delete this integration entry and re-add it.",
+            config_entry.version,
+        )
+        return False
+
+    return True
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: FermaxBlueConfigEntry) -> bool:
     """Set up Fermax Blue from a config entry."""
     client = create_async_httpx_client(hass)

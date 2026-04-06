@@ -70,7 +70,7 @@ STEP_CREDENTIALS_SCHEMA = vol.Schema(
 class FermaxBlueConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Fermax Blue."""
 
-    VERSION = 1
+    VERSION = 2
 
     def __init__(self) -> None:
         """Initialize the config flow."""
