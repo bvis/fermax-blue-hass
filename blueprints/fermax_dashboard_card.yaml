@@ -15,7 +15,7 @@ cards:
   # Camera with live stream support
   - type: picture-entity
     entity: camera.DEVICE_NAME_visitor     # Replace DEVICE_NAME
-    camera_view: auto
+    camera_view: live
     show_state: false
     show_name: true
 
@@ -41,7 +41,7 @@ cards:
           target:
             entity_id: button.DEVICE_NAME_open_DOOR   # Replace
 
-  # Auxiliary actions: F1 + call guard
+  # Auxiliary actions: F1 + call guard + send audio
   - type: horizontal-stack
     cards:
       - type: button
@@ -62,12 +62,20 @@ cards:
           service: button.press
           target:
             entity_id: button.DEVICE_NAME_call_guard   # Replace
+      - type: button
+        name: Enviar audio
+        icon: mdi:microphone
+        tap_action:
+          action: call-service
+          service: fermax_blue.send_audio
+          service_data:
+            audio_file: /config/media/mi_mensaje.wav   # Replace with your audio file
 
-  # Status indicators (requires mushroom-cards)
+  # Events (requires mushroom-cards)
   - type: horizontal-stack
     cards:
       - type: custom:mushroom-entity-card
-        entity: event.DEVICE_NAME_doorbell   # Replace
+        entity: event.DEVICE_NAME_doorbell   # Replace — doorbell ring events
         name: Timbre
         icon: mdi:bell-ring
         layout: vertical
@@ -84,6 +92,25 @@ cards:
         tap_action:
           action: toggle
 
+  # Event history: door opened + camera on
+  - type: horizontal-stack
+    cards:
+      - type: custom:mushroom-entity-card
+        entity: event.DEVICE_NAME_door_opened   # Replace — door opening events
+        name: Puerta
+        icon: mdi:door-open
+        layout: vertical
+      - type: custom:mushroom-entity-card
+        entity: event.DEVICE_NAME_camera_on   # Replace — camera activation events
+        name: Cámara
+        icon: mdi:cctv
+        layout: vertical
+      - type: custom:mushroom-entity-card
+        entity: sensor.DEVICE_NAME_last_call   # Replace — last call timestamp
+        name: Última llamada
+        icon: mdi:phone
+        layout: vertical
+
   # Switches: DND, photo caller, notifications
   - type: horizontal-stack
     cards:
@@ -96,20 +123,20 @@ cards:
           action: toggle
       - type: custom:mushroom-entity-card
         entity: switch.DEVICE_NAME_photo_caller   # Replace
-        name: Foto visitante
+        name: Foto
         icon: mdi:camera-account
         layout: vertical
         tap_action:
           action: toggle
       - type: custom:mushroom-entity-card
         entity: switch.DEVICE_NAME_notifications   # Replace
-        name: Notificaciones
+        name: Notif.
         icon: mdi:bell
         layout: vertical
         tap_action:
           action: toggle
 
-  # Info: WiFi signal + last door opening
+  # Info + recordings
   - type: horizontal-stack
     cards:
       - type: custom:mushroom-entity-card
@@ -119,6 +146,12 @@ cards:
         layout: vertical
       - type: custom:mushroom-entity-card
         entity: sensor.DEVICE_NAME_last_opening   # Replace
-        name: Última apertura
+        name: Apertura
         icon: mdi:door-open
         layout: vertical
+      - type: button
+        name: Grabaciones
+        icon: mdi:filmstrip
+        tap_action:
+          action: navigate
+          navigation_path: /media-browser/media-source%3A%2F%2Fmedia_source%2Flocal%2Ffermax_recordings
