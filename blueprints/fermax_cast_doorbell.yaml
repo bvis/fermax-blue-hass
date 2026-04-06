@@ -63,10 +63,8 @@ trigger:
     attribute: event_type
 
 action:
-  # Start camera preview to get live stream
-  - action: button.press
-    target:
-      entity_id: !input camera_entity
+  # Wait for stream to start (triggered by FCM notification)
+  - delay: 3
 
   # Cast video to Nest Hub (if configured)
   - choose:
