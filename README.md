@@ -70,7 +70,7 @@ After setup, you can configure the integration options:
 3. Available options:
    - **Polling interval** (1-30 minutes, default: 5)
    - **Recording retention** (1-90 days, default: 10) — auto-deletes older call recordings
-   - **Auto-respond to doorbell** — plays an audio file through the intercom when someone rings
+   - **Auto-respond to doorbell** — when enabled, answers the call automatically: starts video stream, sends audio file through the intercom speaker, records the call to MP4. When disabled, only triggers notifications without interacting with the intercom
    - **Audio file path** — WAV/MP3 file for auto-response (e.g., `/config/media/mi_mensaje.wav`)
 
 ### Dedicated User for Doorbell Notifications (Recommended)

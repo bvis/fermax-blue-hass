@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import tempfile
+from datetime import timedelta
 from pathlib import Path
 
 import voluptuous as vol
@@ -159,8 +160,28 @@ async def async_setup_entry(hass: HomeAssistant, entry: FermaxBlueConfigEntry) -
 async def _async_options_updated(
     hass: HomeAssistant, entry: FermaxBlueConfigEntry
 ) -> None:
-    """Handle options update."""
-    await hass.config_entries.async_reload(entry.entry_id)
+    """Handle options update — apply hot-reloadable options without full reload."""
+    coordinators = hass.data[DOMAIN].get(entry.entry_id, [])
+
+    auto_response_enabled = entry.options.get("auto_response", False)
+    auto_response_file = (
+        entry.options.get("auto_response_file", "") if auto_response_enabled else ""
+    )
+    new_scan = entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+
+    needs_reload = False
+    for coordinator in coordinators:
+        # Auto-response file can be updated in place
+        coordinator._auto_response_file = auto_response_file
+        # Scan interval change requires reload for update_interval to take effect
+        old_scan = coordinator.update_interval
+        if old_scan and old_scan != timedelta(minutes=new_scan):
+            needs_reload = True
+
+    if needs_reload:
+        await hass.config_entries.async_reload(entry.entry_id)
+    else:
+        _LOGGER.info("Options updated (hot reload, no restart needed)")
 
 
 async def _generate_tts_audio(

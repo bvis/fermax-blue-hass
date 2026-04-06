@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.11.0] - 2026-04-06
+
+### Changed
+- **Auto-responder as gate** — when auto-response is disabled, doorbell rings only trigger notifications without starting video stream or interacting with the intercom
+- **Hot-reload options** — toggling auto-response no longer causes a full integration reload, preventing false doorbell notifications
+- Duplicate FCM notification filtering on reconnect
+
+### Fixed
+- False doorbell notifications triggered when changing integration options (entity re-creation during reload fired automation triggers)
+
 ## [0.10.0] - 2026-04-06
 
 ### Added

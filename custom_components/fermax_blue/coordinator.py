@@ -75,6 +75,7 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         self._stream_session: FermaxStreamSession | None = None
         self._storage_path: Path | None = None
         self._auto_response_file = auto_response_file
+        self._processed_notifications: set[str] = set()
 
     @property
     def last_photo(self) -> bytes | None:
@@ -235,6 +236,17 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
     @callback
     def _handle_notification(self, notification: dict, persistent_id: str) -> None:
         """Handle an incoming FCM doorbell notification."""
+        # Skip already-processed notifications (re-delivered on FCM reconnect)
+        if persistent_id in self._processed_notifications:
+            _LOGGER.debug("Skipping duplicate notification: %s", persistent_id)
+            return
+        self._processed_notifications.add(persistent_id)
+        # Keep set bounded
+        if len(self._processed_notifications) > 100:
+            self._processed_notifications = set(
+                list(self._processed_notifications)[-50:]
+            )
+
         _LOGGER.info(
             "Doorbell notification for %s: %s",
             self.pairing.device_id,
@@ -256,18 +268,20 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
             self.api.ack_notification(fcm_message_id, is_call=is_call)
         )
 
-        # Start video stream if notification has room info
+        # Start video stream + auto-respond only when auto-response is enabled
         room_id = data.get("RoomId")
-        if room_id and notification_type in ("Call", "Autoon"):
+        if (
+            room_id
+            and notification_type in ("Call", "Autoon")
+            and self._auto_response_file
+        ):
             socket_url = data.get("SocketUrl", DEFAULT_SIGNALING_URL)
             fermax_token = data.get("FermaxToken", self.api._access_token or "")
             self.hass.async_create_task(
                 self._start_stream(room_id, socket_url, fermax_token)
             )
-
-        # Auto-respond with audio if configured and it's a real call
-        if notification_type == "Call" and self._auto_response_file:
-            self.hass.async_create_task(self._auto_respond())
+            if notification_type == "Call":
+                self.hass.async_create_task(self._auto_respond())
 
         # Only trigger doorbell ring for actual calls, not auto-on
         if notification_type == "Call":
