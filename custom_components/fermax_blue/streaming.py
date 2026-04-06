@@ -615,6 +615,7 @@ class FermaxStreamSession:
             self._recording_path = f"{recordings_dir}/{timestamp}.mp4"
             self._recording_frames: list[bytes] = []
             self._recording_audio_frames: list[bytes] = []
+            self._recording_sent_audio: list[bytes] = []
             self._audio_sample_rate = 48000
             _LOGGER.info("Recording to %s", self._recording_path)
         except Exception:
@@ -639,8 +640,41 @@ class FermaxStreamSession:
                 lambda: open(mjpeg_path, "wb").write(b"".join(video_frames))  # noqa: SIM115
             )
             if has_audio:
+                import numpy as np
+
+                # Mix received audio with sent audio for full recording
+                sent_frames = getattr(self, "_recording_sent_audio", [])
+                recv_pcm = b"".join(audio_frames)
+                sent_pcm = b"".join(sent_frames) if sent_frames else b""
+
+                # Resample sent audio (48kHz) to match received (8kHz) if needed
+                recv_rate = getattr(self, "_audio_sample_rate", 8000)
+                if sent_pcm and recv_rate != 48000:
+                    sent_arr = np.frombuffer(sent_pcm, dtype=np.int16)
+                    ratio = recv_rate / 48000
+                    indices = np.arange(0, len(sent_arr), 1 / ratio).astype(int)
+                    indices = indices[indices < len(sent_arr)]
+                    sent_arr = sent_arr[indices]
+                    sent_pcm = sent_arr.tobytes()
+
+                # Mix: pad shorter to match longer, then add
+                recv_arr = np.frombuffer(recv_pcm, dtype=np.int16)
+                sent_arr = (
+                    np.frombuffer(sent_pcm, dtype=np.int16)
+                    if sent_pcm
+                    else np.zeros(0, dtype=np.int16)
+                )
+                max_len = max(len(recv_arr), len(sent_arr))
+                if len(recv_arr) < max_len:
+                    recv_arr = np.pad(recv_arr, (0, max_len - len(recv_arr)))
+                if len(sent_arr) < max_len:
+                    sent_arr = np.pad(sent_arr, (0, max_len - len(sent_arr)))
+                mixed = np.clip(
+                    recv_arr.astype(np.int32) + sent_arr.astype(np.int32), -32768, 32767
+                ).astype(np.int16)
+
                 await asyncio.to_thread(
-                    lambda: open(pcm_path, "wb").write(b"".join(audio_frames))  # noqa: SIM115
+                    lambda: open(pcm_path, "wb").write(mixed.tobytes())  # noqa: SIM115
                 )
 
             cmd = [
@@ -708,6 +742,7 @@ class FermaxStreamSession:
                 os.unlink(pcm_path)
             self._recording_frames = []
             self._recording_audio_frames = []
+            self._recording_sent_audio = []
 
     @staticmethod
     def _overlay_live_indicator(img: Any) -> Any:
@@ -855,24 +890,69 @@ class FermaxStreamSession:
     async def send_audio(self, audio_path: str) -> bool:
         """Send an audio file to the intercom via mediasoup.
 
-        Replaces the silent audio track on the existing producer with the
-        audio file. After playback finishes, reverts to silence.
+        Reads the audio file, resamples to 48kHz mono s16, and feeds frames
+        to the switchable track (replacing silence with real audio).
         """
         if not self._active or not self._audio_producer:
             _LOGGER.error("Cannot send audio: no active stream/producer")
             return False
 
         try:
-            from aiortc.contrib.media import MediaPlayer
+            import av
 
-            player = MediaPlayer(audio_path)
-            if not player.audio:
-                _LOGGER.error("No audio track in file: %s", audio_path)
+            # Read and resample audio to match the producer format (48kHz mono s16)
+            container = av.open(audio_path)
+            resampler = av.AudioResampler(format="s16", layout="mono", rate=48000)
+
+            import numpy as np
+
+            all_samples: list[Any] = []
+            for packet in container.demux(audio=0):
+                for decoded in packet.decode():
+                    for resampled in resampler.resample(decoded):  # type: ignore[arg-type]
+                        all_samples.append(resampled.to_ndarray().flatten())
+            container.close()
+
+            if not all_samples:
+                _LOGGER.error("No audio in %s", audio_path)
                 return False
 
-            # Switch the audio source on the existing track
-            self._switchable_track.set_source(player.audio)
-            _LOGGER.info("Audio source switched to %s", audio_path)
+            # Chunk into 960-sample frames (matching silence track)
+            raw = np.concatenate(all_samples)
+            chunk_size = 960
+            frames: list[Any] = []
+            pts = 0
+            for i in range(0, len(raw), chunk_size):
+                chunk = raw[i : i + chunk_size]
+                if len(chunk) < chunk_size:
+                    chunk = np.pad(chunk, (0, chunk_size - len(chunk)))
+                frame = av.AudioFrame(format="s16", layout="mono", samples=chunk_size)
+                frame.planes[0].update(chunk.astype(np.int16).tobytes())
+                frame.sample_rate = 48000
+                frame.pts = pts
+                pts += chunk_size
+                frames.append(frame)
+
+            frame_queue: asyncio.Queue[Any] = asyncio.Queue()
+            for f in frames:
+                await frame_queue.put(f)
+
+            class _FileAudioSource:
+                async def recv(self) -> Any:
+                    if frame_queue.empty():
+                        raise StopIteration
+                    return await frame_queue.get()
+
+            # Save sent audio PCM for recording mix
+            if hasattr(self, "_recording_sent_audio"):
+                for i in range(0, len(raw), chunk_size):
+                    chunk = raw[i : i + chunk_size]
+                    if len(chunk) < chunk_size:
+                        chunk = np.pad(chunk, (0, chunk_size - len(chunk)))
+                    self._recording_sent_audio.append(chunk.astype(np.int16).tobytes())
+
+            self._switchable_track.set_source(_FileAudioSource())
+            _LOGGER.info("Audio playing: %s (%d frames)", audio_path, len(frames))
             return True
 
         except Exception:

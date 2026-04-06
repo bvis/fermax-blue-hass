@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.10.0] - 2026-04-06
+
+### Added
+- **Mixed audio recording** — Recordings now include both received audio (intercom/street) and sent audio (your voice/TTS) mixed into a single track
+
+### Changed
+- `send_audio()` rewritten with direct PyAV decoding + resampling (replaces MediaPlayer), feeds 960-sample chunks to switchable track
+- Sent audio PCM captured directly from numpy arrays for reliable recording mix
+- Sent audio (48kHz) downsampled to match received audio sample rate before mixing
+
 ## [0.9.0] - 2026-04-06
 
 ### Added
