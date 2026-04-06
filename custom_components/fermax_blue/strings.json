@@ -24,7 +24,10 @@
       "init": {
         "title": "Fermax Blue Options",
         "data": {
-          "scan_interval": "Polling interval (minutes)"
+          "scan_interval": "Polling interval (minutes)",
+          "recording_retention": "Recording retention (days)",
+          "auto_response": "Auto-respond to doorbell with audio",
+          "auto_response_file": "Audio file path for auto-response"
         }
       }
     }

@@ -17,12 +17,17 @@ from homeassistant.helpers.httpx_client import get_async_client
 
 from .api import FermaxAuthError, FermaxBlueApi
 from .const import (
+    CONF_RECORDING_RETENTION,
     CONF_SCAN_INTERVAL,
+    DEFAULT_RECORDING_RETENTION,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
     MAX_SCAN_INTERVAL,
     MIN_SCAN_INTERVAL,
 )
+
+CONF_AUTO_RESPONSE = "auto_response"
+CONF_AUTO_RESPONSE_FILE = "auto_response_file"
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -113,6 +118,27 @@ class FermaxBlueOptionsFlow(OptionsFlow):
                         vol.Coerce(int),
                         vol.Range(min=MIN_SCAN_INTERVAL, max=MAX_SCAN_INTERVAL),
                     ),
+                    vol.Optional(
+                        CONF_RECORDING_RETENTION,
+                        default=self.config_entry.options.get(
+                            CONF_RECORDING_RETENTION, DEFAULT_RECORDING_RETENTION
+                        ),
+                    ): vol.All(
+                        vol.Coerce(int),
+                        vol.Range(min=1, max=90),
+                    ),
+                    vol.Optional(
+                        CONF_AUTO_RESPONSE,
+                        default=self.config_entry.options.get(
+                            CONF_AUTO_RESPONSE, False
+                        ),
+                    ): bool,
+                    vol.Optional(
+                        CONF_AUTO_RESPONSE_FILE,
+                        default=self.config_entry.options.get(
+                            CONF_AUTO_RESPONSE_FILE, "/config/media/mi_mensaje.wav"
+                        ),
+                    ): str,
                 }
             ),
         )

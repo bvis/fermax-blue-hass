@@ -46,10 +46,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: FermaxBlueConfigEntry) -
         raise
 
     scan_interval = entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+    auto_response_enabled = entry.options.get("auto_response", False)
+    auto_response_file = (
+        entry.options.get("auto_response_file", "") if auto_response_enabled else ""
+    )
     coordinators: list[FermaxBlueCoordinator] = []
 
     for pairing in pairings:
-        coordinator = FermaxBlueCoordinator(hass, api, pairing, scan_interval)
+        coordinator = FermaxBlueCoordinator(
+            hass, api, pairing, scan_interval, auto_response_file
+        )
         await coordinator.async_config_entry_first_refresh()
 
         storage_path = Path(hass.config.config_dir) / ".storage" / DOMAIN

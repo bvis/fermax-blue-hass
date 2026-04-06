@@ -67,7 +67,11 @@ After setup, you can configure the integration options:
 
 1. Go to **Settings** > **Devices & Services**
 2. Click **Configure** on your Fermax Blue integration
-3. Adjust the **polling interval** (1-30 minutes, default: 5)
+3. Available options:
+   - **Polling interval** (1-30 minutes, default: 5)
+   - **Recording retention** (1-90 days, default: 10) — auto-deletes older call recordings
+   - **Auto-respond to doorbell** — plays an audio file through the intercom when someone rings
+   - **Audio file path** — WAV/MP3 file for auto-response (e.g., `/config/media/mi_mensaje.wav`)
 
 ### Dedicated User for Doorbell Notifications (Recommended)
 
@@ -131,9 +135,43 @@ A ready-to-use dashboard card template is included in [`blueprints/fermax_dashbo
 
 > **Tip:** To find your entity IDs, go to **Settings** > **Devices & Services** > **Fermax Blue** > click your device.
 
-## Automation Blueprint
+## Call Recordings
+
+Every video stream session is automatically recorded to MP4 (video + intercom audio) in `/config/media/fermax_recordings/`. Files are named with timestamps (e.g., `2026-04-06_13-00-00.mp4`).
+
+Recordings are automatically deleted after the retention period (default: 10 days, configurable in options).
+
+Access recordings from the dashboard via the **Grabaciones** button, or browse **Media** > **Local media** > **fermax_recordings**.
+
+## Services
+
+### `fermax_blue.send_audio`
+
+Send audio to the intercom speaker during an active video stream.
+
+```yaml
+# Send a pre-recorded audio file
+service: fermax_blue.send_audio
+data:
+  audio_file: /config/media/mi_mensaje.wav
+
+# Or send a TTS message
+service: fermax_blue.send_audio
+data:
+  message: "Hola, ahora bajo"
+  language: es
+```
+
+## Automation Blueprints
+
+### Doorbell notification
+
 
 A doorbell notification blueprint is available at [`blueprints/fermax_doorbell_notification.yaml`](blueprints/fermax_doorbell_notification.yaml).
+
+### Cast doorbell to Google Nest
+
+Show doorbell video on a Nest Hub and announce on speakers: [`blueprints/fermax_cast_doorbell.yaml`](blueprints/fermax_cast_doorbell.yaml). Supports optional auto-response to the intercom via TTS.
 
 **To install:**
 
@@ -256,7 +294,7 @@ Features available in the Fermax Blue mobile app that are not yet implemented:
 
 | Feature | Complexity | Description |
 |---------|-----------|-------------|
-| ~~**Two-way audio**~~ | ~~High~~ | ✅ Implemented in v0.8.0 — Send audio via `fermax_blue.send_audio` service (file or TTS text) |
+| ~~**Two-way audio**~~ | ~~High~~ | ✅ Implemented — Send audio via `fermax_blue.send_audio` service (file or TTS), auto-response on doorbell configurable in options |
 | **Switch camera during call** | Low | Switch between cameras on multi-camera intercoms (`/device/incall/changevideosource`) |
 | **F1 during active call** | Low | Trigger the F1 auxiliary function while a stream is active (`/device/incall/f1`) |
 | **Guest management** | Medium | Add, remove, and authorize guest users for the intercom via the API |

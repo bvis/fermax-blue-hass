@@ -48,6 +48,7 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         api: FermaxBlueApi,
         pairing: Pairing,
         scan_interval: int = 5,
+        auto_response_file: str = "",
     ) -> None:
         super().__init__(
             hass,
@@ -73,6 +74,7 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         self._call_log: list[CallLogEntry] = []
         self._stream_session: FermaxStreamSession | None = None
         self._storage_path: Path | None = None
+        self._auto_response_file = auto_response_file
 
     @property
     def last_photo(self) -> bytes | None:
@@ -262,6 +264,10 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
             self.hass.async_create_task(
                 self._start_stream(room_id, socket_url, fermax_token)
             )
+
+        # Auto-respond with audio if configured and it's a real call
+        if notification_type == "Call" and self._auto_response_file:
+            self.hass.async_create_task(self._auto_respond())
 
         # Only trigger doorbell ring for actual calls, not auto-on
         if notification_type == "Call":
@@ -459,6 +465,18 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         else:
             _LOGGER.warning("Failed to start video stream for room %s", room_id)
             self._stream_session = None
+
+    async def _auto_respond(self) -> None:
+        """Send auto-response audio after stream starts."""
+        # Wait for stream to be ready
+        for _ in range(20):
+            if self._stream_session and self._stream_session.is_active:
+                break
+            await asyncio.sleep(0.5)
+        if self._stream_session and self._stream_session.is_active:
+            await asyncio.sleep(1)  # Extra delay for audio transport
+            await self._stream_session.send_audio(self._auto_response_file)
+            _LOGGER.info("Auto-response sent: %s", self._auto_response_file)
 
     async def stop_stream(self) -> None:
         """Stop the current video stream session."""
