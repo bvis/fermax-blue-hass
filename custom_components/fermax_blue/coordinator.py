@@ -212,7 +212,15 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         self.notification_listener = FermaxNotificationListener(
             storage_path=storage_path,
             notification_callback=self._handle_notification,
-            **self._firebase_config,
+            firebase_api_key=str(self._firebase_config.get("firebase_api_key", "")),
+            firebase_sender_id=self._firebase_config.get("firebase_sender_id", 0),
+            firebase_app_id=str(self._firebase_config.get("firebase_app_id", "")),
+            firebase_project_id=str(
+                self._firebase_config.get("firebase_project_id", "")
+            ),
+            firebase_package_name=str(
+                self._firebase_config.get("firebase_package_name", "")
+            ),
         )
 
         # Load persisted last photo for camera preview
