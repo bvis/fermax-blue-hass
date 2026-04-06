@@ -41,8 +41,26 @@
         "state_attributes": {
           "event_type": {
             "state": {
-              "ring": "Bel",
-              "door_opened": "Deur geopend",
+              "ring": "Bel"
+            }
+          }
+        }
+      },
+      "door_opened": {
+        "name": "Deur geopend",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "door_opened": "Deur geopend"
+            }
+          }
+        }
+      },
+      "camera_on": {
+        "name": "Camera voorbeeld",
+        "state_attributes": {
+          "event_type": {
+            "state": {
               "camera_on": "Camera voorbeeld"
             }
           }

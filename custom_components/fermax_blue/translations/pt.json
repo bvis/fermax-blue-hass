@@ -41,8 +41,26 @@
         "state_attributes": {
           "event_type": {
             "state": {
-              "ring": "Toque",
-              "door_opened": "Porta aberta",
+              "ring": "Toque"
+            }
+          }
+        }
+      },
+      "door_opened": {
+        "name": "Porta aberta",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "door_opened": "Porta aberta"
+            }
+          }
+        }
+      },
+      "camera_on": {
+        "name": "Pré-visualização",
+        "state_attributes": {
+          "event_type": {
+            "state": {
               "camera_on": "Pré-visualização"
             }
           }

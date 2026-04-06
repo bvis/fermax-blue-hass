@@ -41,8 +41,26 @@
         "state_attributes": {
           "event_type": {
             "state": {
-              "ring": "Suonata",
-              "door_opened": "Porta aperta",
+              "ring": "Suonata"
+            }
+          }
+        }
+      },
+      "door_opened": {
+        "name": "Porta aperta",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "door_opened": "Porta aperta"
+            }
+          }
+        }
+      },
+      "camera_on": {
+        "name": "Anteprima telecamera",
+        "state_attributes": {
+          "event_type": {
+            "state": {
               "camera_on": "Anteprima telecamera"
             }
           }

@@ -41,8 +41,26 @@
         "state_attributes": {
           "event_type": {
             "state": {
-              "ring": "Klingeln",
-              "door_opened": "Tür geöffnet",
+              "ring": "Klingeln"
+            }
+          }
+        }
+      },
+      "door_opened": {
+        "name": "Tür geöffnet",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "door_opened": "Tür geöffnet"
+            }
+          }
+        }
+      },
+      "camera_on": {
+        "name": "Kameravorschau",
+        "state_attributes": {
+          "event_type": {
+            "state": {
               "camera_on": "Kameravorschau"
             }
           }

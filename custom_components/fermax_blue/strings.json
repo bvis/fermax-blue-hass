@@ -41,8 +41,26 @@
         "state_attributes": {
           "event_type": {
             "state": {
-              "ring": "Ring",
-              "door_opened": "Door opened",
+              "ring": "Ring"
+            }
+          }
+        }
+      },
+      "door_opened": {
+        "name": "Door opened",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "door_opened": "Door opened"
+            }
+          }
+        }
+      },
+      "camera_on": {
+        "name": "Camera preview",
+        "state_attributes": {
+          "event_type": {
+            "state": {
               "camera_on": "Camera preview"
             }
           }

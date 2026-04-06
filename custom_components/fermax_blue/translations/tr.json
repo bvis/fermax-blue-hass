@@ -41,8 +41,26 @@
         "state_attributes": {
           "event_type": {
             "state": {
-              "ring": "Çalma",
-              "door_opened": "Kapı açıldı",
+              "ring": "Çalma"
+            }
+          }
+        }
+      },
+      "door_opened": {
+        "name": "Kapı açıldı",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "door_opened": "Kapı açıldı"
+            }
+          }
+        }
+      },
+      "camera_on": {
+        "name": "Kamera önizleme",
+        "state_attributes": {
+          "event_type": {
+            "state": {
               "camera_on": "Kamera önizleme"
             }
           }
