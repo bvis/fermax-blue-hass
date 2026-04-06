@@ -13,7 +13,15 @@ from homeassistant.core import Event, HomeAssistant, ServiceCall
 from homeassistant.helpers.httpx_client import create_async_httpx_client
 
 from .api import FermaxBlueApi
-from .const import CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL, DOMAIN, PLATFORMS
+from .const import (
+    CONF_RECORDING_RETENTION,
+    CONF_SCAN_INTERVAL,
+    DEFAULT_RECORDING_RETENTION,
+    DEFAULT_SCAN_INTERVAL,
+    DOMAIN,
+    PLATFORMS,
+    RECORDINGS_DIR,
+)
 from .coordinator import FermaxBlueCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -101,6 +109,33 @@ async def async_setup_entry(hass: HomeAssistant, entry: FermaxBlueConfigEntry) -
                 }
             ),
         )
+
+    # Schedule recording cleanup
+    async def _cleanup_old_recordings(_now: object = None) -> None:
+        """Delete recordings older than retention period."""
+        import time
+
+        recordings_path = Path(hass.config.config_dir) / "media" / RECORDINGS_DIR
+        if not recordings_path.exists():
+            return
+        retention = entry.options.get(
+            CONF_RECORDING_RETENTION, DEFAULT_RECORDING_RETENTION
+        )
+        cutoff = time.time() - (retention * 86400)
+        for f in recordings_path.iterdir():
+            if f.is_file() and f.stat().st_mtime < cutoff:
+                f.unlink()
+                _LOGGER.debug("Deleted old recording: %s", f.name)
+
+    # Run cleanup once at startup and daily
+    await _cleanup_old_recordings()
+    from datetime import timedelta as _td
+
+    from homeassistant.helpers.event import async_track_time_interval
+
+    entry.async_on_unload(
+        async_track_time_interval(hass, _cleanup_old_recordings, _td(hours=24))
+    )
 
     async def _async_shutdown(event: Event) -> None:
         """Clean up on shutdown."""

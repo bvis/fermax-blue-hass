@@ -18,6 +18,7 @@ import contextlib
 import io
 import json
 import logging
+import os
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
@@ -337,13 +338,17 @@ class FermaxStreamSession:
         self._on_end = on_end
         self._device: Any = None
         self._recv_transport: Any = None
+        self._recv_audio_transport: Any = None
         self._send_transport: Any = None
         self._audio_producer: Any = None
         self._consumer: Any = None
+        self._audio_consumer: Any = None
+        self._recorder: Any = None
         self._frame_task: asyncio.Task | None = None
         self._latest_frame: bytes | None = None
         self._active = False
         self._room: Any = None
+        self._recording_path: str | None = None
 
     @property
     def is_active(self) -> bool:
@@ -432,6 +437,43 @@ class FermaxStreamSession:
             else consume_result.rtp_parameters,
         )
 
+        # 4b. Consume audio from SFU (for recording)
+        if room.audio_producer_id:
+            audio_tp = room.recv_audio_transport
+            audio_ice = json.loads(audio_tp.ice_parameters)
+            audio_candidates = json.loads(audio_tp.ice_candidates)
+            audio_dtls = json.loads(audio_tp.dtls_parameters)
+
+            self._recv_audio_transport = self._device.createRecvTransport(
+                id=audio_tp.id,
+                iceParameters=IceParameters(**audio_ice),
+                iceCandidates=[IceCandidate(**c) for c in audio_candidates],
+                dtlsParameters=DtlsParameters(**audio_dtls),
+            )
+
+            @self._recv_audio_transport.on("connect")
+            async def on_audio_connect(dtls_parameters: DtlsParameters) -> None:
+                await self._signaling.connect_transport(
+                    transport_id=audio_tp.id,
+                    dtls_parameters=json.dumps(dtls_parameters.dict(exclude_none=True)),
+                )
+
+            audio_consume = await self._signaling.consume_transport(
+                transport_id=audio_tp.id,
+                producer_id=room.audio_producer_id,
+                rtp_capabilities=json.dumps(device_caps.dict(exclude_none=True)),
+            )
+            if audio_consume:
+                self._audio_consumer = await self._recv_audio_transport.consume(
+                    id=audio_consume.consumer_id,
+                    producerId=audio_consume.producer_id,
+                    kind=audio_consume.kind,
+                    rtpParameters=RtpParameters(**audio_consume.rtp_parameters)
+                    if isinstance(audio_consume.rtp_parameters, dict)
+                    else audio_consume.rtp_parameters,
+                )
+                _LOGGER.info("Audio consumer created")
+
         # 5. Create SendTransport for audio
         self._room = room
         send_tp = room.send_transport
@@ -473,11 +515,43 @@ class FermaxStreamSession:
             # Return producer ID from pickup response (or empty)
             return room.audio_producer_id or ""
 
-        # 6. Start frame grabber
+        # 6. Start recording (video + audio to MP4)
+        await self._start_recording()
+
+        # 7. Start frame grabber
         self._active = True
         self._frame_task = asyncio.create_task(self._grab_frames())
         _LOGGER.info("Stream session started for room %s", self._room_id)
         return True
+
+    async def _start_recording(self) -> None:
+        """Start recording video + audio to MP4."""
+        try:
+            from datetime import datetime
+
+            from aiortc.contrib.media import MediaRecorder, MediaRelay
+
+            recordings_dir = "/config/media/fermax_recordings"
+            os.makedirs(recordings_dir, exist_ok=True)
+
+            timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            self._recording_path = f"{recordings_dir}/{timestamp}.mp4"
+
+            # Use MediaRelay to fan out tracks (recorder + frame grabber)
+            relay = MediaRelay()
+
+            self._recorder = MediaRecorder(
+                self._recording_path,
+                options={"movflags": "frag_keyframe+empty_moov"},
+            )
+            self._recorder.addTrack(relay.subscribe(self._consumer.track))
+            if self._audio_consumer:
+                self._recorder.addTrack(relay.subscribe(self._audio_consumer.track))
+            await self._recorder.start()
+            _LOGGER.info("Recording to %s", self._recording_path)
+        except Exception:
+            _LOGGER.debug("Recording not started", exc_info=True)
+            self._recorder = None
 
     @staticmethod
     def _overlay_live_indicator(img: Any) -> Any:
@@ -541,12 +615,24 @@ class FermaxStreamSession:
             with contextlib.suppress(asyncio.CancelledError):
                 await self._frame_task
 
-        # Close in order: consumer → transport → signaling
-        # Suppress aiortc internal errors during teardown
+        # Stop recording first
+        if self._recorder:
+            with contextlib.suppress(Exception):
+                await self._recorder.stop()
+            self._recorder = None
+            if self._recording_path:
+                _LOGGER.info("Recording saved: %s", self._recording_path)
+
+        # Close in order: consumers → transports → signaling
         if self._consumer:
             with contextlib.suppress(Exception):
                 await self._consumer.close()
             self._consumer = None
+
+        if self._audio_consumer:
+            with contextlib.suppress(Exception):
+                await self._audio_consumer.close()
+            self._audio_consumer = None
 
         if self._audio_producer:
             with contextlib.suppress(Exception):
@@ -557,6 +643,11 @@ class FermaxStreamSession:
             with contextlib.suppress(Exception):
                 await self._recv_transport.close()
             self._recv_transport = None
+
+        if self._recv_audio_transport:
+            with contextlib.suppress(Exception):
+                await self._recv_audio_transport.close()
+            self._recv_audio_transport = None
 
         if self._send_transport:
             with contextlib.suppress(Exception):

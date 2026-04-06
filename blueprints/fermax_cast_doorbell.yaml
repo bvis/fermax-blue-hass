@@ -1,0 +1,114 @@
+blueprint:
+  name: "Fermax: Show doorbell on Google Nest Hub + announce on speakers"
+  description: >
+    When someone rings the doorbell, show the camera stream on a Nest Hub
+    and announce on Google speakers. Optionally auto-respond with a TTS message
+    to the intercom.
+  domain: automation
+  input:
+    doorbell_event:
+      name: Doorbell event entity
+      description: The Fermax doorbell event entity
+      selector:
+        entity:
+          filter:
+            domain: event
+            integration: fermax_blue
+    camera_entity:
+      name: Camera entity
+      description: The Fermax camera entity to cast
+      selector:
+        entity:
+          filter:
+            domain: camera
+            integration: fermax_blue
+    display_device:
+      name: Display device (Nest Hub)
+      description: Google Nest Hub or other Cast device with screen
+      default: ""
+      selector:
+        entity:
+          filter:
+            domain: media_player
+    speaker_devices:
+      name: Speaker devices
+      description: Google speakers for audio announcement
+      default: []
+      selector:
+        entity:
+          filter:
+            domain: media_player
+          multiple: true
+    announcement_message:
+      name: Announcement message
+      description: "Message to announce on speakers (default: 'Someone is at the door')"
+      default: "Alguien llama a la puerta"
+      selector:
+        text:
+    auto_response:
+      name: Auto-response to intercom
+      description: "Optional TTS message to send to the intercom speaker (leave empty to disable)"
+      default: ""
+      selector:
+        text:
+    auto_response_language:
+      name: Auto-response language
+      default: "es"
+      selector:
+        text:
+
+trigger:
+  - platform: state
+    entity_id: !input doorbell_event
+    attribute: event_type
+
+action:
+  # Start camera preview to get live stream
+  - action: button.press
+    target:
+      entity_id: !input camera_entity
+
+  # Cast video to Nest Hub (if configured)
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: "{{ display_device != '' }}"
+        sequence:
+          - delay: 3  # Wait for stream to start
+          - action: media_player.play_media
+            target:
+              entity_id: !input display_device
+            data:
+              media_content_id: "media-source://camera/{{ camera_entity }}"
+              media_content_type: "video/x-motion-jpeg"
+
+  # Announce on speakers
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: "{{ speaker_devices | length > 0 }}"
+        sequence:
+          - action: tts.speak
+            target:
+              entity_id: !input speaker_devices
+            data:
+              message: !input announcement_message
+
+  # Auto-respond to intercom
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: "{{ auto_response != '' }}"
+        sequence:
+          - delay: 5  # Wait for stream to be ready
+          - action: fermax_blue.send_audio
+            data:
+              message: !input auto_response
+              language: !input auto_response_language
+
+mode: single
+variables:
+  display_device: !input display_device
+  camera_entity: !input camera_entity
+  speaker_devices: !input speaker_devices
+  auto_response: !input auto_response
