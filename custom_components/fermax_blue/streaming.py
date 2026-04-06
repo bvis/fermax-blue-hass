@@ -30,6 +30,32 @@ _LOGGER = logging.getLogger(__name__)
 logging.getLogger("aiortc.codecs.h264").setLevel(logging.ERROR)
 
 SIGNALING_VERSION = "0.8.2"
+
+
+def _patch_pymediasoup_audio_channels() -> None:
+    """Fix pymediasoup bug: channels=None vs channels=1 for mono audio codecs.
+
+    sdp-transform omits the encoding parameter for mono codecs like PCMA,
+    resulting in channels=None. Mediasoup routers set channels=1 explicitly.
+    matchCodecs() does strict equality (None != 1), causing canProduce("audio")
+    to return False even though both sides support the same codec.
+    """
+    from pymediasoup.handlers.aiortc_handler import AiortcHandler as _Handler
+    from pymediasoup.rtp_parameters import RtpCapabilities as _Caps
+
+    _orig_get = _Handler.getNativeRtpCapabilities
+
+    async def _patched_get(self: _Handler) -> _Caps:
+        caps = await _orig_get(self)
+        for codec in caps.codecs:
+            if codec.kind == "audio" and codec.channels is None:
+                codec.channels = 1
+        return caps
+
+    _Handler.getNativeRtpCapabilities = _patched_get  # type: ignore[assignment]
+
+
+_patch_pymediasoup_audio_channels()
 DEFAULT_SIGNALING_URL = "http://signaling-pro-duoxme.fermax.io"
 
 
@@ -360,7 +386,7 @@ class FermaxStreamSession:
 
         self._signaling._on_end_up = _handle_end_up
 
-        # 2. Create mediasoup Device
+        # 2. Create mediasoup Device (audio channels patch applied at module level)
         self._device = Device(handlerFactory=AiortcHandler.createFactory(tracks=[]))
         router_caps = json.loads(room.router_rtp_capabilities)
         await self._device.load(RtpCapabilities(**router_caps))
