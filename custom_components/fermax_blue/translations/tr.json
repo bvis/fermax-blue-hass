@@ -24,7 +24,10 @@
       "init": {
         "title": "Fermax Blue Seçenekleri",
         "data": {
-          "scan_interval": "Sorgulama aralığı (dakika)"
+          "scan_interval": "Sorgulama aralığı (dakika)",
+          "recording_retention": "Kayıt saklama süresi (gün)",
+          "auto_response": "Zil çalınca otomatik sesli yanıt",
+          "auto_response_file": "Ses dosyası yolu"
         }
       }
     }
