@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.7.0] - 2026-04-06
+
+### Added
+- **Separate event entities** — Doorbell, door opened, and camera preview are now 3 independent event entities with distinct icons and history, instead of a single entity with mixed event types
+- Door opened event fires when door is successfully opened
+- Camera preview event fires when live stream starts
+
+### Changed
+- Event history now clearly shows each event type separately
+
 ## [0.6.1] - 2026-04-06
 
 ### Fixed
