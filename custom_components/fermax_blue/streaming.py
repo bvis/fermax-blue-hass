@@ -437,34 +437,15 @@ class FermaxStreamSession:
             else consume_result.rtp_parameters,
         )
 
-        # 4b. Consume audio from SFU (for recording)
+        # 4b. Consume audio from SFU using the same video recv transport
         if room.audio_producer_id:
-            audio_tp = room.recv_audio_transport
-            audio_ice = json.loads(audio_tp.ice_parameters)
-            audio_candidates = json.loads(audio_tp.ice_candidates)
-            audio_dtls = json.loads(audio_tp.dtls_parameters)
-
-            self._recv_audio_transport = self._device.createRecvTransport(
-                id=audio_tp.id,
-                iceParameters=IceParameters(**audio_ice),
-                iceCandidates=[IceCandidate(**c) for c in audio_candidates],
-                dtlsParameters=DtlsParameters(**audio_dtls),
-            )
-
-            @self._recv_audio_transport.on("connect")
-            async def on_audio_connect(dtls_parameters: DtlsParameters) -> None:
-                await self._signaling.connect_transport(
-                    transport_id=audio_tp.id,
-                    dtls_parameters=json.dumps(dtls_parameters.dict(exclude_none=True)),
-                )
-
             audio_consume = await self._signaling.consume_transport(
-                transport_id=audio_tp.id,
+                transport_id=video_tp.id,
                 producer_id=room.audio_producer_id,
                 rtp_capabilities=json.dumps(device_caps.dict(exclude_none=True)),
             )
             if audio_consume:
-                self._audio_consumer = await self._recv_audio_transport.consume(
+                self._audio_consumer = await self._recv_transport.consume(
                     id=audio_consume.consumer_id,
                     producerId=audio_consume.producer_id,
                     kind=audio_consume.kind,
@@ -472,7 +453,7 @@ class FermaxStreamSession:
                     if isinstance(audio_consume.rtp_parameters, dict)
                     else audio_consume.rtp_parameters,
                 )
-                _LOGGER.info("Audio consumer created")
+                _LOGGER.info("Audio consumer created on video transport")
 
         # 5. Create SendTransport for audio
         self._room = room
