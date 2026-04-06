@@ -60,6 +60,42 @@ _patch_pymediasoup_audio_channels()
 DEFAULT_SIGNALING_URL = "http://signaling-pro-duoxme.fermax.io"
 
 
+def _create_switchable_audio_track() -> Any:
+    """Create a SwitchableAudioTrack that inherits from aiortc's MediaStreamTrack."""
+    from aiortc import MediaStreamTrack
+
+    class _Track(MediaStreamTrack):  # type: ignore[misc]
+        kind = "audio"
+
+        def __init__(self) -> None:
+            super().__init__()
+            self._source: Any = None
+            self._pts = 0
+
+        def set_source(self, player_track: Any) -> None:
+            self._source = player_track
+
+        async def recv(self) -> Any:
+            if self._source:
+                try:
+                    return await self._source.recv()
+                except Exception:
+                    self._source = None
+
+            import av
+
+            frame = av.AudioFrame(format="s16", layout="mono", samples=160)
+            for p in frame.planes:
+                p.update(bytes(p.buffer_size))
+            frame.sample_rate = 8000
+            frame.pts = self._pts
+            self._pts += 160
+            await asyncio.sleep(0.02)
+            return frame
+
+    return _Track()
+
+
 @dataclass
 class TransportData:
     """WebRTC transport parameters from mediasoup."""
@@ -437,15 +473,34 @@ class FermaxStreamSession:
             else consume_result.rtp_parameters,
         )
 
-        # 4b. Consume audio from SFU using the same video recv transport
+        # 4b. Create dedicated RecvTransport for audio
         if room.audio_producer_id:
+            audio_tp = room.recv_audio_transport
+            audio_ice = json.loads(audio_tp.ice_parameters)
+            audio_candidates = json.loads(audio_tp.ice_candidates)
+            audio_dtls = json.loads(audio_tp.dtls_parameters)
+
+            self._recv_audio_transport = self._device.createRecvTransport(
+                id=audio_tp.id,
+                iceParameters=IceParameters(**audio_ice),
+                iceCandidates=[IceCandidate(**c) for c in audio_candidates],
+                dtlsParameters=DtlsParameters(**audio_dtls),
+            )
+
+            @self._recv_audio_transport.on("connect")
+            async def on_audio_connect(dtls_parameters: DtlsParameters) -> None:
+                await self._signaling.connect_transport(
+                    transport_id=audio_tp.id,
+                    dtls_parameters=json.dumps(dtls_parameters.dict(exclude_none=True)),
+                )
+
             audio_consume = await self._signaling.consume_transport(
-                transport_id=video_tp.id,
+                transport_id=audio_tp.id,
                 producer_id=room.audio_producer_id,
                 rtp_capabilities=json.dumps(device_caps.dict(exclude_none=True)),
             )
             if audio_consume:
-                self._audio_consumer = await self._recv_transport.consume(
+                self._audio_consumer = await self._recv_audio_transport.consume(
                     id=audio_consume.consumer_id,
                     producerId=audio_consume.producer_id,
                     kind=audio_consume.kind,
@@ -453,7 +508,7 @@ class FermaxStreamSession:
                     if isinstance(audio_consume.rtp_parameters, dict)
                     else audio_consume.rtp_parameters,
                 )
-                _LOGGER.info("Audio consumer created on video transport")
+                _LOGGER.info("Audio consumer created on dedicated transport")
 
         # 5. Create SendTransport for audio
         self._room = room
@@ -496,10 +551,22 @@ class FermaxStreamSession:
             # Return producer ID from pickup response (or empty)
             return room.audio_producer_id or ""
 
-        # 6. Initialize recording (frames collected in _grab_frames)
+        # 6. Produce audio to activate the call (triggers pickup)
+        self._switchable_track = _create_switchable_audio_track()
+        self._audio_producer = await self._send_transport.produce(
+            track=self._switchable_track,
+            stopTracks=False,
+            appData={},
+        )
+        _LOGGER.info("Audio producer started (silence), pickup sent")
+
+        # Wait for intercom to start sending audio after pickup
+        await asyncio.sleep(1)
+
+        # 8. Initialize recording (frames collected in _grab_frames)
         self._init_recording()
 
-        # 7. Start frame grabber + audio recorder
+        # 9. Start frame grabber + audio recorder
         self._active = True
         self._frame_task = asyncio.create_task(self._grab_frames())
         if self._audio_consumer:
@@ -763,11 +830,11 @@ class FermaxStreamSession:
     async def send_audio(self, audio_path: str) -> bool:
         """Send an audio file to the intercom via mediasoup.
 
-        The audio file (WAV, MP3, OGG) is played through the sendTransport
-        as an audio producer. The intercom speaker will play it.
+        Replaces the silent audio track on the existing producer with the
+        audio file. After playback finishes, reverts to silence.
         """
-        if not self._active or not self._send_transport:
-            _LOGGER.error("Cannot send audio: no active stream session")
+        if not self._active or not self._audio_producer:
+            _LOGGER.error("Cannot send audio: no active stream/producer")
             return False
 
         try:
@@ -778,13 +845,9 @@ class FermaxStreamSession:
                 _LOGGER.error("No audio track in file: %s", audio_path)
                 return False
 
-            self._audio_producer = await self._send_transport.produce(
-                track=player.audio,
-                stopTracks=False,
-                appData={},
-            )
-
-            _LOGGER.info("Audio producer started from %s", audio_path)
+            # Switch the audio source on the existing track
+            self._switchable_track.set_source(player.audio)
+            _LOGGER.info("Audio source switched to %s", audio_path)
             return True
 
         except Exception:
