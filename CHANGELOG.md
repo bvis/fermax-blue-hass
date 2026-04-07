@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.14.0] - 2026-04-07
+
+### Added
+- **Stream duration control** — new slider entity on the device (10s–120s, default 30s). Stream auto-stops after the configured duration
+- Translations for the stream duration entity in all 10 languages
+
 ## [0.13.0] - 2026-04-07
 
 ### Added

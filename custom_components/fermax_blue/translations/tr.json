@@ -46,6 +46,11 @@
     }
   },
   "entity": {
+    "number": {
+      "stream_duration": {
+        "name": "Yayın süresi"
+      }
+    },
     "select": {
       "call_mode": {
         "name": "Arama modu",

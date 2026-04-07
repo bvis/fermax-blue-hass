@@ -46,6 +46,11 @@
     }
   },
   "entity": {
+    "number": {
+      "stream_duration": {
+        "name": "Duração do stream"
+      }
+    },
     "select": {
       "call_mode": {
         "name": "Modo de chamada",

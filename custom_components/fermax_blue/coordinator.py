@@ -26,6 +26,7 @@ from .api import (
 from .const import (
     CALL_MODE_AUTO_RESPOND,
     CALL_MODE_NOTIFY,
+    DEFAULT_STREAM_DURATION,
     DOMAIN,
     SIGNAL_CALL_ENDED,
     SIGNAL_CAMERA_ON,
@@ -79,6 +80,8 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         self._storage_path: Path | None = None
         self._auto_response_file = auto_response_file
         self._call_mode = CALL_MODE_NOTIFY
+        self._stream_duration = DEFAULT_STREAM_DURATION
+        self._stream_stop_unsub: CALLBACK_TYPE | None = None
         self._firebase_config = firebase_config or {}
         self._processed_notifications: set[str] = set()
 
@@ -91,6 +94,16 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
     def call_mode(self, value: str) -> None:
         """Set the call mode."""
         self._call_mode = value
+
+    @property
+    def stream_duration(self) -> int:
+        """Return the configured stream duration in seconds."""
+        return self._stream_duration
+
+    @stream_duration.setter
+    def stream_duration(self, value: int) -> None:
+        """Set the stream duration in seconds."""
+        self._stream_duration = value
 
     @property
     def last_photo(self) -> bytes | None:
@@ -485,6 +498,10 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
 
         @callback
         def _on_stream_end() -> None:
+            # Cancel auto-stop timer if still pending
+            if self._stream_stop_unsub:
+                self._stream_stop_unsub()
+                self._stream_stop_unsub = None
             # Save last frame as photo preview before releasing the session
             if self._stream_session and self._stream_session.latest_frame:
                 self._last_photo = self._stream_session.latest_frame
@@ -506,6 +523,17 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
             self._camera_active = True
             _LOGGER.info("Video stream started for room %s", room_id)
             dispatcher_send(self.hass, SIGNAL_CAMERA_ON.format(self.pairing.device_id))
+
+            # Schedule auto-stop after configured duration
+            @callback
+            def _auto_stop_stream(_now: Any) -> None:
+                _LOGGER.info("Stream auto-stop after %ds", self._stream_duration)
+                self._stream_stop_unsub = None
+                self.hass.async_create_task(self.stop_stream())
+
+            self._stream_stop_unsub = async_call_later(
+                self.hass, self._stream_duration, _auto_stop_stream
+            )
         else:
             _LOGGER.warning("Failed to start video stream for room %s", room_id)
             self._stream_session = None

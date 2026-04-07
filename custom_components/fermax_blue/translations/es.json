@@ -46,6 +46,11 @@
     }
   },
   "entity": {
+    "number": {
+      "stream_duration": {
+        "name": "Duración del vídeo"
+      }
+    },
     "select": {
       "call_mode": {
         "name": "Modo de llamada",

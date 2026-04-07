@@ -46,6 +46,11 @@
     }
   },
   "entity": {
+    "number": {
+      "stream_duration": {
+        "name": "Czas trwania streamu"
+      }
+    },
     "select": {
       "call_mode": {
         "name": "Tryb połączenia",
