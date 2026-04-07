@@ -40,13 +40,22 @@
         "data": {
           "scan_interval": "Intervalo de consulta (minutos)",
           "recording_retention": "Retención de grabaciones (días)",
-          "auto_response": "Auto-responder al timbre con audio",
           "auto_response_file": "Ruta del archivo de audio"
         }
       }
     }
   },
   "entity": {
+    "select": {
+      "call_mode": {
+        "name": "Modo de llamada",
+        "state": {
+          "notify_only": "Solo notificar",
+          "record": "Grabar",
+          "auto_respond": "Auto-responder"
+        }
+      }
+    },
     "binary_sensor": {
       "connection": {
         "name": "Conexión"

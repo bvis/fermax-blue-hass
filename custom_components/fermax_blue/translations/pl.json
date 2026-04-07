@@ -40,13 +40,22 @@
         "data": {
           "scan_interval": "Interwał odpytywania (minuty)",
           "recording_retention": "Przechowywanie nagrań (dni)",
-          "auto_response": "Automatycznie odpowiadaj dźwiękiem",
           "auto_response_file": "Ścieżka do pliku audio"
         }
       }
     }
   },
   "entity": {
+    "select": {
+      "call_mode": {
+        "name": "Tryb połączenia",
+        "state": {
+          "notify_only": "Tylko powiadomienie",
+          "record": "Nagrywaj",
+          "auto_respond": "Automatyczna odpowiedź"
+        }
+      }
+    },
     "binary_sensor": {
       "connection": {
         "name": "Połączenie"

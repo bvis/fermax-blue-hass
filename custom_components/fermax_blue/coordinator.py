@@ -24,6 +24,8 @@ from .api import (
     Pairing,
 )
 from .const import (
+    CALL_MODE_AUTO_RESPOND,
+    CALL_MODE_NOTIFY,
     DOMAIN,
     SIGNAL_CALL_ENDED,
     SIGNAL_CAMERA_ON,
@@ -76,8 +78,19 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         self._stream_session: FermaxStreamSession | None = None
         self._storage_path: Path | None = None
         self._auto_response_file = auto_response_file
+        self._call_mode = CALL_MODE_NOTIFY
         self._firebase_config = firebase_config or {}
         self._processed_notifications: set[str] = set()
+
+    @property
+    def call_mode(self) -> str:
+        """Return the current call mode."""
+        return self._call_mode
+
+    @call_mode.setter
+    def call_mode(self, value: str) -> None:
+        """Set the call mode."""
+        self._call_mode = value
 
     @property
     def last_photo(self) -> bytes | None:
@@ -279,12 +292,13 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
             self.api.ack_notification(fcm_message_id, is_call=is_call)
         )
 
-        # Start video stream for Autoon (camera preview) always,
-        # for Call (doorbell) only when auto-response is enabled
+        # Start video stream based on call mode:
+        # - Autoon (camera preview button): always start stream
+        # - Call (doorbell): depends on call_mode setting
         room_id = data.get("RoomId")
         should_stream = room_id and (
             notification_type == "Autoon"
-            or (notification_type == "Call" and self._auto_response_file)
+            or (notification_type == "Call" and self._call_mode != CALL_MODE_NOTIFY)
         )
         if should_stream:
             socket_url = data.get("SocketUrl", DEFAULT_SIGNALING_URL)
@@ -292,7 +306,11 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
             self.hass.async_create_task(
                 self._start_stream(room_id, socket_url, fermax_token)
             )
-            if notification_type == "Call" and self._auto_response_file:
+            if (
+                notification_type == "Call"
+                and self._call_mode == CALL_MODE_AUTO_RESPOND
+                and self._auto_response_file
+            ):
                 self.hass.async_create_task(self._auto_respond())
 
         # Only trigger doorbell ring for actual calls, not auto-on

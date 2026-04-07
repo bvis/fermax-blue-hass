@@ -40,13 +40,22 @@
         "data": {
           "scan_interval": "فترة الاستعلام (دقائق)",
           "recording_retention": "مدة الاحتفاظ بالتسجيلات (أيام)",
-          "auto_response": "الرد التلقائي بالصوت",
           "auto_response_file": "مسار ملف الصوت"
         }
       }
     }
   },
   "entity": {
+    "select": {
+      "call_mode": {
+        "name": "وضع الاتصال",
+        "state": {
+          "notify_only": "إشعار فقط",
+          "record": "تسجيل",
+          "auto_respond": "رد تلقائي"
+        }
+      }
+    },
     "binary_sensor": {
       "connection": {
         "name": "الاتصال"

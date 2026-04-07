@@ -30,9 +30,16 @@ PLATFORMS = [
     "camera",
     "event",
     "lock",
+    "select",
     "sensor",
     "switch",
 ]
+
+# Call mode options (select entity)
+CALL_MODE_NOTIFY = "notify_only"
+CALL_MODE_RECORD = "record"
+CALL_MODE_AUTO_RESPOND = "auto_respond"
+CALL_MODES = [CALL_MODE_NOTIFY, CALL_MODE_RECORD, CALL_MODE_AUTO_RESPOND]
 
 # Config keys — API/Firebase credentials (provided by the user)
 CONF_FERMAX_AUTH_URL = "fermax_auth_url"

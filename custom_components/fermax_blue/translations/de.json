@@ -40,13 +40,22 @@
         "data": {
           "scan_interval": "Abfrageintervall (Minuten)",
           "recording_retention": "Aufbewahrung der Aufnahmen (Tage)",
-          "auto_response": "Automatisch mit Audio antworten",
           "auto_response_file": "Pfad zur Audiodatei"
         }
       }
     }
   },
   "entity": {
+    "select": {
+      "call_mode": {
+        "name": "Anrufmodus",
+        "state": {
+          "notify_only": "Nur benachrichtigen",
+          "record": "Aufnehmen",
+          "auto_respond": "Automatisch antworten"
+        }
+      }
+    },
     "binary_sensor": {
       "connection": {
         "name": "Verbindung"

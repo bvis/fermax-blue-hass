@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.13.0] - 2026-04-07
+
+### Added
+- **Call mode selector** — new select entity on the device with three modes:
+  - **Notify only** — doorbell ring triggers events and notifications, no video or recording
+  - **Record** — automatically starts video stream and records with audio when someone rings
+  - **Auto-respond** — records + sends pre-configured audio file through the intercom speaker
+- Translations for the call mode entity in all 10 supported languages
+
+### Changed
+- Auto-response toggle removed from integration options (replaced by the device-level call mode selector)
+- Dashboard card template updated with record button and cast-to-display button
+
 ## [0.12.1] - 2026-04-06
 
 ### Fixed

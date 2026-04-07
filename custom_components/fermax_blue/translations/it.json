@@ -40,13 +40,22 @@
         "data": {
           "scan_interval": "Intervallo di polling (minuti)",
           "recording_retention": "Conservazione registrazioni (giorni)",
-          "auto_response": "Rispondi automaticamente con audio",
           "auto_response_file": "Percorso file audio"
         }
       }
     }
   },
   "entity": {
+    "select": {
+      "call_mode": {
+        "name": "Modalità chiamata",
+        "state": {
+          "notify_only": "Solo notifica",
+          "record": "Registra",
+          "auto_respond": "Risposta automatica"
+        }
+      }
+    },
     "binary_sensor": {
       "connection": {
         "name": "Connessione"

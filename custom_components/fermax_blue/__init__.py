@@ -58,10 +58,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: FermaxBlueConfigEntry) -
         raise
 
     scan_interval = entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
-    auto_response_enabled = entry.options.get("auto_response", False)
-    auto_response_file = (
-        entry.options.get("auto_response_file", "") if auto_response_enabled else ""
-    )
+    auto_response_file = entry.options.get("auto_response_file", "")
     firebase_config: dict[str, str | int] = {
         "firebase_api_key": entry.data[CONF_FIREBASE_API_KEY],
         "firebase_sender_id": int(entry.data[CONF_FIREBASE_SENDER_ID]),
@@ -182,15 +179,11 @@ async def _async_options_updated(
     """Handle options update — apply hot-reloadable options without full reload."""
     coordinators = hass.data[DOMAIN].get(entry.entry_id, [])
 
-    auto_response_enabled = entry.options.get("auto_response", False)
-    auto_response_file = (
-        entry.options.get("auto_response_file", "") if auto_response_enabled else ""
-    )
     new_scan = entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
+    auto_response_file = entry.options.get("auto_response_file", "")
 
     needs_reload = False
     for coordinator in coordinators:
-        # Auto-response file can be updated in place
         coordinator._auto_response_file = auto_response_file
         # Scan interval change requires reload for update_interval to take effect
         old_scan = coordinator.update_interval

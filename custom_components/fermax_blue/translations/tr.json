@@ -40,13 +40,22 @@
         "data": {
           "scan_interval": "Sorgulama aralığı (dakika)",
           "recording_retention": "Kayıt saklama süresi (gün)",
-          "auto_response": "Zil çalınca otomatik sesli yanıt",
           "auto_response_file": "Ses dosyası yolu"
         }
       }
     }
   },
   "entity": {
+    "select": {
+      "call_mode": {
+        "name": "Arama modu",
+        "state": {
+          "notify_only": "Yalnızca bildirim",
+          "record": "Kaydet",
+          "auto_respond": "Otomatik yanıt"
+        }
+      }
+    },
     "binary_sensor": {
       "connection": {
         "name": "Bağlantı"

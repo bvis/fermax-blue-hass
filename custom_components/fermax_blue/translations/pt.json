@@ -40,13 +40,22 @@
         "data": {
           "scan_interval": "Intervalo de consulta (minutos)",
           "recording_retention": "Retenção de gravações (dias)",
-          "auto_response": "Responder automaticamente com áudio",
           "auto_response_file": "Caminho do arquivo de áudio"
         }
       }
     }
   },
   "entity": {
+    "select": {
+      "call_mode": {
+        "name": "Modo de chamada",
+        "state": {
+          "notify_only": "Apenas notificar",
+          "record": "Gravar",
+          "auto_respond": "Resposta automática"
+        }
+      }
+    },
     "binary_sensor": {
       "connection": {
         "name": "Conexão"

@@ -34,7 +34,6 @@ from .const import (
     MIN_SCAN_INTERVAL,
 )
 
-CONF_AUTO_RESPONSE = "auto_response"
 CONF_AUTO_RESPONSE_FILE = "auto_response_file"
 
 _LOGGER = logging.getLogger(__name__)
@@ -177,12 +176,6 @@ class FermaxBlueOptionsFlow(OptionsFlow):
                         vol.Coerce(int),
                         vol.Range(min=1, max=90),
                     ),
-                    vol.Optional(
-                        CONF_AUTO_RESPONSE,
-                        default=self.config_entry.options.get(
-                            CONF_AUTO_RESPONSE, False
-                        ),
-                    ): bool,
                     vol.Optional(
                         CONF_AUTO_RESPONSE_FILE,
                         default=self.config_entry.options.get(

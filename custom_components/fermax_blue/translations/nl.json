@@ -40,13 +40,22 @@
         "data": {
           "scan_interval": "Polling-interval (minuten)",
           "recording_retention": "Opnames bewaren (dagen)",
-          "auto_response": "Automatisch antwoorden met audio",
           "auto_response_file": "Pad naar audiobestand"
         }
       }
     }
   },
   "entity": {
+    "select": {
+      "call_mode": {
+        "name": "Oproepstand",
+        "state": {
+          "notify_only": "Alleen melden",
+          "record": "Opnemen",
+          "auto_respond": "Automatisch antwoorden"
+        }
+      }
+    },
     "binary_sensor": {
       "connection": {
         "name": "Verbinding"
