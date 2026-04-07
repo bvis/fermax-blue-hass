@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.14.1] - 2026-04-08
+
+### Fixed
+- Last camera frame not persisted after stream auto-stop — frame was lost because the session was cleared before saving
+
 ## [0.14.0] - 2026-04-07
 
 ### Added

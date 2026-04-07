@@ -553,6 +553,10 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
     async def stop_stream(self) -> None:
         """Stop the current video stream session."""
         if self._stream_session:
+            # Save last frame before stopping (stop() may clear internal state)
+            if self._stream_session.latest_frame:
+                self._last_photo = self._stream_session.latest_frame
+                self.hass.async_create_task(self._save_last_photo())
             await self._stream_session.stop()
             self._stream_session = None
             self._camera_active = False
