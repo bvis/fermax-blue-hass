@@ -210,6 +210,16 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
             except Exception:
                 _LOGGER.debug("Failed to fetch call log/photo", exc_info=True)
 
+        # Fetch DND status
+        if self.notification_listener and self.notification_listener.fcm_token:
+            try:
+                self._dnd_enabled = await self.api.get_dnd_status(
+                    self.pairing.device_id,
+                    self.notification_listener.fcm_token,
+                )
+            except Exception:
+                _LOGGER.debug("Failed to fetch DND status", exc_info=True)
+
         # Fetch latest door opening (1 API call, lightweight)
         try:
             openings = await self.api.get_opening_history(self.pairing.device_id)

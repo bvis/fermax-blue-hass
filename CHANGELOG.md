@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.14.2] - 2026-04-08
+
+### Fixed
+- DND switch showing "unknown" — now fetches DND status from API on each poll
+- Camera image appearing blank after page reload — force state update on entity registration so HA knows image is available immediately
+
 ## [0.14.1] - 2026-04-08
 
 ### Fixed

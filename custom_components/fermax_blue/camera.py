@@ -63,6 +63,10 @@ class FermaxCamera(FermaxBlueEntity, Camera):
                 )
             )
 
+        # Force state update so HA knows we have an image immediately
+        if self.coordinator.last_photo:
+            self.async_write_ha_state()
+
     @callback
     def _on_doorbell_ring(self) -> None:
         """Handle doorbell ring - trigger image refresh."""
