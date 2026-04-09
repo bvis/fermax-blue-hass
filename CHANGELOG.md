@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.15.0] - 2026-04-09
+
+### Added
+- **Call photo persistence** — visitor photos from the Fermax API are now saved to `/media/fermax_recordings/` as JPEG files alongside video recordings. Photos follow the same retention policy and auto-cleanup as MP4 recordings
+
 ## [0.14.2] - 2026-04-08
 
 ### Fixed

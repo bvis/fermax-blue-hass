@@ -28,6 +28,7 @@ from .const import (
     CALL_MODE_NOTIFY,
     DEFAULT_STREAM_DURATION,
     DOMAIN,
+    RECORDINGS_DIR,
     SIGNAL_CALL_ENDED,
     SIGNAL_CAMERA_ON,
     SIGNAL_DOOR_OPENED,
@@ -122,6 +123,17 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         if path and self._last_photo:
             await asyncio.to_thread(path.write_bytes, self._last_photo)
 
+    async def _save_call_photo(self, photo: bytes) -> None:
+        """Save a doorbell call photo to the recordings directory."""
+        from datetime import datetime
+
+        recordings_dir = Path("/media") / RECORDINGS_DIR
+        recordings_dir.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        path = recordings_dir / f"{timestamp}_photo.jpg"
+        await asyncio.to_thread(path.write_bytes, photo)
+        _LOGGER.info("Call photo saved: %s (%d KB)", path, len(photo) // 1024)
+
     async def _load_last_photo(self) -> None:
         """Load persisted last photo from disk."""
         path = self._last_frame_path()
@@ -207,6 +219,9 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
                             if photo:
                                 self._last_photo = photo
                                 self._last_photo_id = latest.photo_id
+                                self.hass.async_create_task(
+                                    self._save_call_photo(photo)
+                                )
             except Exception:
                 _LOGGER.debug("Failed to fetch call log/photo", exc_info=True)
 
