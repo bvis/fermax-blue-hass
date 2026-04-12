@@ -39,21 +39,39 @@ _LOGGER = logging.getLogger(__name__)
 type FermaxBlueConfigEntry = ConfigEntry[list[FermaxBlueCoordinator]]
 
 
+_V2_REQUIRED_KEYS = {
+    CONF_FERMAX_AUTH_URL,
+    CONF_FERMAX_BASE_URL,
+    CONF_FERMAX_AUTH_BASIC,
+    CONF_FIREBASE_API_KEY,
+    CONF_FIREBASE_SENDER_ID,
+    CONF_FIREBASE_APP_ID,
+    CONF_FIREBASE_PROJECT_ID,
+    CONF_FIREBASE_PACKAGE_NAME,
+}
+
+
 async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
     """Migrate a config entry to the current version.
 
     Version history:
       1 — Original format: only username + password (credentials were hardcoded).
       2 — API URL, auth basic, and Firebase credentials are now supplied by the user.
-
-    v1 -> v2 cannot be automated because the new fields require credentials obtained
-    by running extract_credentials.py against the official Fermax app.
     """
     _LOGGER.debug(
         "Migrating Fermax Blue config entry from version %s", config_entry.version
     )
 
     if config_entry.version < 2:
+        # If the entry already has all v2 fields (added manually before the
+        # VERSION bump existed), just promote it to v2.
+        if _V2_REQUIRED_KEYS.issubset(config_entry.data.keys()):
+            hass.config_entries.async_update_entry(config_entry, version=2)
+            _LOGGER.info(
+                "Fermax Blue config entry migrated to version 2 (fields already present)"
+            )
+            return True
+
         _LOGGER.error(
             "Fermax Blue config entry (version %s) cannot be automatically migrated to "
             "version 2. The integration now requires API and Firebase credentials that "
