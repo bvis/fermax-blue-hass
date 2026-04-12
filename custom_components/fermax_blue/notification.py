@@ -2,17 +2,38 @@
 
 from __future__ import annotations
 
-import asyncio
-import json
 import logging
 from collections.abc import Callable
-from pathlib import Path
 from typing import Any
 
 from firebase_messaging import FcmPushClient
 from firebase_messaging.fcmregister import FcmRegister, FcmRegisterConfig
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.storage import Store
+
+from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
+
+_FCM_STORAGE_VERSION = 1
+_FCM_STORAGE_KEY = f"{DOMAIN}_fcm_credentials"
+
+_SENSITIVE_LOG_KEYS = frozenset(
+    {"FermaxToken", "fermaxOauthToken", "appToken", "token", "fcm_token"}
+)
+
+
+def _redact_notification(data: dict[str, Any]) -> dict[str, Any]:
+    """Return a deep copy of *data* with sensitive values replaced by '***'."""
+    result: dict[str, Any] = {}
+    for k, v in data.items():
+        if k in _SENSITIVE_LOG_KEYS:
+            result[k] = "***"
+        elif isinstance(v, dict):
+            result[k] = _redact_notification(v)
+        else:
+            result[k] = v
+    return result
 
 
 class FermaxNotificationListener:
@@ -20,7 +41,7 @@ class FermaxNotificationListener:
 
     def __init__(
         self,
-        storage_path: Path,
+        hass: HomeAssistant,
         notification_callback: Callable[[dict[str, Any], str], None],
         *,
         firebase_api_key: str,
@@ -29,7 +50,7 @@ class FermaxNotificationListener:
         firebase_project_id: str,
         firebase_package_name: str,
     ) -> None:
-        self._storage_path = storage_path
+        self._hass = hass
         self._notification_callback = notification_callback
         self._credentials: dict | None = None
         self._push_client: FcmPushClient | None = None
@@ -40,7 +61,7 @@ class FermaxNotificationListener:
             messaging_sender_id=str(firebase_sender_id),
             bundle_id=firebase_package_name,
         )
-        self._credentials_file = storage_path / "fermax_fcm_credentials.json"
+        self._store: Store = Store(hass, _FCM_STORAGE_VERSION, _FCM_STORAGE_KEY)
 
     @property
     def fcm_token(self) -> str | None:
@@ -57,31 +78,25 @@ class FermaxNotificationListener:
         return None
 
     def _on_credentials_updated(self, new_creds: dict) -> None:
-        """Handle FCM credentials update."""
+        """Handle FCM credentials update (sync callback from firebase_messaging).
+
+        Schedules an async save via the HA event loop so we never perform
+        blocking I/O inside a sync callback.
+        """
         self._credentials = new_creds
-        # Save in a thread since this callback is sync
-        self._credentials_file.write_text(json.dumps(self._credentials, indent=2))
+        self._hass.loop.call_soon_threadsafe(
+            self._hass.async_create_task,
+            self._save_credentials(),
+        )
 
     async def _save_credentials(self) -> None:
-        """Save FCM credentials to disk (non-blocking)."""
+        """Persist FCM credentials via HA Store (non-blocking, within .storage/)."""
         if self._credentials:
-            await asyncio.to_thread(
-                self._credentials_file.write_text,
-                json.dumps(self._credentials, indent=2),
-            )
+            await self._store.async_save(self._credentials)
 
     async def _load_credentials(self) -> dict | None:
-        """Load FCM credentials from disk (non-blocking)."""
-
-        def _read():
-            if self._credentials_file.exists():
-                try:
-                    return json.loads(self._credentials_file.read_text())
-                except (json.JSONDecodeError, OSError):
-                    pass
-            return None
-
-        return await asyncio.to_thread(_read)
+        """Load FCM credentials from HA Store."""
+        return await self._store.async_load()
 
     def _on_notification(
         self,
@@ -90,8 +105,8 @@ class FermaxNotificationListener:
         obj: Any = None,
     ) -> None:
         """Handle incoming FCM notification."""
-        _LOGGER.info("Received FCM notification: %s", persistent_id)
-        _LOGGER.debug("Notification data: %s", notification)
+        _LOGGER.debug("Received FCM notification (persistent_id omitted)")
+        _LOGGER.debug("Notification data: %s", _redact_notification(notification))
         self._notification_callback(notification, persistent_id)
 
     async def register(self) -> str | None:

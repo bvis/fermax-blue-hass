@@ -14,6 +14,11 @@ from homeassistant.config_entries import (
 )
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.helpers.httpx_client import get_async_client
+from homeassistant.helpers.selector import (
+    TextSelector,
+    TextSelectorConfig,
+    TextSelectorType,
+)
 
 from .api import FermaxAuthError, FermaxBlueApi
 from .const import (
@@ -41,7 +46,9 @@ _LOGGER = logging.getLogger(__name__)
 STEP_USER_DATA_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_USERNAME): str,
-        vol.Required(CONF_PASSWORD): str,
+        vol.Required(CONF_PASSWORD): TextSelector(
+            TextSelectorConfig(type=TextSelectorType.PASSWORD)
+        ),
     }
 )
 
@@ -62,7 +69,7 @@ STEP_CREDENTIALS_SCHEMA = vol.Schema(
 class FermaxBlueConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Fermax Blue."""
 
-    VERSION = 1
+    VERSION = 2
 
     def __init__(self) -> None:
         """Initialize the config flow."""

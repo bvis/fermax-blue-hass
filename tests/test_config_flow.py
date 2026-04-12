@@ -169,14 +169,15 @@ class TestCredentials:
 
     def test_notification_listener_requires_firebase(self):
         """Test notification listener requires all Firebase credentials."""
-        from pathlib import Path
+        from unittest.mock import MagicMock
 
         from custom_components.fermax_blue.notification import (
             FermaxNotificationListener,
         )
 
+        mock_hass = MagicMock()
         listener = FermaxNotificationListener(
-            storage_path=Path("/tmp"),
+            hass=mock_hass,
             notification_callback=lambda n, p: None,
             firebase_api_key="AIzaTestKey",
             firebase_sender_id=123456,

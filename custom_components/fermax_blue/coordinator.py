@@ -34,7 +34,7 @@ from .const import (
     SIGNAL_DOOR_OPENED,
     SIGNAL_DOORBELL_RING,
 )
-from .notification import FermaxNotificationListener
+from .notification import FermaxNotificationListener, _redact_notification
 from .streaming import DEFAULT_SIGNALING_URL, FermaxStreamSession
 
 _LOGGER = logging.getLogger(__name__)
@@ -261,7 +261,7 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         """Set up the FCM notification listener."""
         self._storage_path = storage_path
         self.notification_listener = FermaxNotificationListener(
-            storage_path=storage_path,
+            hass=self.hass,
             notification_callback=self._handle_notification,
             firebase_api_key=str(self._firebase_config.get("firebase_api_key", "")),
             firebase_sender_id=self._firebase_config.get("firebase_sender_id", 0),
@@ -312,7 +312,7 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         _LOGGER.info(
             "Doorbell notification for %s: %s",
             self.pairing.device_id,
-            notification,
+            _redact_notification(notification),
         )
 
         # Notification data may be nested under "data" key
@@ -340,7 +340,7 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         )
         if should_stream:
             socket_url = data.get("SocketUrl", DEFAULT_SIGNALING_URL)
-            fermax_token = data.get("FermaxToken", self.api._access_token or "")
+            fermax_token = data.get("FermaxToken", "")
             self.hass.async_create_task(
                 self._start_stream(room_id, socket_url, fermax_token)
             )
@@ -519,7 +519,7 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         fcm_token = self.notification_listener.fcm_token
         if not fcm_token:
             return
-        oauth_token = fermax_token or self.api._access_token or ""
+        oauth_token = fermax_token or await self.api.get_access_token()
 
         @callback
         def _on_stream_end() -> None:

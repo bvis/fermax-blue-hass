@@ -158,17 +158,41 @@ def _extract_oauth_from_source(dir_path: str) -> str:
     # Parse the production clientId and clientSecret byte arrays
     # Production is typically the last case (i == 4 || i == 5)
     def _parse_byte_arrays(method_name: str) -> list[bytes]:
-        """Extract all byte array literals from a method."""
+        """Extract all byte array literals from a method.
+
+        Uses the next method declaration (or EOF) as the boundary so all
+        environments — including PRO after the NoWhenBranch throw — are captured.
+        Also resolves local Byte variables instead of relying on hardcoded heuristics.
+        """
         m = re.search(
-            rf"public final Byte\[] {method_name}\(\).*?throw new NoWhenBranch",
+            rf"public final Byte\[] {method_name}\(\)(.*?)(?=\n    public |\Z)",
             content,
             re.DOTALL,
         )
         if not m:
             return []
+        method_body = m.group(1)
+
+        # Build a local-variable lookup from the method body
+        local_vars: dict[str, int] = {}
+        for lv in re.finditer(
+            r"Byte\s+(\w+)\s*=\s*Byte\.valueOf\(Ascii\.(\w+)\)", method_body
+        ):
+            var_name, ascii_name = lv.group(1), lv.group(2)
+            local_vars[var_name] = _ASCII_MAP.get(ascii_name, 0)
+
         arrays: list[bytes] = []
-        for arr_match in re.finditer(r"new Byte\[]\{([^}]+)\}", m.group(0)):
-            arrays.append(_parse_java_byte_list(arr_match.group(1)))
+        for arr_match in re.finditer(r"new Byte\[]\{([^}]+)\}", method_body):
+            tokens = arr_match.group(1).split(",")
+            byte_values: list[int] = []
+            for token in tokens:
+                token = token.strip()
+                # Check local variable reference first
+                if token in local_vars:
+                    byte_values.append(local_vars[token])
+                else:
+                    byte_values.append(_parse_java_byte_token(token))
+            arrays.append(bytes(byte_values))
         return arrays
 
     client_id_arrays = _parse_byte_arrays("clientId")
@@ -292,6 +316,13 @@ def _find_credentials(strings: list[str]) -> dict[str, str]:
         oauth_host = base.replace("https://", "https://oauth-")
         creds["fermax_auth_url"] = oauth_host + "/oauth/token"
 
+    # Derive base URL from auth URL if still missing
+    # https://oauth-pro-duoxme.fermax.io/oauth/token -> https://pro-duoxme.fermax.io
+    if creds["fermax_auth_url"] and not creds["fermax_base_url"]:
+        m = re.match(r"(https://)oauth-(.+)/oauth/token", creds["fermax_auth_url"])
+        if m:
+            creds["fermax_base_url"] = m.group(1) + m.group(2)
+
     # Try to extract sender_id from app_id if missing
     if creds["firebase_app_id"] and not creds["firebase_sender_id"]:
         m = re.match(r"1:(\d+):android:", creds["firebase_app_id"])
@@ -299,6 +330,40 @@ def _find_credentials(strings: list[str]) -> dict[str, str]:
             creds["firebase_sender_id"] = m.group(1)
 
     return creds
+
+
+def _search_android_strings_xml(path: str) -> dict[str, str]:
+    """Extract Firebase credentials from Android res/values/strings.xml.
+
+    JADX places compiled Android resources under resources/res/values/.
+    The Firebase SDK embeds its config there (google_app_id, project_id,
+    gcm_defaultSenderId, google_api_key) as named string resources.
+    """
+    root = Path(path)
+    result: dict[str, str] = {}
+
+    resource_map = {
+        "google_app_id": "firebase_app_id",
+        "project_id": "firebase_project_id",
+        "gcm_defaultSenderId": "firebase_sender_id",
+        "google_api_key": "firebase_api_key",
+    }
+
+    for xml_file in root.rglob("strings.xml"):
+        try:
+            content = xml_file.read_text(errors="ignore")
+        except OSError:
+            continue
+        for res_name, cred_key in resource_map.items():
+            if result.get(cred_key):
+                continue
+            m = re.search(
+                rf'<string name="{re.escape(res_name)}">([^<]+)</string>', content
+            )
+            if m:
+                result[cred_key] = m.group(1)
+
+    return result
 
 
 def _search_google_services_json(path: str) -> dict[str, str]:
@@ -388,12 +453,23 @@ def main() -> None:
     if gs_creds:
         print(f"    Found {sum(1 for v in gs_creds.values() if v)} Firebase values")
 
+    # Try Android strings.xml (present in JADX-decompiled directories)
+    print("  Looking for Android strings.xml resources...")
+    xml_creds = _search_android_strings_xml(target)
+    if xml_creds:
+        print(f"    Found {sum(1 for v in xml_creds.values() if v)} Firebase values")
+
     # Pattern-match all collected strings
     print("  Pattern matching credentials...")
     creds = _find_credentials(all_strings)
 
     # Merge google-services results (higher priority)
     for k, v in gs_creds.items():
+        if v:
+            creds[k] = v
+
+    # Merge Android resource values (higher priority than pattern matching)
+    for k, v in xml_creds.items():
         if v:
             creds[k] = v
 

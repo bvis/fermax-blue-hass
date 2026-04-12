@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import tempfile
 from datetime import timedelta
@@ -36,6 +37,33 @@ from .coordinator import FermaxBlueCoordinator
 _LOGGER = logging.getLogger(__name__)
 
 type FermaxBlueConfigEntry = ConfigEntry[list[FermaxBlueCoordinator]]
+
+
+async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> bool:
+    """Migrate a config entry to the current version.
+
+    Version history:
+      1 — Original format: only username + password (credentials were hardcoded).
+      2 — API URL, auth basic, and Firebase credentials are now supplied by the user.
+
+    v1 -> v2 cannot be automated because the new fields require credentials obtained
+    by running extract_credentials.py against the official Fermax app.
+    """
+    _LOGGER.debug(
+        "Migrating Fermax Blue config entry from version %s", config_entry.version
+    )
+
+    if config_entry.version < 2:
+        _LOGGER.error(
+            "Fermax Blue config entry (version %s) cannot be automatically migrated to "
+            "version 2. The integration now requires API and Firebase credentials that "
+            "must be supplied manually (run extract_credentials.py to obtain them). "
+            "Please delete this integration entry and re-add it.",
+            config_entry.version,
+        )
+        return False
+
+    return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: FermaxBlueConfigEntry) -> bool:
@@ -138,17 +166,27 @@ async def async_setup_entry(hass: HomeAssistant, entry: FermaxBlueConfigEntry) -
         """Delete recordings older than retention period."""
         import time
 
-        recordings_path = Path("/media") / RECORDINGS_DIR
-        if not recordings_path.exists():
-            return
+        media_root = hass.config.media_dirs.get("local", "/media")
+        recordings_path = Path(media_root) / RECORDINGS_DIR
         retention = entry.options.get(
             CONF_RECORDING_RETENTION, DEFAULT_RECORDING_RETENTION
         )
         cutoff = time.time() - (retention * 86400)
-        for f in recordings_path.iterdir():
-            if f.is_file() and f.stat().st_mtime < cutoff:
-                f.unlink()
-                _LOGGER.debug("Deleted old recording: %s", f.name)
+
+        def _do_cleanup() -> list[str]:
+            """Perform blocking filesystem cleanup; return list of deleted filenames."""
+            if not recordings_path.exists():
+                return []
+            deleted: list[str] = []
+            for f in recordings_path.iterdir():
+                if f.is_file() and f.stat().st_mtime < cutoff:
+                    f.unlink()
+                    deleted.append(f.name)
+            return deleted
+
+        deleted_files = await asyncio.to_thread(_do_cleanup)
+        for name in deleted_files:
+            _LOGGER.debug("Deleted old recording: %s", name)
 
     # Run cleanup once at startup and daily
     await _cleanup_old_recordings()

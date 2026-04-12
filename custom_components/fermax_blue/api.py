@@ -188,6 +188,11 @@ class FermaxBlueApi:
         if not self.is_authenticated:
             await self.authenticate()
 
+    async def get_access_token(self) -> str:
+        """Return a fresh access token, re-authenticating if needed."""
+        await self._ensure_authenticated()
+        return self._access_token or ""
+
     async def _api_request(self, method: str, path: str, **kwargs) -> httpx.Response:
         """Make an authenticated request with retry on transient errors."""
         await self._ensure_authenticated()
