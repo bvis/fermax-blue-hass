@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from datetime import timedelta
 from pathlib import Path
 from typing import Any
@@ -41,6 +42,9 @@ _LOGGER = logging.getLogger(__name__)
 
 DOORBELL_RESET_SECONDS = 30
 CAMERA_TIMEOUT_SECONDS = 90
+NOTIFICATION_GRACE_PERIOD = (
+    10  # seconds after startup to ignore re-delivered notifications
+)
 
 
 class FermaxBlueCoordinator(DataUpdateCoordinator):
@@ -85,6 +89,7 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         self._stream_stop_unsub: CALLBACK_TYPE | None = None
         self._firebase_config = firebase_config or {}
         self._processed_notifications: set[str] = set()
+        self._notification_start_time: float = 0.0
 
     @property
     def call_mode(self) -> str:
@@ -281,6 +286,7 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         if fcm_token:
             await self.api.register_app_token(fcm_token, active=True)
             await self.notification_listener.start()
+            self._notification_start_time = time.monotonic()
             _LOGGER.info(
                 "Notification listener started for device %s",
                 self.pairing.device_id,
@@ -298,6 +304,19 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
     @callback
     def _handle_notification(self, notification: dict, persistent_id: str) -> None:
         """Handle an incoming FCM doorbell notification."""
+        # After a reload/restart, FCM re-delivers recent notifications.
+        # Ignore them during the grace period to avoid phantom doorbell rings.
+        if (
+            self._notification_start_time
+            and time.monotonic() - self._notification_start_time
+            < NOTIFICATION_GRACE_PERIOD
+        ):
+            _LOGGER.debug(
+                "Ignoring re-delivered notification during grace period: %s",
+                persistent_id,
+            )
+            return
+
         # Skip already-processed notifications (re-delivered on FCM reconnect)
         if persistent_id in self._processed_notifications:
             _LOGGER.debug("Skipping duplicate notification: %s", persistent_id)
