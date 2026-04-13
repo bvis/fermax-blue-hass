@@ -632,8 +632,10 @@ class FermaxStreamSession:
         import subprocess
         import tempfile
 
-        mjpeg_path = tempfile.mktemp(suffix=".mjpeg")
-        pcm_path = tempfile.mktemp(suffix=".pcm")
+        mjpeg_fd, mjpeg_path = tempfile.mkstemp(suffix=".mjpeg")
+        os.close(mjpeg_fd)
+        pcm_fd, pcm_path = tempfile.mkstemp(suffix=".pcm")
+        os.close(pcm_fd)
         has_audio = bool(audio_frames)
         try:
             await asyncio.to_thread(
