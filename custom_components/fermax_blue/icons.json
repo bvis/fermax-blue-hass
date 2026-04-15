@@ -1,0 +1,89 @@
+{
+  "entity": {
+    "sensor": {
+      "wifi_signal": {
+        "default": "mdi:wifi"
+      },
+      "status": {
+        "default": "mdi:information-outline"
+      },
+      "last_opening": {
+        "default": "mdi:door-open"
+      },
+      "last_call": {
+        "default": "mdi:phone-incoming"
+      }
+    },
+    "binary_sensor": {
+      "connection": {
+        "default": "mdi:lan-connect",
+        "state": {
+          "off": "mdi:lan-disconnect"
+        }
+      }
+    },
+    "switch": {
+      "dnd": {
+        "default": "mdi:bell-off",
+        "state": {
+          "off": "mdi:bell"
+        }
+      },
+      "notifications": {
+        "default": "mdi:bell-ring",
+        "state": {
+          "off": "mdi:bell-off"
+        }
+      },
+      "photo_caller": {
+        "default": "mdi:camera",
+        "state": {
+          "off": "mdi:camera-off"
+        }
+      }
+    },
+    "lock": {
+      "door": {
+        "default": "mdi:lock",
+        "state": {
+          "unlocked": "mdi:lock-open"
+        }
+      }
+    },
+    "button": {
+      "open_door": {
+        "default": "mdi:door-open"
+      },
+      "camera_preview": {
+        "default": "mdi:cctv"
+      },
+      "f1": {
+        "default": "mdi:gesture-tap-button"
+      },
+      "call_guard": {
+        "default": "mdi:shield-account"
+      }
+    },
+    "event": {
+      "doorbell": {
+        "default": "mdi:doorbell-video"
+      },
+      "door_opened": {
+        "default": "mdi:door-open"
+      },
+      "camera_on": {
+        "default": "mdi:cctv"
+      }
+    },
+    "number": {
+      "stream_duration": {
+        "default": "mdi:timer-outline"
+      }
+    },
+    "select": {
+      "call_mode": {
+        "default": "mdi:phone-settings"
+      }
+    }
+  }
+}

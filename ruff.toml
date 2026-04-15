@@ -1,5 +1,5 @@
 target-version = "py312"
-line-length = 88
+line-length = 100
 
 [lint]
 select = [
@@ -29,6 +29,7 @@ ignore = [
     "TC002",  # typing-only third-party import (HA needs runtime imports)
     "TC003",  # typing-only stdlib import (HA needs runtime imports)
 ]
+external = ["V"]
 
 [lint.per-file-ignores]
 "tests/*" = ["B018", "PT004", "PT012"]

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from dataclasses import replace
 from datetime import timedelta
 from pathlib import Path
 from typing import Any
@@ -208,9 +209,7 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         # Fetch call log if FCM token is available
         if self.notification_listener and self.notification_listener.fcm_token:
             try:
-                call_log = await self.api.get_call_log(
-                    self.notification_listener.fcm_token
-                )
+                call_log = await self.api.get_call_log(self.notification_listener.fcm_token)
                 self._call_log = call_log
                 if call_log:
                     self._last_call = max(call_log, key=lambda c: c.call_date)
@@ -224,9 +223,7 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
                             if photo:
                                 self._last_photo = photo
                                 self._last_photo_id = latest.photo_id
-                                self.hass.async_create_task(
-                                    self._save_call_photo(photo)
-                                )
+                                self.hass.async_create_task(self._save_call_photo(photo))
             except Exception:
                 _LOGGER.debug("Failed to fetch call log/photo", exc_info=True)
 
@@ -271,12 +268,8 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
             firebase_api_key=str(self._firebase_config.get("firebase_api_key", "")),
             firebase_sender_id=self._firebase_config.get("firebase_sender_id", 0),
             firebase_app_id=str(self._firebase_config.get("firebase_app_id", "")),
-            firebase_project_id=str(
-                self._firebase_config.get("firebase_project_id", "")
-            ),
-            firebase_package_name=str(
-                self._firebase_config.get("firebase_package_name", "")
-            ),
+            firebase_project_id=str(self._firebase_config.get("firebase_project_id", "")),
+            firebase_package_name=str(self._firebase_config.get("firebase_package_name", "")),
         )
 
         # Load persisted last photo for camera preview
@@ -308,8 +301,7 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         # Ignore them during the grace period to avoid phantom doorbell rings.
         if (
             self._notification_start_time is not None
-            and time.monotonic() - self._notification_start_time
-            < NOTIFICATION_GRACE_PERIOD
+            and time.monotonic() - self._notification_start_time < NOTIFICATION_GRACE_PERIOD
         ):
             _LOGGER.debug(
                 "Ignoring re-delivered notification during grace period: %s",
@@ -324,9 +316,7 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         self._processed_notifications.add(persistent_id)
         # Keep set bounded
         if len(self._processed_notifications) > 100:
-            self._processed_notifications = set(
-                list(self._processed_notifications)[-50:]
-            )
+            self._processed_notifications = set(list(self._processed_notifications)[-50:])
 
         _LOGGER.info(
             "Doorbell notification for %s: %s",
@@ -339,15 +329,11 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
 
         # ACK the notification for reliability
         fcm_message_id = (
-            notification.get("fcmMessageId")
-            or data.get("fcmMessageId")
-            or persistent_id
+            notification.get("fcmMessageId") or data.get("fcmMessageId") or persistent_id
         )
         notification_type = data.get("FermaxNotificationType", "")
         is_call = notification_type in ("Call", "CallAttend", "CallEnd")
-        self.hass.async_create_task(
-            self.api.ack_notification(fcm_message_id, is_call=is_call)
-        )
+        self.hass.async_create_task(self.api.ack_notification(fcm_message_id, is_call=is_call))
 
         # Start video stream based on call mode:
         # - Autoon (camera preview button): always start stream
@@ -360,9 +346,7 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         if should_stream:
             socket_url = data.get("SocketUrl", DEFAULT_SIGNALING_URL)
             fermax_token = data.get("FermaxToken", "")
-            self.hass.async_create_task(
-                self._start_stream(room_id, socket_url, fermax_token)
-            )
+            self.hass.async_create_task(self._start_stream(room_id, socket_url, fermax_token))
             if (
                 notification_type == "Call"
                 and self._call_mode == CALL_MODE_AUTO_RESPOND
@@ -409,11 +393,7 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
 
         # If there's an active stream, use the in-call endpoint
         if self._stream_session and self._stream_session.is_active:
-            fcm_token = (
-                self.notification_listener.fcm_token
-                if self.notification_listener
-                else None
-            )
+            fcm_token = self.notification_listener.fcm_token if self.notification_listener else None
             success = await self.api.open_door_incall(
                 device_id=self.pairing.device_id,
                 room_id=self._stream_session._room_id,
@@ -511,25 +491,10 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
     async def set_photo_caller(self, enabled: bool) -> None:
         """Enable or disable photo caller."""
         await self.api.set_photo_caller(self.pairing.device_id, enabled=enabled)
-        # Update local state to reflect the change immediately
         if self.device_info:
-            self.device_info = DeviceInfo(
-                device_id=self.device_info.device_id,
-                connection_state=self.device_info.connection_state,
-                status=self.device_info.status,
-                family=self.device_info.family,
-                device_type=self.device_info.device_type,
-                subtype=self.device_info.subtype,
-                unit_number=self.device_info.unit_number,
-                photocaller=enabled,
-                streaming_mode=self.device_info.streaming_mode,
-                is_monitor=self.device_info.is_monitor,
-                wireless_signal=self.device_info.wireless_signal,
-            )
+            self.device_info = replace(self.device_info, photocaller=enabled)
 
-    async def _start_stream(
-        self, room_id: str, signaling_url: str, fermax_token: str = ""
-    ) -> None:
+    async def _start_stream(self, room_id: str, signaling_url: str, fermax_token: str = "") -> None:
         """Start a video stream session for the given room."""
         await self.stop_stream()
 

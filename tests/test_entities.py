@@ -281,3 +281,73 @@ class TestLastCallSensor:
         assert attrs["call_id"] == "abc123"
         assert attrs["answered"] is False
         assert attrs["recent_calls"] == 1
+
+
+class TestSensorDescriptors:
+    """Test descriptor-based sensor configuration."""
+
+    def test_all_sensors_created(self, mock_coordinator):
+        from custom_components.fermax_blue.sensor import SENSOR_TYPES
+
+        assert "wifi_signal" in SENSOR_TYPES
+        assert "device_status" in SENSOR_TYPES
+        assert "last_opening" in SENSOR_TYPES
+        assert "last_call" in SENSOR_TYPES
+
+    def test_wifi_signal_descriptor(self):
+        from custom_components.fermax_blue.sensor import SENSOR_TYPES
+
+        desc = SENSOR_TYPES["wifi_signal"]
+        assert desc.icon == "mdi:wifi"
+        assert desc.state_class is not None
+
+    def test_binary_sensor_descriptors(self, mock_coordinator):
+        from custom_components.fermax_blue.binary_sensor import BINARY_SENSOR_TYPES
+
+        assert "connection" in BINARY_SENSOR_TYPES
+        desc = BINARY_SENSOR_TYPES["connection"]
+        assert desc.device_class is not None
+
+
+class TestOptimisticSwitches:
+    """Test optimistic state updates for DnD and PhotoCaller switches."""
+
+    @pytest.mark.asyncio
+    async def test_dnd_switch_optimistic_on(self, mock_coordinator):
+        from custom_components.fermax_blue.switch import FermaxDndSwitch
+
+        mock_coordinator.set_dnd = AsyncMock()
+        switch = FermaxDndSwitch(mock_coordinator)
+        mock_coordinator.dnd_enabled = False
+        switch.async_write_ha_state = MagicMock()
+
+        await switch.async_turn_on()
+        mock_coordinator.set_dnd.assert_awaited_once_with(True)
+        # After the call completes optimistic state is reset; coordinator value used
+        assert switch.is_on is False
+
+    @pytest.mark.asyncio
+    async def test_dnd_switch_optimistic_off(self, mock_coordinator):
+        from custom_components.fermax_blue.switch import FermaxDndSwitch
+
+        mock_coordinator.set_dnd = AsyncMock()
+        switch = FermaxDndSwitch(mock_coordinator)
+        mock_coordinator.dnd_enabled = True
+        switch.async_write_ha_state = MagicMock()
+
+        await switch.async_turn_off()
+        mock_coordinator.set_dnd.assert_awaited_once_with(False)
+        assert switch.is_on is True
+
+    @pytest.mark.asyncio
+    async def test_photo_caller_switch_optimistic(self, mock_coordinator):
+        from custom_components.fermax_blue.switch import FermaxPhotoCallerSwitch
+
+        mock_coordinator.set_photo_caller = AsyncMock()
+        switch = FermaxPhotoCallerSwitch(mock_coordinator)
+        switch.async_write_ha_state = MagicMock()
+
+        await switch.async_turn_on()
+        mock_coordinator.set_photo_caller.assert_awaited_once_with(True)
+        # After completion, optimistic state is cleared; falls back to coordinator
+        assert switch.is_on is True  # device_info.photocaller = True in fixture

@@ -1,0 +1,20 @@
+"""Vulture whitelist — HA-required interface methods that appear unused."""
+async_step_user = None
+async_step_credentials = None
+async_step_init = None
+async_get_options_flow = None
+async_migrate_entry = None
+async_setup_entry = None
+async_unload_entry = None
+extra_state_attributes = None
+async_press = None
+async_turn_on = None
+async_turn_off = None
+async_lock = None
+async_unlock = None
+native_value = None
+set_native_value = None
+is_on = None
+is_locked = None
+async_get_config_entry_diagnostics = None
+_async_update_data = None

@@ -327,12 +327,13 @@ All development tools run via Docker — no local Python dependencies needed. On
 See [CONTRIBUTING.md](CONTRIBUTING.md) for full guidelines.
 
 ```bash
-make check         # Run all checks (lint + format + type-check + tests)
-make lint           # Ruff linting
+make check         # Run all checks (lint + format + type-check + dead-code + tests)
+make lint           # Ruff linting (E, F, W, I, N, UP, B, A, SIM, TCH)
 make format         # Auto-format code
 make format-check   # Verify formatting (CI mode)
 make typecheck      # Mypy type checking
-make test           # Pytest with coverage
+make deadcode       # Vulture dead code analysis
+make test           # Pytest with coverage (min 40%)
 make cli            # Interactive API tester
 make pre-push       # Full CI replica (same as GitHub Actions)
 ```

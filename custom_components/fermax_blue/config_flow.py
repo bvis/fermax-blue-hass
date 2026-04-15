@@ -75,9 +75,7 @@ class FermaxBlueConfigFlow(ConfigFlow, domain=DOMAIN):
         """Initialize the config flow."""
         self._user_data: dict[str, Any] = {}
 
-    async def async_step_user(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
+    async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Handle the initial step — user credentials."""
         if user_input is not None:
             self._user_data = user_input
@@ -101,9 +99,7 @@ class FermaxBlueConfigFlow(ConfigFlow, domain=DOMAIN):
             data_schema=STEP_CREDENTIALS_SCHEMA,
         )
 
-    async def _async_validate_and_create(
-        self, data: dict[str, Any]
-    ) -> ConfigFlowResult:
+    async def _async_validate_and_create(self, data: dict[str, Any]) -> ConfigFlowResult:
         """Validate credentials and create the config entry."""
         errors: dict[str, str] = {}
         client = get_async_client(self.hass)
@@ -154,9 +150,7 @@ class FermaxBlueConfigFlow(ConfigFlow, domain=DOMAIN):
 class FermaxBlueOptionsFlow(OptionsFlow):
     """Handle options for Fermax Blue."""
 
-    async def async_step_init(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
+    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Manage the options."""
         if user_input is not None:
             return self.async_create_entry(data=user_input)

@@ -83,7 +83,9 @@ class FermaxCamera(FermaxBlueEntity, Camera):
         return super().available
 
     async def async_camera_image(
-        self, width: int | None = None, height: int | None = None
+        self,
+        width: int | None = None,  # noqa: V107
+        height: int | None = None,  # noqa: V107
     ) -> bytes | None:
         """Return the latest frame: live stream if active, else last captured frame."""
         stream = self.coordinator.stream_session
@@ -91,9 +93,7 @@ class FermaxCamera(FermaxBlueEntity, Camera):
             return stream.latest_frame
         return self.coordinator.last_photo
 
-    async def handle_async_mjpeg_stream(
-        self, request: web.Request
-    ) -> web.StreamResponse | None:
+    async def handle_async_mjpeg_stream(self, request: web.Request) -> web.StreamResponse | None:
         """Serve MJPEG stream: live frames when streaming, last photo otherwise.
 
         The stream serves continuously — when a live stream starts or stops,

@@ -1,0 +1,69 @@
+name: Bug Report
+description: Report a bug with the Fermax Blue integration
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! Please fill in as much detail as possible.
+
+  - type: input
+    id: version
+    attributes:
+      label: Integration version
+      description: "Found in Settings > Devices & Services > Fermax Blue"
+      placeholder: "0.15.4"
+    validations:
+      required: true
+
+  - type: input
+    id: ha_version
+    attributes:
+      label: Home Assistant version
+      placeholder: "2026.4.2"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: installation
+    attributes:
+      label: Installation type
+      options:
+        - Home Assistant OS
+        - Home Assistant Container
+        - Home Assistant Supervised
+        - Home Assistant Core
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What happened? What did you expect?
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: "Enable debug logging: Settings > Devices & Services > Fermax Blue > Enable debug logging"
+      render: text
+
+  - type: dropdown
+    id: fcm_status
+    attributes:
+      label: FCM notifications working?
+      description: Do you receive doorbell notifications?
+      options:
+        - "Yes"
+        - "No"
+        - Not sure
+
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics
+      description: "Download from Settings > Devices & Services > Fermax Blue > 3 dots > Download diagnostics"
+      render: json

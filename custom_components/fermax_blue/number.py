@@ -34,7 +34,6 @@ class FermaxStreamDurationNumber(FermaxBlueEntity, NumberEntity):
     """Number entity to control stream duration."""
 
     _attr_translation_key = "stream_duration"
-    _attr_icon = "mdi:timer-outline"
     _attr_native_min_value = MIN_STREAM_DURATION
     _attr_native_max_value = MAX_STREAM_DURATION
     _attr_native_step = 5

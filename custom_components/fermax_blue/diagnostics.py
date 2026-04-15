@@ -9,9 +9,8 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
 from .const import DOMAIN
-from .coordinator import FermaxBlueCoordinator
 
-REDACT_KEYS = {
+TO_REDACT = {
     "password",
     "username",
     "access_token",
@@ -23,20 +22,29 @@ REDACT_KEYS = {
 
 
 async def async_get_config_entry_diagnostics(
-    hass: HomeAssistant, entry: ConfigEntry
+    hass: HomeAssistant,
+    config_entry: ConfigEntry,
 ) -> dict[str, Any]:
     """Return diagnostics for a config entry."""
-    coordinators: list[FermaxBlueCoordinator] = hass.data[DOMAIN][entry.entry_id]
+    coordinators = hass.data[DOMAIN].get(config_entry.entry_id, [])
 
     devices = []
     for coordinator in coordinators:
-        device_data: dict[str, Any] = {
+        listener = coordinator.notification_listener
+        device: dict[str, Any] = {
             "device_id": coordinator.pairing.device_id,
             "tag": coordinator.pairing.tag,
             "coordinator_data": coordinator.data,
+            "notification_listener": ("running" if listener and listener.is_started else "stopped"),
+            "fcm_token": listener.fcm_token if listener else None,
+            "stream_active": (
+                coordinator.stream_session is not None and coordinator.stream_session.is_active
+            )
+            if coordinator.stream_session
+            else False,
         }
         if coordinator.device_info:
-            device_data["device_info"] = {
+            device["device_info"] = {
                 "connection_state": coordinator.device_info.connection_state,
                 "status": coordinator.device_info.status,
                 "family": coordinator.device_info.family,
@@ -45,12 +53,15 @@ async def async_get_config_entry_diagnostics(
                 "wireless_signal": coordinator.device_info.wireless_signal,
                 "photocaller": coordinator.device_info.photocaller,
             }
-        devices.append(device_data)
+        devices.append(device)
 
     return async_redact_data(
         {
-            "config_entry": async_redact_data(dict(entry.data), REDACT_KEYS),
+            "config_entry": {
+                "data": dict(config_entry.data),
+                "options": dict(config_entry.options),
+            },
             "devices": devices,
         },
-        REDACT_KEYS,
+        TO_REDACT,
     )

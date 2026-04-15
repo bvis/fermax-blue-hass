@@ -182,9 +182,7 @@ class TestPatternMatching:
     def test_derives_auth_url_from_base(self, script_module):
         strings = ["https://pro-duoxme.fermax.io"]
         creds = script_module._find_credentials(strings)
-        assert creds["fermax_auth_url"] == (
-            "https://oauth-pro-duoxme.fermax.io/oauth/token"
-        )
+        assert creds["fermax_auth_url"] == ("https://oauth-pro-duoxme.fermax.io/oauth/token")
 
     def test_derives_sender_id_from_app_id(self, script_module):
         strings = ["1:999888777666:android:aabbccddee"]

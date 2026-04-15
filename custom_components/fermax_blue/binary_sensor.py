@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from homeassistant.components.binary_sensor import (
     BinarySensorDeviceClass,
     BinarySensorEntity,
@@ -15,6 +17,22 @@ from .coordinator import FermaxBlueCoordinator
 from .entity import FermaxBlueEntity
 
 
+@dataclass(frozen=True)
+class BinarySensorTypeInfo:
+    """Descriptor for a binary sensor type."""
+
+    translation_key: str
+    device_class: BinarySensorDeviceClass | None = None
+
+
+BINARY_SENSOR_TYPES: dict[str, BinarySensorTypeInfo] = {
+    "connection": BinarySensorTypeInfo(
+        translation_key="connection",
+        device_class=BinarySensorDeviceClass.CONNECTIVITY,
+    ),
+}
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -25,24 +43,40 @@ async def async_setup_entry(
     entities: list[BinarySensorEntity] = []
 
     for coordinator in coordinators:
-        entities.append(FermaxConnectionSensor(coordinator))
+        for key in BINARY_SENSOR_TYPES:
+            entities.append(FermaxBinarySensor(coordinator, key))
 
     async_add_entities(entities)
 
 
-class FermaxConnectionSensor(FermaxBlueEntity, BinarySensorEntity):
-    """Sensor for device connection status."""
+class FermaxBinarySensor(FermaxBlueEntity, BinarySensorEntity):
+    """Generic Fermax binary sensor driven by a BinarySensorTypeInfo descriptor."""
 
-    _attr_device_class = BinarySensorDeviceClass.CONNECTIVITY
-    _attr_translation_key = "connection"
-
-    def __init__(self, coordinator: FermaxBlueCoordinator) -> None:
+    def __init__(self, coordinator: FermaxBlueCoordinator, key: str) -> None:
         super().__init__(coordinator)
-        self._attr_unique_id = f"{self._device_id}_connection"
+        self._key = key
+        descriptor = BINARY_SENSOR_TYPES[key]
+        self._attr_unique_id = f"{self._device_id}_{key}"
+        self._attr_translation_key = descriptor.translation_key
+        self._attr_device_class = descriptor.device_class
 
     @property
     def is_on(self) -> bool | None:
-        """Return True if connected."""
-        if self.coordinator.data:
-            return self.coordinator.data.get("connection_state") == "Connected"
+        """Return sensor state based on key."""
+        if self._key == "connection":
+            if self.coordinator.data:
+                return self.coordinator.data.get("connection_state") == "Connected"
+            return None
         return None
+
+
+# ---------------------------------------------------------------------------
+# Backward-compatible alias
+# ---------------------------------------------------------------------------
+
+
+class FermaxConnectionSensor(FermaxBinarySensor):
+    """Backward-compatible alias for the connection binary sensor."""
+
+    def __init__(self, coordinator: FermaxBlueCoordinator) -> None:
+        super().__init__(coordinator, "connection")

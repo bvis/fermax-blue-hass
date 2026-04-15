@@ -76,9 +76,7 @@ class FermaxDoorLock(FermaxBlueEntity, LockEntity):
                 self.async_write_ha_state()
                 self._auto_lock_unsub = None
 
-            self._auto_lock_unsub = async_call_later(
-                self.hass, AUTO_LOCK_SECONDS, _auto_lock
-            )
+            self._auto_lock_unsub = async_call_later(self.hass, AUTO_LOCK_SECONDS, _auto_lock)
         else:
             _LOGGER.error("Failed to open door %s", self._door_name)
 

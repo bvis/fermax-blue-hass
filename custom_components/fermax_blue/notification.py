@@ -102,7 +102,7 @@ class FermaxNotificationListener:
         self,
         notification: dict[str, Any],
         persistent_id: str,
-        obj: Any = None,
+        obj: Any = None,  # noqa: V107
     ) -> None:
         """Handle incoming FCM notification."""
         _LOGGER.debug("Received FCM notification (persistent_id omitted)")

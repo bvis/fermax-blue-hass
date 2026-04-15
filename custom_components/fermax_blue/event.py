@@ -35,7 +35,6 @@ class FermaxDoorbellEvent(FermaxBlueEntity, EventEntity):
 
     _attr_translation_key = "doorbell"
     _attr_event_types = ["ring"]
-    _attr_icon = "mdi:bell-ring"
 
     def __init__(self, coordinator: FermaxBlueCoordinator) -> None:
         super().__init__(coordinator)
@@ -65,7 +64,6 @@ class FermaxDoorOpenedEvent(FermaxBlueEntity, EventEntity):
 
     _attr_translation_key = "door_opened"
     _attr_event_types = ["door_opened"]
-    _attr_icon = "mdi:door-open"
 
     def __init__(self, coordinator: FermaxBlueCoordinator) -> None:
         super().__init__(coordinator)
@@ -93,7 +91,6 @@ class FermaxCameraOnEvent(FermaxBlueEntity, EventEntity):
 
     _attr_translation_key = "camera_on"
     _attr_event_types = ["camera_on"]
-    _attr_icon = "mdi:cctv"
 
     def __init__(self, coordinator: FermaxBlueCoordinator) -> None:
         super().__init__(coordinator)

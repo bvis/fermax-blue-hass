@@ -1,5 +1,6 @@
 """Tests for the Fermax Blue API client."""
 
+from dataclasses import FrozenInstanceError
 from unittest.mock import AsyncMock, patch
 
 import httpx
@@ -347,9 +348,7 @@ class TestAutoOn:
         )
 
         with patch("httpx.AsyncClient.post", return_value=resp):
-            result = await authenticated_api.change_video_source(
-                "device_123", "fcm_token_123"
-            )
+            result = await authenticated_api.change_video_source("device_123", "fcm_token_123")
 
         assert result is not None
         assert result.reason == "call_starting"
@@ -363,9 +362,7 @@ class TestAutoOn:
             patch("httpx.AsyncClient.post", return_value=resp),
             patch("asyncio.sleep", new_callable=AsyncMock),
         ):
-            result = await authenticated_api.change_video_source(
-                "device_123", "fcm_token_123"
-            )
+            result = await authenticated_api.change_video_source("device_123", "fcm_token_123")
 
         assert result is None
 
@@ -379,9 +376,7 @@ class TestAppToken:
         resp = _mock_response(200, json={"message": "ok"})
 
         with patch("httpx.AsyncClient.post", return_value=resp):
-            result = await authenticated_api.register_app_token(
-                "fcm_token", active=True
-            )
+            result = await authenticated_api.register_app_token("fcm_token", active=True)
 
         assert result is True
 
@@ -391,9 +386,7 @@ class TestAppToken:
         resp = _mock_response(409, json={"title": "Conflict"})
 
         with patch("httpx.AsyncClient.post", return_value=resp):
-            result = await authenticated_api.register_app_token(
-                "fcm_token", active=True
-            )
+            result = await authenticated_api.register_app_token("fcm_token", active=True)
 
         assert result is False
 
@@ -403,9 +396,7 @@ class TestAppToken:
         resp = _mock_response(200, json={"message": "ok"})
 
         with patch("httpx.AsyncClient.post", return_value=resp):
-            result = await authenticated_api.register_app_token(
-                "fcm_token", active=False
-            )
+            result = await authenticated_api.register_app_token("fcm_token", active=False)
 
         assert result is True
 
@@ -591,3 +582,38 @@ class TestClientLifecycle:
         await api._get_client()
         await api.close()
         assert api._client is None
+
+
+class TestFrozenModels:
+    def test_device_info_is_frozen(self):
+        from custom_components.fermax_blue.api import DeviceInfo
+
+        info = DeviceInfo(
+            device_id="dev1",
+            connection_state="Connected",
+            status="OK",
+            family="BLUE",
+            device_type="Monitor",
+            subtype="",
+            unit_number=1,
+            photocaller=True,
+            streaming_mode="bluestream",
+            is_monitor=True,
+            wireless_signal=3,
+        )
+        with pytest.raises(FrozenInstanceError):
+            info.status = "Offline"
+
+    def test_pairing_is_frozen(self):
+        from custom_components.fermax_blue.api import Pairing
+
+        p = Pairing(device_id="d1", tag="tag", installation_id="inst1")
+        with pytest.raises(FrozenInstanceError):
+            p.tag = "new_tag"
+
+    def test_opening_record_is_frozen(self):
+        from custom_components.fermax_blue.api import OpeningRecord
+
+        record = OpeningRecord(timestamp="2026-01-01", user="u", door="d")
+        with pytest.raises(FrozenInstanceError):
+            record.user = "other"

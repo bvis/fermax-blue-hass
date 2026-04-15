@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.16.0] - 2026-04-15
+
+### Added
+- **Descriptor-based entities** — sensors and binary sensors use `SensorTypeInfo`/`BinarySensorTypeInfo` frozen dataclasses for cleaner, data-driven entity creation
+- **Optimistic state** for DnD and PhotoCaller switches — UI updates instantly before API confirmation
+- **`icons.json`** — state-aware icons for all entity types (switches change icon on/off, lock changes locked/unlocked, etc.)
+- **Vulture dead code analysis** in CI and `make deadcode` target
+- **Coverage threshold** (`--cov-fail-under=40`) enforced in CI
+- **GitHub issue templates** — structured bug report (with FCM status, diagnostics fields) and feature request
+
+### Changed
+- **Ruff rules expanded** — added isort (I), naming (N), pyupgrade (UP), bugbear (B), builtins-shadow (A), simplification (SIM), type-checking (TCH)
+- **API models frozen** — all 6 dataclasses in `api.py` use `@dataclass(frozen=True)` for immutability
+- **Diagnostics rewritten** with `async_redact_data()`, operational data (listener status, stream state, FCM token redacted)
+- **Coordinator** uses `dataclasses.replace()` instead of manual `DeviceInfo` reconstruction
+
 ## [0.15.4] - 2026-04-15
 
 ### Fixed

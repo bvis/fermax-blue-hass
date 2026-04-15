@@ -130,9 +130,7 @@ async def main() -> None:
 
         # Extract signaling info from push
         room_id = notification_data.get("RoomId")
-        socket_url = notification_data.get(
-            "SocketUrl", "http://signaling-pro-duoxme.fermax.io"
-        )
+        socket_url = notification_data.get("SocketUrl", "http://signaling-pro-duoxme.fermax.io")
         streaming_mode = notification_data.get("StreamingMode", "")
         preview_timeout = notification_data.get("PreviewTimeout", "29")
         notif_type = notification_data.get("FermaxNotificationType", "")

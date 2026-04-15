@@ -23,7 +23,7 @@ MAX_RETRIES = 3
 RETRY_BACKOFF_BASE = 1.0
 
 
-@dataclass
+@dataclass(frozen=True)
 class AccessDoor:
     """Represents a door that can be opened."""
 
@@ -33,7 +33,7 @@ class AccessDoor:
     visible: bool
 
 
-@dataclass
+@dataclass(frozen=True)
 class DeviceInfo:
     """Device information from Fermax."""
 
@@ -50,7 +50,7 @@ class DeviceInfo:
     wireless_signal: int
 
 
-@dataclass
+@dataclass(frozen=True)
 class Pairing:
     """Represents a paired device."""
 
@@ -60,7 +60,7 @@ class Pairing:
     access_doors: dict[str, AccessDoor] = field(default_factory=dict)
 
 
-@dataclass
+@dataclass(frozen=True)
 class CallLogEntry:
     """A call log entry with optional photo."""
 
@@ -71,7 +71,7 @@ class CallLogEntry:
     answered: bool = False
 
 
-@dataclass
+@dataclass(frozen=True)
 class DivertResponse:
     """Response from autoOn/changeVideoSource calls."""
 
@@ -84,7 +84,7 @@ class DivertResponse:
     remote_address: str = ""
 
 
-@dataclass
+@dataclass(frozen=True)
 class OpeningRecord:
     """A door opening history entry."""
 
@@ -401,9 +401,7 @@ class FermaxBlueApi:
             remote_address=remote_info.get("address", ""),
         )
 
-    async def change_video_source(
-        self, device_id: str, fcm_token: str
-    ) -> DivertResponse | None:
+    async def change_video_source(self, device_id: str, fcm_token: str) -> DivertResponse | None:
         """Request a video source change on the intercom."""
         payload = {
             "directedToBluestream": fcm_token,
@@ -487,11 +485,7 @@ class FermaxBlueApi:
 
     async def ack_notification(self, message_id: str, *, is_call: bool) -> None:
         """Acknowledge a notification (call or info)."""
-        path = (
-            "/callmanager/api/v1/message/ack"
-            if is_call
-            else "/notification/api/v1/message/ack"
-        )
+        path = "/callmanager/api/v1/message/ack" if is_call else "/notification/api/v1/message/ack"
         body = {"attended": True, "fcmMessageId": message_id}
         try:
             await self._api_post(path, json=body)

@@ -87,14 +87,10 @@ async def main() -> None:
                     print(f"Push (stale, {age_s:.0f}s old): {room_id}")
                     return
             if auto_on_time == 0:
-                print(
-                    f"Push (before auto-on): type={data.get('FermaxNotificationType')}"
-                )
+                print(f"Push (before auto-on): type={data.get('FermaxNotificationType')}")
                 return
             notif_data.update(data)
-            print(
-                f"Push: type={notif_data.get('FermaxNotificationType')}, room={room_id}"
-            )
+            print(f"Push: type={notif_data.get('FermaxNotificationType')}, room={room_id}")
             notif_event.set()
 
         listener = FermaxNotificationListener(

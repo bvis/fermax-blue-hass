@@ -202,9 +202,7 @@ class FermaxSignalingClient:
             self._room_join_result = RoomJoinResult(
                 video_producer_id=result_data.get("producerIdVideo", ""),
                 audio_producer_id=result_data.get("producerIdAudio", ""),
-                router_rtp_capabilities=json.dumps(
-                    result_data.get("routerRtpCapabilities", {})
-                ),
+                router_rtp_capabilities=json.dumps(result_data.get("routerRtpCapabilities", {})),
                 recv_video_transport=self._parse_transport(recv_video),
                 recv_audio_transport=self._parse_transport(recv_audio),
                 send_transport=self._parse_transport(send),
@@ -277,9 +275,7 @@ class FermaxSignalingClient:
 
         try:
             dtls = (
-                json.loads(dtls_parameters)
-                if isinstance(dtls_parameters, str)
-                else dtls_parameters
+                json.loads(dtls_parameters) if isinstance(dtls_parameters, str) else dtls_parameters
             )
             response = await self._sio.call(
                 "transport_connect",
@@ -313,11 +309,7 @@ class FermaxSignalingClient:
                 if isinstance(rtp_capabilities, str)
                 else rtp_capabilities
             )
-            rtp = (
-                json.loads(rtp_parameters)
-                if isinstance(rtp_parameters, str)
-                else rtp_parameters
-            )
+            rtp = json.loads(rtp_parameters) if isinstance(rtp_parameters, str) else rtp_parameters
             app = json.loads(app_data) if isinstance(app_data, str) else app_data
 
             # APK sends: {"parameters": {kind, rtpParameters, appData}, "rtpCapabilities": ...}
@@ -595,9 +587,7 @@ class FermaxStreamSession:
         self._active = True
         self._frame_task = asyncio.create_task(self._grab_frames())
         if self._audio_consumer:
-            self._audio_task: asyncio.Task | None = asyncio.create_task(
-                self._grab_audio()
-            )
+            self._audio_task: asyncio.Task | None = asyncio.create_task(self._grab_audio())
         else:
             self._audio_task = None
         _LOGGER.info("Stream session started for room %s", self._room_id)
@@ -732,9 +722,7 @@ class FermaxStreamSession:
                     has_audio,
                 )
             else:
-                _LOGGER.warning(
-                    "ffmpeg exited with %d: %s", proc.returncode, proc.stderr[-200:]
-                )
+                _LOGGER.warning("ffmpeg exited with %d: %s", proc.returncode, proc.stderr[-200:])
         except FileNotFoundError:
             _LOGGER.debug("ffmpeg not available, saving raw MJPEG")
             dest = self._recording_path.replace(".mp4", ".mjpeg")
@@ -808,10 +796,7 @@ class FermaxStreamSession:
                 raw_buf = io.BytesIO()
                 img.save(raw_buf, format="JPEG", quality=75)
                 raw_jpeg = raw_buf.getvalue()
-                if (
-                    hasattr(self, "_recording_frames")
-                    and self._recording_frames is not None
-                ):
+                if hasattr(self, "_recording_frames") and self._recording_frames is not None:
                     self._recording_frames.append(raw_jpeg)
 
                 # Add LIVE overlay for display
@@ -820,9 +805,7 @@ class FermaxStreamSession:
                 img.save(buf, format="JPEG", quality=75)
                 self._latest_frame = buf.getvalue()
                 if frame_count == 1:
-                    _LOGGER.info(
-                        "First frame received: %d bytes", len(self._latest_frame)
-                    )
+                    _LOGGER.info("First frame received: %d bytes", len(self._latest_frame))
                 elif frame_count % 100 == 0:
                     _LOGGER.debug("Frame %d received", frame_count)
         except MediaStreamError:

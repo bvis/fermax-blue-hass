@@ -23,7 +23,7 @@ jobs:
         run: docker build -t fermax-blue-dev --build-arg PYTHON_VERSION=${{ matrix.python-version }} -f Dockerfile.dev .
 
       - name: Run tests
-        run: docker run --rm -v $PWD:/app -w /app fermax-blue-dev pytest tests/ -v --cov=custom_components/fermax_blue --cov-report=term-missing --tb=short
+        run: docker run --rm -v $PWD:/app -w /app fermax-blue-dev pytest tests/ -v --cov=custom_components/fermax_blue --cov-report=term-missing --cov-fail-under=40 --tb=short
 
   lint:
     runs-on: ubuntu-latest
@@ -49,6 +49,15 @@ jobs:
 
       - name: Type check
         run: docker run --rm -v $PWD:/app -w /app fermax-blue-dev mypy custom_components/fermax_blue/ --ignore-missing-imports
+
+  dead-code:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build dev image
+        run: docker build -t fermax-blue-dev -f Dockerfile.dev .
+      - name: Dead code check
+        run: docker run --rm -v $PWD:/app -w /app fermax-blue-dev vulture custom_components/fermax_blue/ .vulture_whitelist.py --min-confidence 80
 
   hassfest:
     runs-on: ubuntu-latest

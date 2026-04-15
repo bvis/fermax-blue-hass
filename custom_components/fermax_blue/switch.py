@@ -71,51 +71,63 @@ class FermaxDndSwitch(FermaxBlueEntity, SwitchEntity):
     """Switch for Do Not Disturb mode."""
 
     _attr_translation_key = "dnd"
-    _attr_icon = "mdi:bell-off"
 
     def __init__(self, coordinator: FermaxBlueCoordinator) -> None:
         super().__init__(coordinator)
         self._attr_unique_id = f"{self._device_id}_dnd"
+        self._optimistic_state: bool | None = None
 
     @property
     def is_on(self) -> bool | None:
         """Return True if DND is enabled."""
+        if self._optimistic_state is not None:
+            return self._optimistic_state
         return self.coordinator.dnd_enabled
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Enable Do Not Disturb."""
-        await self.coordinator.set_dnd(True)
+        self._optimistic_state = True
         self.async_write_ha_state()
+        await self.coordinator.set_dnd(True)
+        self._optimistic_state = None
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Disable Do Not Disturb."""
-        await self.coordinator.set_dnd(False)
+        self._optimistic_state = False
         self.async_write_ha_state()
+        await self.coordinator.set_dnd(False)
+        self._optimistic_state = None
 
 
 class FermaxPhotoCallerSwitch(FermaxBlueEntity, SwitchEntity):
     """Switch to enable/disable photo caller."""
 
     _attr_translation_key = "photo_caller"
-    _attr_icon = "mdi:camera-account"
 
     def __init__(self, coordinator: FermaxBlueCoordinator) -> None:
         super().__init__(coordinator)
         self._attr_unique_id = f"{self._device_id}_photo_caller"
+        self._optimistic_state: bool | None = None
 
     @property
     def is_on(self) -> bool | None:
         """Return True if photo caller is enabled."""
+        if self._optimistic_state is not None:
+            return self._optimistic_state
         if self.coordinator.device_info:
             return self.coordinator.device_info.photocaller
         return None
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Enable photo caller."""
-        await self.coordinator.set_photo_caller(True)
+        self._optimistic_state = True
         self.async_write_ha_state()
+        await self.coordinator.set_photo_caller(True)
+        self._optimistic_state = None
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Disable photo caller."""
-        await self.coordinator.set_photo_caller(False)
+        self._optimistic_state = False
         self.async_write_ha_state()
+        await self.coordinator.set_photo_caller(False)
+        self._optimistic_state = None

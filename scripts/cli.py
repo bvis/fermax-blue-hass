@@ -140,9 +140,7 @@ async def main() -> None:
 
                 if choice == "1":
                     # List visible doors
-                    visible_doors = [
-                        (n, d) for n, d in pairing.access_doors.items() if d.visible
-                    ]
+                    visible_doors = [(n, d) for n, d in pairing.access_doors.items() if d.visible]
                     if not visible_doors:
                         print("No visible doors found!")
                         continue
@@ -191,17 +189,13 @@ async def main() -> None:
                     print("OK")
 
                 elif choice == "7":
-                    enable = (
-                        input("Enable photo caller? [y/n]: ").strip().lower() == "y"
-                    )
+                    enable = input("Enable photo caller? [y/n]: ").strip().lower() == "y"
                     print(f"Setting photo caller to {enable}...", end=" ", flush=True)
                     await api.set_photo_caller(pairing.device_id, enabled=enable)
                     print("OK")
 
                 elif choice == "8":
-                    user_id = (
-                        input("User ID (or press Enter for 'me'): ").strip() or "me"
-                    )
+                    user_id = input("User ID (or press Enter for 'me'): ").strip() or "me"
                     print("Fetching opening history...", end=" ", flush=True)
                     records = await api.get_opening_history(pairing.device_id, user_id)
                     print(f"OK ({len(records)} entries)")
@@ -237,12 +231,8 @@ async def main() -> None:
                         print(f"  {e.call_date} - {e.device_id}{answered}{photo}")
 
                 elif choice == "11":
-                    path = input(
-                        "GET path (e.g. /pairing/api/v4/pairings/me): "
-                    ).strip()
-                    params_str = input(
-                        "Query params JSON (or Enter for none): "
-                    ).strip()
+                    path = input("GET path (e.g. /pairing/api/v4/pairings/me): ").strip()
+                    params_str = input("Query params JSON (or Enter for none): ").strip()
                     params = json.loads(params_str) if params_str else None
                     response = await api._api_get(path, params=params)
                     print(f"Status: {response.status_code}")

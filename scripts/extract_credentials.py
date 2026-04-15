@@ -175,9 +175,7 @@ def _extract_oauth_from_source(dir_path: str) -> str:
 
         # Build a local-variable lookup from the method body
         local_vars: dict[str, int] = {}
-        for lv in re.finditer(
-            r"Byte\s+(\w+)\s*=\s*Byte\.valueOf\(Ascii\.(\w+)\)", method_body
-        ):
+        for lv in re.finditer(r"Byte\s+(\w+)\s*=\s*Byte\.valueOf\(Ascii\.(\w+)\)", method_body):
             var_name, ascii_name = lv.group(1), lv.group(2)
             local_vars[var_name] = _ASCII_MAP.get(ascii_name, 0)
 
@@ -213,9 +211,7 @@ def _extract_oauth_from_source(dir_path: str) -> str:
         decryptor = cipher.decryptor()
         client_id = decryptor.update(prod_client_id_enc) + decryptor.finalize()
         decryptor2 = cipher.decryptor()
-        client_secret = (
-            decryptor2.update(prod_client_secret_enc) + decryptor2.finalize()
-        )
+        client_secret = decryptor2.update(prod_client_secret_enc) + decryptor2.finalize()
         # Remove PKCS padding
         client_id = client_id[: -client_id[-1]].decode("utf-8")
         client_secret = client_secret[: -client_secret[-1]].decode("utf-8")
@@ -282,9 +278,7 @@ def _find_credentials(strings: list[str]) -> dict[str, str]:
             creds["firebase_project_id"] = s
 
         # Firebase Package Name
-        if not creds["firebase_package_name"] and re.match(
-            r"^com\.fermax\.\w+\.\w+$", s
-        ):
+        if not creds["firebase_package_name"] and re.match(r"^com\.fermax\.\w+\.\w+$", s):
             creds["firebase_package_name"] = s
 
         # Fermax OAuth URL
@@ -357,9 +351,7 @@ def _search_android_strings_xml(path: str) -> dict[str, str]:
         for res_name, cred_key in resource_map.items():
             if result.get(cred_key):
                 continue
-            m = re.search(
-                rf'<string name="{re.escape(res_name)}">([^<]+)</string>', content
-            )
+            m = re.search(rf'<string name="{re.escape(res_name)}">([^<]+)</string>', content)
             if m:
                 result[cred_key] = m.group(1)
 
@@ -402,9 +394,7 @@ def _parse_google_services(gs: dict) -> dict[str, str]:
         "firebase_sender_id": str(project_info.get("project_number", "")),
         "firebase_app_id": client_info.get("mobilesdk_app_id", ""),
         "firebase_project_id": project_info.get("project_id", ""),
-        "firebase_package_name": client_info.get("android_client_info", {}).get(
-            "package_name", ""
-        ),
+        "firebase_package_name": client_info.get("android_client_info", {}).get("package_name", ""),
     }
 
 

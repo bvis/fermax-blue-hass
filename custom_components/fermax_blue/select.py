@@ -30,7 +30,6 @@ class FermaxCallModeSelect(FermaxBlueEntity, SelectEntity):
     """Select entity to control doorbell call behavior."""
 
     _attr_translation_key = "call_mode"
-    _attr_icon = "mdi:phone-settings"
     _attr_options = CALL_MODES
 
     def __init__(self, coordinator: FermaxBlueCoordinator) -> None:

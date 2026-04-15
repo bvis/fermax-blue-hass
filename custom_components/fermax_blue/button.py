@@ -64,7 +64,6 @@ class FermaxCameraPreviewButton(FermaxBlueEntity, ButtonEntity):
     """Button to start camera preview (auto-on)."""
 
     _attr_translation_key = "camera_preview"
-    _attr_icon = "mdi:cctv"
 
     def __init__(self, coordinator: FermaxBlueCoordinator) -> None:
         super().__init__(coordinator)
@@ -83,7 +82,6 @@ class FermaxF1Button(FermaxBlueEntity, ButtonEntity):
     """Button for F1 auxiliary function."""
 
     _attr_translation_key = "f1"
-    _attr_icon = "mdi:numeric-1-box"
 
     def __init__(self, coordinator: FermaxBlueCoordinator) -> None:
         super().__init__(coordinator)
@@ -98,7 +96,6 @@ class FermaxCallGuardButton(FermaxBlueEntity, ButtonEntity):
     """Button to call the building guard/janitor."""
 
     _attr_translation_key = "call_guard"
-    _attr_icon = "mdi:account-tie"
 
     def __init__(self, coordinator: FermaxBlueCoordinator) -> None:
         super().__init__(coordinator)

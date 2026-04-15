@@ -6,7 +6,7 @@ RUN apt-get update -qq && \
     rm -rf /var/lib/apt/lists/*
 
 RUN pip install --no-cache-dir \
-    ruff mypy \
+    ruff mypy vulture \
     pytest pytest-asyncio pytest-cov \
     httpx firebase-messaging homeassistant \
     "python-socketio[asyncio_client]>=5.12.0" \

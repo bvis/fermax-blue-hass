@@ -29,3 +29,26 @@ warn_unused_configs = true
 disallow_untyped_defs = false
 check_untyped_defs = true
 ignore_missing_imports = true
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "A", "SIM", "TCH"]
+external = ["V"]
+
+[tool.vulture]
+min_confidence = 80
+paths = ["custom_components/fermax_blue"]
+
+[tool.coverage.run]
+source = ["custom_components/fermax_blue"]
+
+[tool.coverage.report]
+fail_under = 40
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+]

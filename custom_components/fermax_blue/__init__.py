@@ -58,18 +58,14 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
       1 — Original format: only username + password (credentials were hardcoded).
       2 — API URL, auth basic, and Firebase credentials are now supplied by the user.
     """
-    _LOGGER.debug(
-        "Migrating Fermax Blue config entry from version %s", config_entry.version
-    )
+    _LOGGER.debug("Migrating Fermax Blue config entry from version %s", config_entry.version)
 
     if config_entry.version < 2:
         # If the entry already has all v2 fields (added manually before the
         # VERSION bump existed), just promote it to v2.
         if _V2_REQUIRED_KEYS.issubset(config_entry.data.keys()):
             hass.config_entries.async_update_entry(config_entry, version=2)
-            _LOGGER.info(
-                "Fermax Blue config entry migrated to version 2 (fields already present)"
-            )
+            _LOGGER.info("Fermax Blue config entry migrated to version 2 (fields already present)")
             return True
 
         _LOGGER.error(
@@ -186,9 +182,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: FermaxBlueConfigEntry) -
 
         media_root = hass.config.media_dirs.get("local", "/media")
         recordings_path = Path(media_root) / RECORDINGS_DIR
-        retention = entry.options.get(
-            CONF_RECORDING_RETENTION, DEFAULT_RECORDING_RETENTION
-        )
+        retention = entry.options.get(CONF_RECORDING_RETENTION, DEFAULT_RECORDING_RETENTION)
         cutoff = time.time() - (retention * 86400)
 
         def _do_cleanup() -> list[str]:
@@ -212,26 +206,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: FermaxBlueConfigEntry) -
 
     from homeassistant.helpers.event import async_track_time_interval
 
-    entry.async_on_unload(
-        async_track_time_interval(hass, _cleanup_old_recordings, _td(hours=24))
-    )
+    entry.async_on_unload(async_track_time_interval(hass, _cleanup_old_recordings, _td(hours=24)))
 
     async def _async_shutdown(event: Event) -> None:
         """Clean up on shutdown."""
         for coordinator in coordinators:
             await coordinator.stop_notifications()
 
-    entry.async_on_unload(
-        hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, _async_shutdown)
-    )
+    entry.async_on_unload(hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, _async_shutdown))
     entry.async_on_unload(entry.add_update_listener(_async_options_updated))
 
     return True
 
 
-async def _async_options_updated(
-    hass: HomeAssistant, entry: FermaxBlueConfigEntry
-) -> None:
+async def _async_options_updated(hass: HomeAssistant, entry: FermaxBlueConfigEntry) -> None:
     """Handle options update — apply hot-reloadable options without full reload."""
     coordinators = hass.data[DOMAIN].get(entry.entry_id, [])
 
@@ -252,9 +240,7 @@ async def _async_options_updated(
         _LOGGER.info("Options updated (hot reload, no restart needed)")
 
 
-async def _generate_tts_audio(
-    hass: HomeAssistant, message: str, language: str
-) -> str | None:
+async def _generate_tts_audio(hass: HomeAssistant, message: str, language: str) -> str | None:
     """Generate a WAV file from text using Google Translate TTS."""
     try:
         from gtts import gTTS
