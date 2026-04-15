@@ -21,6 +21,7 @@ This integration simulates a Fermax Blue mobile app client, connecting to the Fe
 - **Connection status** — Monitor if your intercom is online (entities go unavailable when offline)
 - **WiFi signal** — Track the intercom's wireless signal strength
 - **Notification control** — Enable/disable doorbell notifications
+- **Media browser** — Browse doorbell photos and call recordings from the HA media browser
 - **Diagnostics** — Built-in troubleshooting data (with redacted credentials)
 - **Configurable polling** — Adjust the status polling interval (1-30 minutes)
 
@@ -188,11 +189,15 @@ A ready-to-use dashboard card template is included in [`blueprints/fermax_dashbo
 
 ## Call Recordings
 
-Every video stream session is automatically recorded to MP4 (video + intercom audio) in `/config/media/fermax_recordings/`. Files are named with timestamps (e.g., `2026-04-06_13-00-00.mp4`).
+Every video stream session is automatically recorded to MP4 (video + intercom audio) in `/config/media/fermax_recordings/`. Doorbell visitor photos are saved as JPG in the same directory. Files are named with timestamps (e.g., `2026-04-06_13-00-00.mp4`, `2026-04-06_13-00-00_photo.jpg`).
 
-Recordings are automatically deleted after the retention period (default: 10 days, configurable in options).
+Recordings and photos are automatically deleted after the retention period (default: 10 days, configurable in options).
 
-Access recordings from the dashboard via the **Grabaciones** button, or browse **Media** > **Local media** > **fermax_recordings**.
+### Media browser
+
+All recordings and photos are browsable directly from the HA media browser via **Media** > **Fermax Blue**. Files are listed newest-first with thumbnails for photos and playback for videos.
+
+You can also access them from the dashboard via the **Grabaciones** button, or browse **Media** > **Local media** > **fermax_recordings**.
 
 ## Services
 
