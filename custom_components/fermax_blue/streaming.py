@@ -633,14 +633,16 @@ class FermaxStreamSession:
         import tempfile
 
         mjpeg_fd, mjpeg_path = tempfile.mkstemp(suffix=".mjpeg")
-        os.close(mjpeg_fd)
         pcm_fd, pcm_path = tempfile.mkstemp(suffix=".pcm")
-        os.close(pcm_fd)
         has_audio = bool(audio_frames)
         try:
-            await asyncio.to_thread(
-                lambda: open(mjpeg_path, "wb").write(b"".join(video_frames))  # noqa: SIM115
-            )
+            video_data = b"".join(video_frames)
+
+            def _write_and_close(fd: int, data: bytes) -> None:
+                os.write(fd, data)
+                os.close(fd)
+
+            await asyncio.to_thread(_write_and_close, mjpeg_fd, video_data)
             if has_audio:
                 import numpy as np
 
@@ -675,9 +677,11 @@ class FermaxStreamSession:
                     recv_arr.astype(np.int32) + sent_arr.astype(np.int32), -32768, 32767
                 ).astype(np.int16)
 
-                await asyncio.to_thread(
-                    lambda: open(pcm_path, "wb").write(mixed.tobytes())  # noqa: SIM115
-                )
+                pcm_data = mixed.tobytes()
+                await asyncio.to_thread(_write_and_close, pcm_fd, pcm_data)
+
+            else:
+                os.close(pcm_fd)
 
             cmd = [
                 "ffmpeg",

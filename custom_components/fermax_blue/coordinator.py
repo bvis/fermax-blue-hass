@@ -42,9 +42,9 @@ _LOGGER = logging.getLogger(__name__)
 
 DOORBELL_RESET_SECONDS = 30
 CAMERA_TIMEOUT_SECONDS = 90
-NOTIFICATION_GRACE_PERIOD = (
-    10  # seconds after startup to ignore re-delivered notifications
-)
+# FCM re-delivers recent notifications when the listener reconnects after a
+# reload/restart, causing phantom doorbell rings. Ignore them briefly.
+NOTIFICATION_GRACE_PERIOD = 10
 
 
 class FermaxBlueCoordinator(DataUpdateCoordinator):
@@ -89,7 +89,7 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         self._stream_stop_unsub: CALLBACK_TYPE | None = None
         self._firebase_config = firebase_config or {}
         self._processed_notifications: set[str] = set()
-        self._notification_start_time: float = 0.0
+        self._notification_start_time: float | None = None
 
     @property
     def call_mode(self) -> str:
@@ -285,8 +285,8 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         fcm_token = await self.notification_listener.register()
         if fcm_token:
             await self.api.register_app_token(fcm_token, active=True)
-            await self.notification_listener.start()
             self._notification_start_time = time.monotonic()
+            await self.notification_listener.start()
             _LOGGER.info(
                 "Notification listener started for device %s",
                 self.pairing.device_id,
@@ -307,7 +307,7 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         # After a reload/restart, FCM re-delivers recent notifications.
         # Ignore them during the grace period to avoid phantom doorbell rings.
         if (
-            self._notification_start_time
+            self._notification_start_time is not None
             and time.monotonic() - self._notification_start_time
             < NOTIFICATION_GRACE_PERIOD
         ):
