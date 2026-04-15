@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.15.4] - 2026-04-15
+
+### Fixed
+- **FCM credentials** now stored via HA Store API (`.storage/`) instead of plaintext files, with non-blocking async save from sync callbacks
+- **Password field** masked in config flow UI using `TextSelectorType.PASSWORD`
+- **Token access** — new public `get_access_token()` method with auto-reauthentication replaces direct `_access_token` access
+- **Log redaction** — recursive `_redact_notification()` masks sensitive tokens (`FermaxToken`, `fermaxOauthToken`, etc.) at all nesting levels in logs
+- **Recording cleanup** uses `hass.config.media_dirs` for portable media path and runs filesystem ops off the event loop via `asyncio.to_thread()`
+- **Config migration v1→v2** — auto-promotes entries that already have all required fields; shows clear error for entries that genuinely need re-setup
+- **Phantom doorbell ring on reload** — 10-second grace period after FCM listener startup ignores re-delivered notifications; start time set before listener to prevent race condition
+- **Temp file security** — `tempfile.mkstemp()` with atomic write+close via fd, eliminating TOCTOU race in recording mux
+- **CI workflow permissions** — added `permissions: contents: read` to GitHub Actions workflow
+
+### Fixed (scripts)
+- `extract_credentials.py` — regex end-anchor fix captures PRO environment arrays after `NoWhenBranch` throw; local Byte variable resolution replaces hardcoded heuristics; Android `strings.xml` parsing for JADX-decompiled directories; `base_url` derivation from `auth_url`
+
 ## [0.15.0] - 2026-04-09
 
 ### Added
