@@ -18,3 +18,4 @@ is_on = None
 is_locked = None
 async_get_config_entry_diagnostics = None
 _async_update_data = None
+async_get_media_source = None

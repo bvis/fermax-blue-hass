@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.16.1] - 2026-04-16
+
+### Added
+- **MediaSource** — doorbell photos and video recordings browsable in HA media browser, sorted newest-first with path traversal protection
+
 ## [0.16.0] - 2026-04-15
 
 ### Added
