@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import tempfile
 from datetime import timedelta
@@ -12,6 +13,7 @@ import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, EVENT_HOMEASSISTANT_STOP
 from homeassistant.core import Event, HomeAssistant, ServiceCall
+from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.httpx_client import create_async_httpx_client
 
 from .api import FermaxBlueApi
@@ -95,9 +97,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: FermaxBlueConfigEntry) -
     try:
         await api.authenticate()
         pairings = await api.get_pairings()
-    except Exception:
+    except Exception as err:
         await api.close()
-        raise
+        raise ConfigEntryNotReady(f"Failed to connect to Fermax API: {err}") from err
 
     scan_interval = entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
     auto_response_file = entry.options.get("auto_response_file", "")
@@ -118,7 +120,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: FermaxBlueConfigEntry) -
         await coordinator.async_config_entry_first_refresh()
 
         storage_path = Path(hass.config.config_dir) / ".storage" / DOMAIN
-        storage_path.mkdir(parents=True, exist_ok=True)
+        await asyncio.to_thread(storage_path.mkdir, parents=True, exist_ok=True)
         await coordinator.setup_notifications(storage_path)
 
         coordinators.append(coordinator)
@@ -139,6 +141,30 @@ async def async_setup_entry(hass: HomeAssistant, entry: FermaxBlueConfigEntry) -
             _LOGGER.error("send_audio: either audio_file or message is required")
             return
 
+        # Validate audio_file path against HA media directories
+        if audio_file:
+
+            def _validate_path() -> bool:
+                allowed_dirs = [
+                    Path(str(d)).resolve()
+                    for d in [
+                        *hass.config.media_dirs.values(),
+                        Path(hass.config.config_dir) / "media",
+                    ]
+                ]
+                try:
+                    resolved = Path(str(audio_file)).resolve()
+                    return any(resolved == d or d in resolved.parents for d in allowed_dirs)
+                except (OSError, ValueError):
+                    return False
+
+            if not await asyncio.to_thread(_validate_path):
+                _LOGGER.error(
+                    "send_audio: path %s is outside allowed media directories or invalid",
+                    audio_file,
+                )
+                return
+
         # Find the coordinator with an active stream
         active_coordinator = None
         for coord in coordinators:
@@ -157,8 +183,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: FermaxBlueConfigEntry) -
                 _LOGGER.error("send_audio: failed to generate TTS audio")
                 return
 
+        tts_generated = bool(message and not call.data.get("audio_file"))
         if audio_file:
             await active_coordinator.stream_session.send_audio(audio_file)
+            # Clean up TTS temp file after use
+            if tts_generated:
+                with contextlib.suppress(OSError):
+                    await asyncio.to_thread(Path(audio_file).unlink)
 
     if not hass.services.has_service(DOMAIN, "send_audio"):
         hass.services.async_register(
@@ -200,8 +231,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: FermaxBlueConfigEntry) -
         for name in deleted_files:
             _LOGGER.debug("Deleted old recording: %s", name)
 
-    # Run cleanup once at startup and daily
-    await _cleanup_old_recordings()
+    # Run cleanup once at startup (non-blocking) and daily
+    hass.async_create_task(_cleanup_old_recordings())
     from datetime import timedelta as _td
 
     from homeassistant.helpers.event import async_track_time_interval
@@ -245,11 +276,15 @@ async def _generate_tts_audio(hass: HomeAssistant, message: str, language: str) 
     try:
         from gtts import gTTS
 
-        tts = gTTS(text=message, lang=language)
-        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
-            tts.save(f.name)
-            _LOGGER.info("TTS audio generated: %s", f.name)
-            return f.name
+        def _generate_sync() -> str:
+            tts = gTTS(text=message, lang=language)
+            with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
+                tts.save(f.name)
+                return f.name
+
+        path = await asyncio.to_thread(_generate_sync)
+        _LOGGER.info("TTS audio generated: %s", path)
+        return path
     except ImportError:
         _LOGGER.debug("gtts not available, trying HA tts service")
     except Exception:
@@ -273,13 +308,17 @@ async def _generate_tts_audio(hass: HomeAssistant, message: str, language: str) 
         # HA TTS generates files in /config/tts/
         import glob
 
-        tts_files = sorted(
-            glob.glob("/config/tts/*.mp3"),
-            key=lambda f: Path(f).stat().st_mtime,
-            reverse=True,
-        )
-        if tts_files:
-            return tts_files[0]
+        def _find_latest_tts() -> str | None:
+            files = sorted(
+                glob.glob("/config/tts/*.mp3"),
+                key=lambda f: Path(f).stat().st_mtime,
+                reverse=True,
+            )
+            return files[0] if files else None
+
+        result = await asyncio.to_thread(_find_latest_tts)
+        if result:
+            return result
     except Exception:
         _LOGGER.debug("HA TTS fallback failed", exc_info=True)
 

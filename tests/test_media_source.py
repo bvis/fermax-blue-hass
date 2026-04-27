@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -40,6 +41,11 @@ class TestMediaSource:
     async def test_resolve_media_path_traversal(self, media_source):
         from homeassistant.components.media_source import Unresolvable
 
+        # Mock async_add_executor_job to run the function directly
+        media_source.hass.async_add_executor_job = lambda fn: (
+            asyncio.get_event_loop().run_in_executor(None, fn)
+        )
+
         item = MagicMock()
         item.identifier = "../../etc/passwd"
         with pytest.raises(Unresolvable):
@@ -50,6 +56,11 @@ class TestMediaSource:
         photo = tmp_path / "fermax_recordings" / "2026-04-12_14-30-45_photo.jpg"
         photo.parent.mkdir(parents=True)
         photo.write_bytes(b"fake jpg")
+
+        # Mock async_add_executor_job to run the function directly
+        media_source.hass.async_add_executor_job = lambda fn: (
+            asyncio.get_event_loop().run_in_executor(None, fn)
+        )
 
         with patch.object(media_source, "_base_path", return_value=photo.parent):
             item = MagicMock()

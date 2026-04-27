@@ -5,13 +5,14 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from collections import deque
 from dataclasses import replace
 from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
-from homeassistant.helpers.dispatcher import dispatcher_send
+from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
@@ -89,7 +90,7 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         self._stream_duration = DEFAULT_STREAM_DURATION
         self._stream_stop_unsub: CALLBACK_TYPE | None = None
         self._firebase_config = firebase_config or {}
-        self._processed_notifications: set[str] = set()
+        self._processed_notifications: deque[str] = deque(maxlen=100)
         self._notification_start_time: float | None = None
 
     @property
@@ -133,8 +134,9 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         """Save a doorbell call photo to the recordings directory."""
         from datetime import datetime
 
-        recordings_dir = Path("/media") / RECORDINGS_DIR
-        recordings_dir.mkdir(parents=True, exist_ok=True)
+        media_root = self.hass.config.media_dirs.get("local", "/media")
+        recordings_dir = Path(media_root) / RECORDINGS_DIR
+        await asyncio.to_thread(recordings_dir.mkdir, parents=True, exist_ok=True)
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         path = recordings_dir / f"{timestamp}_photo.jpg"
         await asyncio.to_thread(path.write_bytes, photo)
@@ -313,10 +315,7 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         if persistent_id in self._processed_notifications:
             _LOGGER.debug("Skipping duplicate notification: %s", persistent_id)
             return
-        self._processed_notifications.add(persistent_id)
-        # Keep set bounded
-        if len(self._processed_notifications) > 100:
-            self._processed_notifications = set(list(self._processed_notifications)[-50:])
+        self._processed_notifications.append(persistent_id)
 
         _LOGGER.info(
             "Doorbell notification for %s: %s",
@@ -360,7 +359,7 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
             self._photo_fetch_pending = True
 
             door_key = data.get("AccessDoorKey", data.get("accessDoorKey", "GENERAL"))
-            dispatcher_send(
+            async_dispatcher_send(
                 self.hass,
                 SIGNAL_DOORBELL_RING.format(self.pairing.device_id, door_key),
             )
@@ -373,7 +372,7 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
             def _reset_ringing(_now: Any) -> None:
                 """Reset doorbell ringing state."""
                 self._doorbell_ringing = False
-                dispatcher_send(
+                async_dispatcher_send(
                     self.hass,
                     SIGNAL_CALL_ENDED.format(self.pairing.device_id),
                 )
@@ -414,7 +413,7 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
             success = await self.api.open_door(self.pairing.device_id, door.access_id)
 
         if success:
-            dispatcher_send(
+            async_dispatcher_send(
                 self.hass,
                 SIGNAL_DOOR_OPENED.format(self.pairing.device_id),
             )
@@ -519,19 +518,21 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
             self._camera_active = False
             self.async_set_updated_data(self.data)
 
+        media_root = self.hass.config.media_dirs.get("local", "/media")
         self._stream_session = FermaxStreamSession(
             signaling_url=signaling_url,
             oauth_token=oauth_token,
             fcm_token=fcm_token,
             room_id=room_id,
             on_end=_on_stream_end,
+            media_root=media_root,
         )
 
         success = await self._stream_session.start()
         if success:
             self._camera_active = True
             _LOGGER.info("Video stream started for room %s", room_id)
-            dispatcher_send(self.hass, SIGNAL_CAMERA_ON.format(self.pairing.device_id))
+            async_dispatcher_send(self.hass, SIGNAL_CAMERA_ON.format(self.pairing.device_id))
 
             # Schedule auto-stop after configured duration
             @callback

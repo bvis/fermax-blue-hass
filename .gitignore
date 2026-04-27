@@ -16,6 +16,9 @@ venv/
 # APK analysis (local only, do not push)
 docs/apk-analysis-*.md
 
+# Superpowers planning artifacts (local only, do not push)
+docs/superpowers/
+
 # Test artifacts
 test_frame.jpg
 scripts/test_*_run.py
@@ -26,3 +29,4 @@ credentials.json
 **/fermax_fcm_credentials.json
 .playwright-mcp/
 .claude/
+CLAUDE.md

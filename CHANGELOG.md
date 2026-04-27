@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.16.2] - 2026-04-23
+
+### Fixed
+- **Signaling URL security** — default URL upgraded to HTTPS; insecure `http://`/`ws://` URLs from push notifications are auto-upgraded to `https://`/`wss://`
+- **send_audio path validation** — audio file paths are now validated against HA media directories, preventing arbitrary file reads
+- **Config flow URL validation** — API and auth URLs now enforce HTTPS scheme via `vol.Url()` + scheme check
+- **TTS event loop blocking** — `gTTS.save()` and fallback glob operations moved to `asyncio.to_thread()` to avoid freezing the HA event loop
+- **Notification dedup** — replaced unordered `set` with `deque(maxlen=100)` to preserve insertion order and reliably evict oldest entries
+- **ConfigEntryNotReady** — transient auth/network failures during setup now raise `ConfigEntryNotReady` instead of crashing, enabling automatic retry
+- **Blocking I/O in async context** — `storage_path.mkdir()`, `recordings_dir.mkdir()`, and `media_source.async_resolve_media()` file checks moved to executor
+- **Deprecated asyncio API** — replaced `asyncio.get_event_loop()` with `asyncio.get_running_loop()` in socket.io handler
+- **Hardcoded `/media/` paths** — coordinator and streaming now use `hass.config.media_dirs` consistently
+- **TTS temp file leak** — generated TTS files are cleaned up after use
+- **Recording cleanup** — no longer blocks HA startup, runs as background task
+- **dispatcher_send → async_dispatcher_send** — all signal dispatches use the async variant
+
+### Changed
+- **pymediasoup patch deferred** — heavy `pymediasoup`/`aiortc` imports now happen on first stream start, not at module load time
+- **Sensor icons via icons.json** — removed redundant `_attr_icon` from sensor descriptors, icons.json is now the single source of truth
+- **Camera icon** — added `mdi:doorbell-video` for the camera entity in `icons.json`
+- **subprocess.run** — explicit `shell=False` for ffmpeg recording calls
+
 ## [0.16.1] - 2026-04-16
 
 ### Added

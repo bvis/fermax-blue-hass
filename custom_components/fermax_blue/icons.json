@@ -1,5 +1,10 @@
 {
   "entity": {
+    "camera": {
+      "visitor": {
+        "default": "mdi:doorbell-video"
+      }
+    },
     "sensor": {
       "wifi_signal": {
         "default": "mdi:wifi"

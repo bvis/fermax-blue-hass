@@ -3,6 +3,7 @@
 from unittest.mock import AsyncMock
 
 import pytest
+import voluptuous as vol
 
 from custom_components.fermax_blue.api import FermaxAuthError, FermaxBlueApi
 from custom_components.fermax_blue.const import (
@@ -215,6 +216,27 @@ class TestCredentials:
         assert CONF_FIREBASE_APP_ID == "firebase_app_id"
         assert CONF_FIREBASE_PROJECT_ID == "firebase_project_id"
         assert CONF_FIREBASE_PACKAGE_NAME == "firebase_package_name"
+
+    def test_url_validation_rejects_http(self):
+        """Test that credential URLs must use HTTPS."""
+        from custom_components.fermax_blue.config_flow import _https_url
+
+        with pytest.raises(vol.Invalid):
+            _https_url("http://auth.example.com/token")
+
+    def test_url_validation_accepts_https(self):
+        """Test that HTTPS URLs are accepted."""
+        from custom_components.fermax_blue.config_flow import _https_url
+
+        result = _https_url("https://auth.example.com/token")
+        assert result == "https://auth.example.com/token"
+
+    def test_url_validation_rejects_garbage(self):
+        """Test that invalid URLs are rejected."""
+        from custom_components.fermax_blue.config_flow import _https_url
+
+        with pytest.raises(vol.Invalid):
+            _https_url("not-a-url")
 
     def test_no_hardcoded_credentials_in_const(self):
         """Test that const.py has no hardcoded API/Firebase values."""

@@ -34,7 +34,6 @@ class SensorTypeInfo:
 SENSOR_TYPES: dict[str, SensorTypeInfo] = {
     "wifi_signal": SensorTypeInfo(
         translation_key="wifi_signal",
-        icon="mdi:wifi",
         state_class=SensorStateClass.MEASUREMENT,
     ),
     "device_status": SensorTypeInfo(
@@ -42,11 +41,9 @@ SENSOR_TYPES: dict[str, SensorTypeInfo] = {
     ),
     "last_opening": SensorTypeInfo(
         translation_key="last_opening",
-        icon="mdi:door-open",
     ),
     "last_call": SensorTypeInfo(
         translation_key="last_call",
-        icon="mdi:phone-incoming",
     ),
 }
 

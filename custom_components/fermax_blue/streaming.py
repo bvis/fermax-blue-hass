@@ -56,8 +56,8 @@ def _patch_pymediasoup_audio_channels() -> None:
     _Handler.getNativeRtpCapabilities = _patched_get  # type: ignore[assignment]
 
 
-_patch_pymediasoup_audio_channels()
-DEFAULT_SIGNALING_URL = "http://signaling-pro-duoxme.fermax.io"
+_PYMEDIASOUP_PATCHED = False
+DEFAULT_SIGNALING_URL = "https://signaling-pro-duoxme.fermax.io"
 
 
 def _create_switchable_audio_track() -> Any:
@@ -372,7 +372,17 @@ class FermaxStreamSession:
         fcm_token: str,
         room_id: str,
         on_end: Callable[[], None] | None = None,
+        media_root: str = "/media",
     ) -> None:
+        # Enforce secure scheme for signaling URL
+        if signaling_url and not signaling_url.startswith(("https://", "wss://")):
+            _LOGGER.warning(
+                "Signaling URL uses insecure scheme, upgrading to HTTPS: %s",
+                signaling_url,
+            )
+            signaling_url = signaling_url.replace("http://", "https://", 1).replace(
+                "ws://", "wss://", 1
+            )
         self._signaling = FermaxSignalingClient(
             signaling_url=signaling_url,
             oauth_token=oauth_token,
@@ -380,6 +390,7 @@ class FermaxStreamSession:
         )
         self._room_id = room_id
         self._on_end = on_end
+        self._media_root = media_root
         self._device: Any = None
         self._recv_transport: Any = None
         self._recv_audio_transport: Any = None
@@ -413,6 +424,7 @@ class FermaxStreamSession:
             return False
 
     async def _start_inner(self) -> bool:
+        global _PYMEDIASOUP_PATCHED
         from pymediasoup import Device
         from pymediasoup.handlers.aiortc_handler import AiortcHandler
         from pymediasoup.models.transport import (
@@ -422,16 +434,20 @@ class FermaxStreamSession:
         )
         from pymediasoup.rtp_parameters import RtpCapabilities, RtpParameters
 
+        if not _PYMEDIASOUP_PATCHED:
+            _patch_pymediasoup_audio_channels()
+            _PYMEDIASOUP_PATCHED = True
+
         # 1. Signaling: join room
         room = await self._signaling.connect(self._room_id)
         if not room:
             _LOGGER.error("Failed to join room %s", self._room_id)
             return False
 
+        _loop = asyncio.get_running_loop()
+
         def _handle_end_up(_code: str) -> None:
-            asyncio.get_event_loop().call_soon_threadsafe(
-                lambda: asyncio.ensure_future(self.stop())
-            )
+            _loop.call_soon_threadsafe(lambda: asyncio.ensure_future(self.stop()))
 
         self._signaling._on_end_up = _handle_end_up
 
@@ -598,7 +614,11 @@ class FermaxStreamSession:
         try:
             from datetime import datetime
 
-            recordings_dir = "/media/fermax_recordings"
+            recordings_dir = (
+                self._media_root + "/fermax_recordings"
+                if hasattr(self, "_media_root")
+                else "/media/fermax_recordings"
+            )
             os.makedirs(recordings_dir, exist_ok=True)
 
             timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -712,6 +732,7 @@ class FermaxStreamSession:
                 cmd,
                 capture_output=True,
                 timeout=60,
+                shell=False,
             )
             if proc.returncode == 0:
                 size = await asyncio.to_thread(os.path.getsize, self._recording_path)
