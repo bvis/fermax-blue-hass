@@ -298,7 +298,7 @@ class TestSensorDescriptors:
         from custom_components.fermax_blue.sensor import SENSOR_TYPES
 
         desc = SENSOR_TYPES["wifi_signal"]
-        assert desc.icon == "mdi:wifi"
+        assert desc.icon is None  # Icon provided by icons.json
         assert desc.state_class is not None
 
     def test_binary_sensor_descriptors(self, mock_coordinator):

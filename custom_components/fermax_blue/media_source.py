@@ -46,14 +46,17 @@ class FermaxMediaSource(MediaSource):
         base = self._base_path()
         file_path = base / identifier
 
-        # Prevent path traversal
-        try:
-            file_path.resolve().relative_to(base.resolve())
-        except ValueError as err:
-            raise Unresolvable("Invalid media path") from err
+        def _validate() -> bool:
+            """Validate path traversal and file existence (blocking I/O)."""
+            try:
+                file_path.resolve().relative_to(base.resolve())
+            except ValueError:
+                return False
+            return file_path.is_file()
 
-        if not file_path.is_file():
-            raise Unresolvable(f"File not found: {identifier}")
+        valid = await self.hass.async_add_executor_job(_validate)
+        if not valid:
+            raise Unresolvable(f"Invalid or missing media: {identifier}")
 
         mime = "image/jpeg" if file_path.suffix == ".jpg" else "video/mp4"
         return PlayMedia(

@@ -52,10 +52,19 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
     }
 )
 
+
+def _https_url(value: str) -> str:
+    """Validate that a URL uses HTTPS scheme."""
+    url: str = vol.Url()(value)
+    if not url.startswith("https://"):
+        raise vol.Invalid("URL must use HTTPS")
+    return url
+
+
 STEP_CREDENTIALS_SCHEMA = vol.Schema(
     {
-        vol.Required(CONF_FERMAX_AUTH_URL): str,
-        vol.Required(CONF_FERMAX_BASE_URL): str,
+        vol.Required(CONF_FERMAX_AUTH_URL): _https_url,
+        vol.Required(CONF_FERMAX_BASE_URL): _https_url,
         vol.Required(CONF_FERMAX_AUTH_BASIC): str,
         vol.Required(CONF_FIREBASE_API_KEY): str,
         vol.Required(CONF_FIREBASE_SENDER_ID): str,
