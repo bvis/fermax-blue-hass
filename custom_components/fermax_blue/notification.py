@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import Callable
 from typing import Any
 
-from firebase_messaging import FcmPushClient
+from firebase_messaging import FcmPushClient, FcmPushClientConfig
 from firebase_messaging.fcmregister import FcmRegister, FcmRegisterConfig
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
@@ -62,6 +63,7 @@ class FermaxNotificationListener:
             bundle_id=firebase_package_name,
         )
         self._store: Store = Store(hass, _FCM_STORAGE_VERSION, _FCM_STORAGE_KEY)
+        self._lifecycle_lock = asyncio.Lock()
 
     @property
     def fcm_token(self) -> str | None:
@@ -127,6 +129,11 @@ class FermaxNotificationListener:
 
     async def start(self) -> None:
         """Start listening for push notifications."""
+        async with self._lifecycle_lock:
+            await self._start_locked()
+
+    async def _start_locked(self) -> None:
+        """Inner ``start`` that assumes the lifecycle lock is already held."""
         if not self._credentials:
             await self.register()
 
@@ -139,6 +146,7 @@ class FermaxNotificationListener:
             fcm_config=self._fcm_config,
             credentials=self._credentials,
             credentials_updated_callback=self._on_credentials_updated,
+            config=FcmPushClientConfig(abort_on_sequential_error_count=None),
         )
 
         await self._push_client.start()
@@ -146,12 +154,50 @@ class FermaxNotificationListener:
 
     async def stop(self) -> None:
         """Stop listening for push notifications."""
-        if self._push_client:
-            await self._push_client.stop()
-            self._push_client = None
-            _LOGGER.info("FCM notification listener stopped")
+        async with self._lifecycle_lock:
+            if self._push_client:
+                await self._push_client.stop()
+                self._push_client = None
+                _LOGGER.info("FCM notification listener stopped")
 
     @property
     def is_started(self) -> bool:
         """Return True if the listener is running."""
         return self._push_client is not None and self._push_client.is_started()
+
+    async def ensure_running(self) -> bool:
+        """Reanimate the FCM listener if it has stopped.
+
+        The upstream client aborts the receiver after repeated transport errors
+        and never reconnects on its own. This method is meant to be polled by a
+        watchdog so the listener stays alive across network glitches.
+
+        Serialised via ``_lifecycle_lock`` so overlapping watchdog ticks cannot
+        spawn parallel ``FcmPushClient`` instances while a slow ``start()`` is
+        still handshaking.
+
+        Returns True when the listener is running after the call.
+        """
+        async with self._lifecycle_lock:
+            if self.is_started:
+                return True
+
+            if not self._credentials:
+                return False
+
+            _LOGGER.warning("FCM listener is not running; restarting it")
+            if self._push_client is not None:
+                try:
+                    await self._push_client.stop()
+                except (ConnectionError, OSError, RuntimeError) as err:
+                    _LOGGER.debug("Ignoring error during dead client teardown: %s", err)
+                self._push_client = None
+
+            # The persisted FCM token is reused, so the Fermax-side
+            # ``register_app_token`` mapping stays valid; no re-registration needed.
+            try:
+                await self._start_locked()
+            except (ConnectionError, OSError, RuntimeError):
+                _LOGGER.exception("Failed to restart FCM listener")
+                return False
+            return self.is_started
