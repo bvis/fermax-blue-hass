@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.16.3-beta.1] - 2026-05-03
+
+### Fixed
+- **FCM listener no longer reconnects after 3 sequential transport errors** — the upstream `firebase_messaging` client used to abort its receiver and never reconnect, leaving the doorbell camera black: `auto_on` answered `call_starting` but the push carrying the signaling payload never arrived (#3).
+  - `FcmPushClient` now uses `FcmPushClientConfig(abort_on_sequential_error_count=None)` so the library keeps retrying with its own backoff.
+  - A 60s watchdog (`async_track_time_interval`) revives the listener if `is_started` flips to False; `ensure_running()` is serialised by an `asyncio.Lock` so overlapping ticks cannot spawn parallel `FcmPushClient` instances.
+  - The notification grace period is intentionally not re-armed on revival — the existing `_processed_notifications` dedup deque already filters re-deliveries, and re-arming the blackout could drop a real doorbell ring landing during the window.
+
 ## [0.16.2] - 2026-04-23
 
 ### Fixed
