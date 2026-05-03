@@ -63,3 +63,8 @@ CONF_SCAN_INTERVAL = "scan_interval"
 CONF_RECORDING_RETENTION = "recording_retention"
 DEFAULT_RECORDING_RETENTION = 10  # days
 RECORDINGS_DIR = "fermax_recordings"
+
+# Watchdog poll interval (seconds) for the FCM push receiver.
+# The upstream firebase_messaging client aborts the receiver after repeated
+# transport errors and never reconnects on its own; the watchdog revives it.
+FCM_WATCHDOG_INTERVAL = 60

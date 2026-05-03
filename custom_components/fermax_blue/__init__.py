@@ -6,7 +6,7 @@ import asyncio
 import contextlib
 import logging
 import tempfile
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import voluptuous as vol
@@ -31,6 +31,7 @@ from .const import (
     DEFAULT_RECORDING_RETENTION,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
+    FCM_WATCHDOG_INTERVAL,
     PLATFORMS,
     RECORDINGS_DIR,
 )
@@ -238,6 +239,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: FermaxBlueConfigEntry) -
     from homeassistant.helpers.event import async_track_time_interval
 
     entry.async_on_unload(async_track_time_interval(hass, _cleanup_old_recordings, _td(hours=24)))
+
+    async def _fcm_watchdog(_now: datetime | None = None) -> None:
+        """Revive any FCM listener whose receiver has died."""
+        for coordinator in coordinators:
+            await coordinator.ensure_notifications_running()
+
+    entry.async_on_unload(
+        async_track_time_interval(hass, _fcm_watchdog, _td(seconds=FCM_WATCHDOG_INTERVAL))
+    )
 
     async def _async_shutdown(event: Event) -> None:
         """Clean up on shutdown."""
