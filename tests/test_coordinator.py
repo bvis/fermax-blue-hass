@@ -141,50 +141,19 @@ class TestCoordinatorFcmWatchdog:
     @pytest.mark.asyncio
     async def test_no_listener_is_noop(self, coordinator):
         coordinator.notification_listener = None
-        await coordinator.ensure_notifications_running()  # must not raise
+        await coordinator.ensure_notifications_running()
 
     @pytest.mark.asyncio
-    async def test_already_running_just_pings_listener(self, coordinator):
+    async def test_delegates_to_listener(self, coordinator):
         listener = MagicMock()
-        listener.is_started = True
         listener.ensure_running = AsyncMock(return_value=True)
         coordinator.notification_listener = listener
-        coordinator._notification_start_time = 12345.0  # any pre-existing value
+        coordinator._notification_start_time = 12345.0
 
         await coordinator.ensure_notifications_running()
 
         listener.ensure_running.assert_awaited_once()
-        # Watchdog must NOT touch the grace-period clock when nothing changed.
         assert coordinator._notification_start_time == 12345.0
-
-    @pytest.mark.asyncio
-    async def test_revival_does_not_rearm_grace_period(self, coordinator):
-        """Dedup via _processed_notifications already filters re-deliveries.
-
-        Re-arming the grace period would silently drop a real doorbell ring
-        landing during the blackout window — see review B2.
-        """
-        listener = MagicMock()
-        listener.is_started = False
-        listener.ensure_running = AsyncMock(return_value=True)
-        coordinator.notification_listener = listener
-        coordinator._notification_start_time = None
-
-        await coordinator.ensure_notifications_running()
-
-        assert coordinator._notification_start_time is None
-
-    @pytest.mark.asyncio
-    async def test_revival_failure_keeps_grace_unchanged(self, coordinator):
-        listener = MagicMock()
-        listener.is_started = False
-        listener.ensure_running = AsyncMock(return_value=False)
-        coordinator.notification_listener = listener
-        coordinator._notification_start_time = None
-
-        await coordinator.ensure_notifications_running()
-
-        assert coordinator._notification_start_time is None
 
 
 class TestCoordinatorPhotoCaller:

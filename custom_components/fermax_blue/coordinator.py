@@ -297,22 +297,9 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
             await self.notification_listener.stop()
 
     async def ensure_notifications_running(self) -> None:
-        """Watchdog hook: revive the FCM listener if it died.
-
-        Re-deliveries of queued pushes after revival are filtered by the
-        ``_processed_notifications`` dedup deque, so we deliberately do NOT
-        re-arm the grace period — that would risk dropping a real doorbell ring
-        that lands during the blackout window.
-        """
-        if not self.notification_listener:
-            return
-        was_started = self.notification_listener.is_started
-        ok = await self.notification_listener.ensure_running()
-        if ok and not was_started:
-            _LOGGER.warning(
-                "FCM listener revived for device %s",
-                self.pairing.device_id,
-            )
+        """Watchdog hook: revive the FCM listener if it died."""
+        if self.notification_listener:
+            await self.notification_listener.ensure_running()
 
     @callback
     def _handle_notification(self, notification: dict, persistent_id: str) -> None:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 from collections.abc import Callable
 from typing import Any
@@ -169,15 +170,15 @@ class FermaxNotificationListener:
         """Reanimate the FCM listener if it has stopped.
 
         The upstream client aborts the receiver after repeated transport errors
-        and never reconnects on its own. This method is meant to be polled by a
-        watchdog so the listener stays alive across network glitches.
-
-        Serialised via ``_lifecycle_lock`` so overlapping watchdog ticks cannot
-        spawn parallel ``FcmPushClient`` instances while a slow ``start()`` is
-        still handshaking.
+        and never reconnects on its own; this is meant to be polled by a
+        watchdog. Serialised via ``_lifecycle_lock`` so overlapping ticks
+        cannot spawn parallel ``FcmPushClient`` instances.
 
         Returns True when the listener is running after the call.
         """
+        if self.is_started:
+            return True
+
         async with self._lifecycle_lock:
             if self.is_started:
                 return True
@@ -187,14 +188,10 @@ class FermaxNotificationListener:
 
             _LOGGER.warning("FCM listener is not running; restarting it")
             if self._push_client is not None:
-                try:
+                with contextlib.suppress(ConnectionError, OSError, RuntimeError):
                     await self._push_client.stop()
-                except (ConnectionError, OSError, RuntimeError) as err:
-                    _LOGGER.debug("Ignoring error during dead client teardown: %s", err)
                 self._push_client = None
 
-            # The persisted FCM token is reused, so the Fermax-side
-            # ``register_app_token`` mapping stays valid; no re-registration needed.
             try:
                 await self._start_locked()
             except (ConnectionError, OSError, RuntimeError):
