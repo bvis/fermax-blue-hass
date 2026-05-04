@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.16.3-beta.1] - 2026-05-03
+## [0.16.3] - 2026-05-04
 
 ### Fixed
 - **FCM listener no longer reconnects after 3 sequential transport errors** — the upstream `firebase_messaging` client used to abort its receiver and never reconnect, leaving the doorbell camera black: `auto_on` answered `call_starting` but the push carrying the signaling payload never arrived (#3).
