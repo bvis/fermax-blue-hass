@@ -14,6 +14,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, EVENT_HOMEASSISTANT_STOP
 from homeassistant.core import Event, HomeAssistant, ServiceCall
 from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.httpx_client import create_async_httpx_client
 
 from .api import FermaxBlueApi
@@ -234,19 +235,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: FermaxBlueConfigEntry) -
 
     # Run cleanup once at startup (non-blocking) and daily
     hass.async_create_task(_cleanup_old_recordings())
-    from datetime import timedelta as _td
-
-    from homeassistant.helpers.event import async_track_time_interval
-
-    entry.async_on_unload(async_track_time_interval(hass, _cleanup_old_recordings, _td(hours=24)))
+    entry.async_on_unload(
+        async_track_time_interval(hass, _cleanup_old_recordings, timedelta(hours=24))
+    )
 
     async def _fcm_watchdog(_now: datetime | None = None) -> None:
         """Revive any FCM listener whose receiver has died."""
-        for coordinator in coordinators:
-            await coordinator.ensure_notifications_running()
+        await asyncio.gather(
+            *(c.ensure_notifications_running() for c in coordinators),
+            return_exceptions=True,
+        )
 
     entry.async_on_unload(
-        async_track_time_interval(hass, _fcm_watchdog, _td(seconds=FCM_WATCHDOG_INTERVAL))
+        async_track_time_interval(hass, _fcm_watchdog, timedelta(seconds=FCM_WATCHDOG_INTERVAL))
     )
 
     async def _async_shutdown(event: Event) -> None:
