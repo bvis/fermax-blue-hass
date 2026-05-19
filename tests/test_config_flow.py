@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 import voluptuous as vol
+from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 
 from custom_components.fermax_blue.api import FermaxAuthError, FermaxBlueApi
 from custom_components.fermax_blue.const import (
@@ -237,6 +238,43 @@ class TestCredentials:
 
         with pytest.raises(vol.Invalid):
             _https_url("not-a-url")
+
+    def test_credentials_schema_uses_serializable_url_fields(self):
+        """Test credential URL fields do not use custom callable validators in the form."""
+        from custom_components.fermax_blue.config_flow import STEP_CREDENTIALS_SCHEMA, _https_url
+
+        schema_by_key = {
+            marker.schema: validator for marker, validator in STEP_CREDENTIALS_SCHEMA.schema.items()
+        }
+
+        assert schema_by_key[CONF_FERMAX_AUTH_URL] is str
+        assert schema_by_key[CONF_FERMAX_BASE_URL] is str
+        assert _https_url not in schema_by_key.values()
+
+    @pytest.mark.asyncio
+    async def test_config_flow_rejects_non_https_urls_after_submit(self):
+        """Test submitted credential URLs are still HTTPS-validated."""
+        from custom_components.fermax_blue.config_flow import FermaxBlueConfigFlow
+
+        flow = FermaxBlueConfigFlow()
+        result = await flow._async_validate_and_create(
+            {
+                CONF_USERNAME: "user@example.com",
+                CONF_PASSWORD: "password",
+                CONF_FERMAX_AUTH_URL: "http://auth.example.com/oauth/token",
+                CONF_FERMAX_BASE_URL: "https://api.example.com",
+                CONF_FERMAX_AUTH_BASIC: "Basic dGVzdDp0ZXN0",
+                CONF_FIREBASE_API_KEY: "AIzaTestKey",
+                CONF_FIREBASE_SENDER_ID: "123456789012",
+                CONF_FIREBASE_APP_ID: "1:123456789012:android:abcdef1234",
+                CONF_FIREBASE_PROJECT_ID: "fermax-test",
+                CONF_FIREBASE_PACKAGE_NAME: "com.fermax.blue.app",
+            }
+        )
+
+        assert result["type"] == "form"
+        assert result["step_id"] == "credentials"
+        assert result["errors"][CONF_FERMAX_AUTH_URL] == "invalid_url"
 
     def test_no_hardcoded_credentials_in_const(self):
         """Test that const.py has no hardcoded API/Firebase values."""

@@ -26,6 +26,7 @@
     },
     "error": {
       "invalid_auth": "Ongeldige inloggegevens. Controleer uw e-mail en wachtwoord.",
+      "invalid_url": "Fermax-URL's moeten geldige HTTPS-URL's zijn.",
       "cannot_connect": "Kan geen verbinding maken met Fermax Blue servers.",
       "no_devices": "Geen gekoppelde apparaten gevonden op dit account."
     },

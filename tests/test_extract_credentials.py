@@ -1,9 +1,11 @@
 """Tests for the credential extraction script."""
 
+import base64
 import json
 import sys
 import zipfile
 from pathlib import Path
+from urllib.parse import quote_plus
 
 import pytest
 
@@ -58,6 +60,94 @@ def fake_decompiled(tmp_path: Path) -> Path:
     )
     (src / "Auth.java").write_text(
         'String auth = "Basic ' + "B" * 60 + '";\nString pkg = "com.fermax.blue.app";\n'
+    )
+
+    return tmp_path
+
+
+def _java_byte_list(data: bytes) -> str:
+    """Return Java signed byte literals for encrypted test data."""
+    return ", ".join(str(value if value < 128 else value - 256) for value in data)
+
+
+def _encrypt_oauth_test_value(value: str) -> str:
+    """Encrypt a test value like OAuthUtils does in the Android app."""
+    pytest.importorskip("cryptography.hazmat.primitives.ciphers")
+    from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+
+    aes_key = bytes(
+        key_part & 0xFF
+        for key_part in (
+            98,
+            52,
+            -29,
+            -31,
+            -105,
+            -10,
+            106,
+            7,
+            87,
+            -117,
+            -24,
+            31,
+            -102,
+            -36,
+            -102,
+            -87,
+        )
+    )
+    data = value.encode()
+    padding_length = 16 - (len(data) % 16)
+    padded = data + bytes([padding_length]) * padding_length
+    encryptor = Cipher(algorithms.AES(aes_key), modes.ECB()).encryptor()
+    return _java_byte_list(encryptor.update(padded) + encryptor.finalize())
+
+
+@pytest.fixture
+def fake_oauth_decompiled(tmp_path: Path) -> Path:
+    """Create decompiled source with OAuth arrays and an unrelated tracing Basic header."""
+    utils = tmp_path / "sources" / "com" / "fermax" / "blue" / "app" / "core" / "utils"
+    remoteconfig = (
+        tmp_path / "sources" / "com" / "fermax" / "blue" / "app" / "data" / "remoteconfig"
+    )
+    tracing = tmp_path / "sources" / "com" / "fermax" / "blue" / "app" / "tracing"
+    utils.mkdir(parents=True)
+    remoteconfig.mkdir(parents=True)
+    tracing.mkdir(parents=True)
+
+    aes_key = "98, 52, -29, -31, -105, -10, 106, 7, 87, -117, -24, 31, -102, -36, -102, -87"
+    (utils / "OAuthUtils.java").write_text(
+        f"""
+public final class OAuthUtils {{
+    public final String decrypt(Byte[] value) {{
+        SecretKeySpec secretKeySpec = new SecretKeySpec(new byte[]{{{aes_key}}}, "AES");
+        return "";
+    }}
+}}
+"""
+    )
+    (remoteconfig / "Urls.java").write_text(
+        f"""
+public final class Urls {{
+    public final Byte[] clientId() {{
+        return new Byte[]{{{_encrypt_oauth_test_value("dev-client")}}};
+        return new Byte[]{{{_encrypt_oauth_test_value("prod client/id")}}};
+    }}
+    public final Byte[] clientSecret() {{
+        return new Byte[]{{{_encrypt_oauth_test_value("dev-secret")}}};
+        return new Byte[]{{{_encrypt_oauth_test_value("prod secret:with/slash")}}};
+    }}
+    public final String authUrl() {{
+        return "https://oauth-pro-duoxme.fermax.io";
+    }}
+    public final String baseUrl() {{
+        return "https://pro-duoxme.fermax.io";
+    }}
+}}
+"""
+    )
+    (tracing / "TraceManagerOtelImpl.java").write_text(
+        'String endpoint = "/monitoring/v1/traces";\nString auth = "Basic ' + "C" * 60 + '";\n'
     )
 
     return tmp_path
@@ -126,6 +216,25 @@ class TestExtractFromDecompiled:
         strings = script_module._search_decompiled_dir(str(fake_decompiled))
         creds = script_module._find_credentials(strings)
         assert creds["firebase_package_name"] == "com.fermax.blue.app"
+
+    def test_ignores_monitoring_basic_headers(self, script_module, fake_oauth_decompiled):
+        strings = script_module._search_decompiled_dir(str(fake_oauth_decompiled))
+        creds = script_module._find_credentials(strings)
+        assert creds["fermax_auth_basic"] == ""
+
+    def test_generates_oauth_basic_from_oauth_utils_urls(
+        self, script_module, fake_oauth_decompiled
+    ):
+        candidates = script_module._extract_oauth_candidates_from_source(str(fake_oauth_decompiled))
+        selected = script_module._select_oauth_candidate(candidates)
+
+        expected_payload = f"{quote_plus('prod client/id')}:{quote_plus('prod secret:with/slash')}"
+        expected_basic = "Basic " + base64.b64encode(expected_payload.encode()).decode()
+
+        assert [candidate.label for candidate in candidates] == ["environment 1", "production"]
+        assert selected.auth_basic == expected_basic
+        assert selected.auth_url == "https://oauth-pro-duoxme.fermax.io/oauth/token"
+        assert selected.base_url == "https://pro-duoxme.fermax.io"
 
 
 class TestGoogleServicesJson:

@@ -26,6 +26,7 @@
     },
     "error": {
       "invalid_auth": "Invalid credentials. Please check your email and password.",
+      "invalid_url": "Fermax URLs must be valid HTTPS URLs.",
       "cannot_connect": "Unable to connect to Fermax Blue servers.",
       "no_devices": "No paired devices found on this account."
     },
