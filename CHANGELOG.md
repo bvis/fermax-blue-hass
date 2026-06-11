@@ -1,17 +1,13 @@
 # Changelog
 
-## [0.16.4-beta.2] - 2026-06-11
+## [0.16.4] - 2026-06-11
 
 ### Fixed
+- **Config flow could not render on recent Home Assistant versions** (#8, #9, #10, #11) — the credentials form schema used a custom callable HTTPS validator that `voluptuous_serialize` cannot convert (`ValueError: Unable to convert schema: <function _https_url ...>`), blocking login entirely. URL fields are now plain strings in the form schema and HTTPS validation runs after submit, returning a translated `invalid_url` error (all 10 languages). Contributed by @pespinel (#7).
 - **Phantom doorbell ring on Home Assistant restart** — event entities (doorbell ring, door opened, camera on) inherited their availability from the device `connection_state`. A transient intercom disconnect, or the brief window during an HA restart, flapped them to `unavailable` and back; on recovery the `EventEntity` restores its last event (e.g. `ring`) and HA fires state triggers, so automations watching the doorbell ran with no FCM message involved. Event availability is now decoupled from connectivity (events are momentary historical markers), eliminating the flap. Real events still fire normally.
 - **Hardened the FCM push client against firebase-messaging reconnect storms** (#12) — a poisoned `StreamReader` in the upstream `_listen` loop re-raises the same exception object every iteration, growing its traceback while `logging.exception` formats it inside the HA event loop; on Python 3.14 this is quadratic and pegs the core until the Supervisor watchdog kills HA.
   - A `logging.Filter` on the `firebase_messaging.fcmpushclient` logger now strips `exc_info` after 3 tracebacks per 5-minute window (records are kept as one-liners), defusing the CPU bomb even while the upstream loop spins.
   - `FcmPushClientConfig.abort_on_sequential_error_count` is back to a bounded value (3) so the client gives up instead of spinning; the watchdog restarts it with a delayed, doubling backoff (5 → 15 min cap) that resets once the listener is healthy again. A persistent server-side failure now means "push down for a while" instead of a crash loop.
-
-## [0.16.4-beta.1] - 2026-06-11
-
-### Fixed
-- **Config flow could not render on recent Home Assistant versions** (#8, #9, #10, #11) — the credentials form schema used a custom callable HTTPS validator that `voluptuous_serialize` cannot convert (`ValueError: Unable to convert schema: <function _https_url ...>`), blocking login entirely. URL fields are now plain strings in the form schema and HTTPS validation runs after submit, returning a translated `invalid_url` error (all 10 languages). Contributed by @pespinel (#7).
 - **OAuth authentication diagnostics** — non-JSON responses, HTTP errors, OAuth error payloads, and missing `access_token` are now handled explicitly with safe, redacted log messages; `invalid_client` errors point to the OAuth Basic header instead of the user's email/password (#7).
 - **APK credential extraction** — `scripts/extract_credentials.py` ignores unrelated `Basic` headers from tracing/telemetry code and generates the OAuth header from `OAuthUtils.java` + `Urls.clientId()`/`Urls.clientSecret()`, detecting the production environment; extracted secrets are redacted in console output (#7).
 
