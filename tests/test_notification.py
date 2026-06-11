@@ -1,11 +1,31 @@
 """Tests for the FCM notification listener."""
 
 import asyncio
+import logging
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from custom_components.fermax_blue.notification import FermaxNotificationListener
+from custom_components.fermax_blue.notification import (
+    FCM_ABORT_SEQUENTIAL_ERROR_COUNT,
+    FCM_EXC_LOG_LIMIT,
+    FCM_EXC_LOG_WINDOW,
+    FCM_RESTART_BACKOFF_INITIAL,
+    FCM_RESTART_BACKOFF_MAX,
+    FCM_UPSTREAM_LOGGER,
+    FermaxNotificationListener,
+    _FcmExcInfoRateLimitFilter,
+)
+
+
+class _FakeClock:
+    """Deterministic stand-in for the time module (monotonic only)."""
+
+    def __init__(self, start: float = 1000.0) -> None:
+        self.now = start
+
+    def monotonic(self) -> float:
+        return self.now
 
 
 def _make_listener(*, with_credentials: bool = True) -> FermaxNotificationListener:
@@ -45,6 +65,7 @@ async def test_ensure_running_revives_dead_listener(listener):
     dead_client.is_started = MagicMock(return_value=False)
     dead_client.stop = AsyncMock()
     listener._push_client = dead_client
+    listener._restart_at = 0.0  # backoff deadline already elapsed
 
     new_client = MagicMock()
     new_client.is_started = MagicMock(return_value=True)
@@ -72,6 +93,7 @@ async def test_ensure_running_swallows_stop_errors(listener):
     dead_client.is_started = MagicMock(return_value=False)
     dead_client.stop = AsyncMock(side_effect=RuntimeError("already gone"))
     listener._push_client = dead_client
+    listener._restart_at = 0.0  # backoff deadline already elapsed
 
     new_client = MagicMock()
     new_client.is_started = MagicMock(return_value=True)
@@ -91,6 +113,7 @@ async def test_ensure_running_returns_false_when_restart_fails(listener):
     dead_client.is_started = MagicMock(return_value=False)
     dead_client.stop = AsyncMock()
     listener._push_client = dead_client
+    listener._restart_at = 0.0  # backoff deadline already elapsed
 
     new_client = MagicMock()
     new_client.is_started = MagicMock(return_value=False)
@@ -103,7 +126,13 @@ async def test_ensure_running_returns_false_when_restart_fails(listener):
         assert await listener.ensure_running() is False
 
 
-async def test_start_passes_resilient_config(listener):
+async def test_start_passes_bounded_abort_config(listener):
+    """The client must abort after a few sequential errors instead of spinning forever.
+
+    Unbounded retries inside firebase_messaging's _listen loop caused an HA
+    event-loop CPU exhaustion (issue #12); the watchdog restarts the client
+    with delayed backoff instead.
+    """
     new_client = MagicMock()
     new_client.start = AsyncMock()
     new_client.is_started = MagicMock(return_value=True)
@@ -115,7 +144,7 @@ async def test_start_passes_resilient_config(listener):
         await listener.start()
 
     kwargs = fcm_cls.call_args.kwargs
-    assert kwargs["config"].abort_on_sequential_error_count is None
+    assert kwargs["config"].abort_on_sequential_error_count == FCM_ABORT_SEQUENTIAL_ERROR_COUNT
 
 
 async def test_concurrent_ensure_running_creates_one_client(listener):
@@ -124,6 +153,7 @@ async def test_concurrent_ensure_running_creates_one_client(listener):
     dead_client.is_started = MagicMock(return_value=False)
     dead_client.stop = AsyncMock()
     listener._push_client = dead_client
+    listener._restart_at = 0.0  # backoff deadline already elapsed
 
     started = asyncio.Event()
     release = asyncio.Event()
@@ -155,3 +185,161 @@ async def test_concurrent_ensure_running_creates_one_client(listener):
 
     assert results == [True, True]
     assert len(instances) == 1
+
+
+def _dead_client() -> MagicMock:
+    client = MagicMock()
+    client.is_started = MagicMock(return_value=False)
+    client.stop = AsyncMock()
+    return client
+
+
+def _healthy_client() -> MagicMock:
+    client = MagicMock()
+    client.is_started = MagicMock(return_value=True)
+    client.start = AsyncMock()
+    client.stop = AsyncMock()
+    return client
+
+
+async def test_ensure_running_delays_restart_until_backoff_elapses(listener):
+    """First death schedules a delayed restart instead of restarting immediately."""
+    listener._push_client = _dead_client()
+    clock = _FakeClock()
+
+    with (
+        patch("custom_components.fermax_blue.notification.time", clock),
+        patch(
+            "custom_components.fermax_blue.notification.FcmPushClient",
+            return_value=_healthy_client(),
+        ) as fcm_cls,
+    ):
+        assert await listener.ensure_running() is False
+        fcm_cls.assert_not_called()
+
+        clock.now += FCM_RESTART_BACKOFF_INITIAL - 1
+        assert await listener.ensure_running() is False
+        fcm_cls.assert_not_called()
+
+        clock.now += 2
+        assert await listener.ensure_running() is True
+        fcm_cls.assert_called_once()
+
+
+async def test_ensure_running_backoff_escalates_and_caps(listener):
+    """Each failed restart doubles the delay up to the maximum."""
+    listener._push_client = _dead_client()
+    clock = _FakeClock()
+
+    def _failing_factory(*args, **kwargs):
+        client = _dead_client()
+        client.start = AsyncMock(side_effect=RuntimeError("still broken"))
+        return client
+
+    with (
+        patch("custom_components.fermax_blue.notification.time", clock),
+        patch(
+            "custom_components.fermax_blue.notification.FcmPushClient",
+            side_effect=_failing_factory,
+        ) as fcm_cls,
+    ):
+        # Schedule, then first attempt after the initial delay.
+        assert await listener.ensure_running() is False
+        clock.now += FCM_RESTART_BACKOFF_INITIAL + 1
+        assert await listener.ensure_running() is False
+        assert fcm_cls.call_count == 1
+
+        # Re-schedule with doubled delay: not yet at 2x-1, attempt at 2x+1.
+        assert await listener.ensure_running() is False
+        clock.now += FCM_RESTART_BACKOFF_INITIAL * 2 - 1
+        assert await listener.ensure_running() is False
+        assert fcm_cls.call_count == 1
+        clock.now += 2
+        assert await listener.ensure_running() is False
+        assert fcm_cls.call_count == 2
+
+        # Delay is capped at the maximum.
+        assert listener._restart_backoff == FCM_RESTART_BACKOFF_MAX
+
+
+async def test_healthy_observation_resets_backoff(listener):
+    """A healthy listener resets the escalated backoff to the initial delay."""
+    listener._push_client = _healthy_client()
+    listener._restart_backoff = FCM_RESTART_BACKOFF_MAX
+    listener._restart_at = 12345.0
+
+    assert await listener.ensure_running() is True
+    assert listener._restart_backoff == FCM_RESTART_BACKOFF_INITIAL
+    assert listener._restart_at is None
+
+
+async def test_start_installs_exc_rate_limit_filter_once(listener):
+    """start() attaches the rate-limit filter to the upstream logger exactly once."""
+    upstream = logging.getLogger(FCM_UPSTREAM_LOGGER)
+    for existing in list(upstream.filters):
+        if isinstance(existing, _FcmExcInfoRateLimitFilter):
+            upstream.removeFilter(existing)
+
+    with patch(
+        "custom_components.fermax_blue.notification.FcmPushClient",
+        return_value=_healthy_client(),
+    ):
+        await listener.start()
+        await listener.start()
+
+    installed = [f for f in upstream.filters if isinstance(f, _FcmExcInfoRateLimitFilter)]
+    assert len(installed) == 1
+
+
+def _exc_record(msg: str = "Unexpected exception during read") -> logging.LogRecord:
+    try:
+        raise ConnectionResetError("Connection lost")
+    except ConnectionResetError:
+        import sys
+
+        exc_info = sys.exc_info()
+    return logging.LogRecord(FCM_UPSTREAM_LOGGER, logging.ERROR, __file__, 1, msg, None, exc_info)
+
+
+def test_exc_filter_strips_tracebacks_after_limit():
+    """Only the first N tracebacks in a window are kept; later ones become one-liners."""
+    clock = _FakeClock()
+    with patch("custom_components.fermax_blue.notification.time", clock):
+        log_filter = _FcmExcInfoRateLimitFilter()
+        records = [_exc_record() for _ in range(FCM_EXC_LOG_LIMIT + 2)]
+        results = [log_filter.filter(record) for record in records]
+
+    assert all(results)  # records are never dropped, only stripped
+    assert all(record.exc_info for record in records[:FCM_EXC_LOG_LIMIT])
+    for record in records[FCM_EXC_LOG_LIMIT:]:
+        assert record.exc_info is None
+        assert "suppressed" in record.getMessage()
+
+
+def test_exc_filter_allows_tracebacks_again_after_window():
+    """Once the window expires, full tracebacks are logged again."""
+    clock = _FakeClock()
+    with patch("custom_components.fermax_blue.notification.time", clock):
+        log_filter = _FcmExcInfoRateLimitFilter()
+        for _ in range(FCM_EXC_LOG_LIMIT + 1):
+            log_filter.filter(_exc_record())
+
+        clock.now += FCM_EXC_LOG_WINDOW + 1
+        record = _exc_record()
+        assert log_filter.filter(record) is True
+        assert record.exc_info is not None
+
+
+def test_exc_filter_ignores_records_without_exc_info():
+    """Plain records pass through untouched regardless of the budget state."""
+    clock = _FakeClock()
+    with patch("custom_components.fermax_blue.notification.time", clock):
+        log_filter = _FcmExcInfoRateLimitFilter()
+        for _ in range(FCM_EXC_LOG_LIMIT + 5):
+            log_filter.filter(_exc_record())
+
+        record = logging.LogRecord(
+            FCM_UPSTREAM_LOGGER, logging.INFO, __file__, 1, "plain message", None, None
+        )
+        assert log_filter.filter(record) is True
+        assert record.getMessage() == "plain message"
