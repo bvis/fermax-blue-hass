@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import time
+from collections import deque
 from collections.abc import Callable
 from typing import Any
 
@@ -19,6 +21,65 @@ _LOGGER = logging.getLogger(__name__)
 
 _FCM_STORAGE_VERSION = 1
 _FCM_STORAGE_KEY = f"{DOMAIN}_fcm_credentials"
+
+# Hardening against firebase_messaging reconnect storms (issue #12): a poisoned
+# StreamReader re-raises the same exception object every iteration of _listen,
+# growing its traceback while logging.exception formats it inside the HA event
+# loop — on Python 3.14 that is quadratic and pegs the core until the watchdog
+# kills HA. Bound the failure (abort + delayed restart) and defuse the log bomb
+# (rate-limit filter strips exc_info before formatting).
+FCM_UPSTREAM_LOGGER = "firebase_messaging.fcmpushclient"
+FCM_ABORT_SEQUENTIAL_ERROR_COUNT = 3
+FCM_RESTART_BACKOFF_INITIAL = 300.0  # seconds until the first restart attempt
+FCM_RESTART_BACKOFF_MAX = 900.0  # ceiling for the doubled delay
+FCM_EXC_LOG_LIMIT = 3  # full tracebacks allowed per window
+FCM_EXC_LOG_WINDOW = 300.0  # seconds
+
+
+class _FcmExcInfoRateLimitFilter(logging.Filter):
+    """Strip tracebacks from upstream FCM records after a burst.
+
+    Filters run before formatting, so stripping ``exc_info`` here prevents
+    `logging.exception` calls in firebase_messaging's listen loop from
+    formatting an ever-growing traceback chain on every iteration. The record
+    itself is always kept as a one-line message.
+    """
+
+    def __init__(
+        self,
+        limit: int = FCM_EXC_LOG_LIMIT,
+        window: float = FCM_EXC_LOG_WINDOW,
+    ) -> None:
+        super().__init__()
+        self._limit = limit
+        self._window = window
+        self._timestamps: deque[float] = deque()
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if not record.exc_info:
+            return True
+
+        now = time.monotonic()
+        while self._timestamps and now - self._timestamps[0] > self._window:
+            self._timestamps.popleft()
+
+        if len(self._timestamps) < self._limit:
+            self._timestamps.append(now)
+            return True
+
+        record.exc_info = None
+        record.exc_text = None
+        record.stack_info = None
+        record.msg = f"{record.msg} (traceback suppressed: rate limit exceeded)"
+        return True
+
+
+def _install_fcm_log_rate_limit() -> None:
+    """Attach the traceback rate-limit filter to the upstream FCM logger (idempotent)."""
+    upstream = logging.getLogger(FCM_UPSTREAM_LOGGER)
+    if not any(isinstance(f, _FcmExcInfoRateLimitFilter) for f in upstream.filters):
+        upstream.addFilter(_FcmExcInfoRateLimitFilter())
+
 
 _SENSITIVE_LOG_KEYS = frozenset(
     {"FermaxToken", "fermaxOauthToken", "appToken", "token", "fcm_token"}
@@ -65,6 +126,8 @@ class FermaxNotificationListener:
         )
         self._store: Store = Store(hass, _FCM_STORAGE_VERSION, _FCM_STORAGE_KEY)
         self._lifecycle_lock = asyncio.Lock()
+        self._restart_backoff = FCM_RESTART_BACKOFF_INITIAL
+        self._restart_at: float | None = None
 
     @property
     def fcm_token(self) -> str | None:
@@ -142,12 +205,19 @@ class FermaxNotificationListener:
             _LOGGER.error("Cannot start listener: no FCM credentials")
             return
 
+        _install_fcm_log_rate_limit()
+
+        # Bounded abort: let the upstream client give up after a few sequential
+        # errors instead of spinning forever on a poisoned reader; the watchdog
+        # restarts it with delayed backoff via ensure_running().
         self._push_client = FcmPushClient(
             callback=self._on_notification,
             fcm_config=self._fcm_config,
             credentials=self._credentials,
             credentials_updated_callback=self._on_credentials_updated,
-            config=FcmPushClientConfig(abort_on_sequential_error_count=None),
+            config=FcmPushClientConfig(
+                abort_on_sequential_error_count=FCM_ABORT_SEQUENTIAL_ERROR_COUNT
+            ),
         )
 
         await self._push_client.start()
@@ -167,16 +237,21 @@ class FermaxNotificationListener:
         return self._push_client is not None and self._push_client.is_started()
 
     async def ensure_running(self) -> bool:
-        """Reanimate the FCM listener if it has stopped.
+        """Reanimate the FCM listener if it has stopped, with delayed backoff.
 
         The upstream client aborts the receiver after repeated transport errors
         and never reconnects on its own; this is meant to be polled by a
-        watchdog. Serialised via ``_lifecycle_lock`` so overlapping ticks
-        cannot spawn parallel ``FcmPushClient`` instances.
+        watchdog. Restarts are deferred by a doubling delay (5 → 15 min cap) so
+        a persistent server-side failure becomes "push down for a while"
+        instead of a reconnect storm (issue #12). Serialised via
+        ``_lifecycle_lock`` so overlapping ticks cannot spawn parallel
+        ``FcmPushClient`` instances.
 
         Returns True when the listener is running after the call.
         """
         if self.is_started:
+            self._restart_backoff = FCM_RESTART_BACKOFF_INITIAL
+            self._restart_at = None
             return True
 
         async with self._lifecycle_lock:
@@ -186,7 +261,22 @@ class FermaxNotificationListener:
             if not self._credentials:
                 return False
 
-            _LOGGER.warning("FCM listener is not running; restarting it")
+            now = time.monotonic()
+            if self._restart_at is None:
+                self._restart_at = now + self._restart_backoff
+                _LOGGER.warning(
+                    "FCM listener is not running; restart scheduled in %.0f seconds",
+                    self._restart_backoff,
+                )
+                return False
+
+            if now < self._restart_at:
+                return False
+
+            self._restart_at = None
+            self._restart_backoff = min(self._restart_backoff * 2, FCM_RESTART_BACKOFF_MAX)
+
+            _LOGGER.warning("FCM listener restart backoff elapsed; restarting it")
             if self._push_client is not None:
                 with contextlib.suppress(ConnectionError, OSError, RuntimeError):
                     await self._push_client.stop()

@@ -197,6 +197,48 @@ class TestDoorbellEvent:
         assert event.unique_id == "test_dev_doorbell_event"
 
 
+class TestEventAvailabilityDecoupledFromConnection:
+    """Event entities must not flap to unavailable on transient disconnects.
+
+    When a coordinator-bound entity goes unavailable and then recovers, an
+    EventEntity restores its last event (e.g. ``ring``); HA fires state
+    triggers on that recovery, producing a phantom doorbell ring on HA restart
+    or a brief intercom disconnect (no FCM involved). Decoupling event
+    availability from ``connection_state`` prevents the flap.
+    """
+
+    def test_doorbell_event_available_when_disconnected(self, mock_coordinator):
+        from custom_components.fermax_blue.event import FermaxDoorbellEvent
+
+        mock_coordinator.data = {"connection_state": "Disconnected"}
+        assert FermaxDoorbellEvent(mock_coordinator).available is True
+
+    def test_door_opened_event_available_when_disconnected(self, mock_coordinator):
+        from custom_components.fermax_blue.event import FermaxDoorOpenedEvent
+
+        mock_coordinator.data = {"connection_state": "Disconnected"}
+        assert FermaxDoorOpenedEvent(mock_coordinator).available is True
+
+    def test_camera_on_event_available_when_disconnected(self, mock_coordinator):
+        from custom_components.fermax_blue.event import FermaxCameraOnEvent
+
+        mock_coordinator.data = {"connection_state": "Disconnected"}
+        assert FermaxCameraOnEvent(mock_coordinator).available is True
+
+    def test_doorbell_event_available_with_no_data(self, mock_coordinator):
+        from custom_components.fermax_blue.event import FermaxDoorbellEvent
+
+        mock_coordinator.data = None
+        assert FermaxDoorbellEvent(mock_coordinator).available is True
+
+    def test_non_event_entity_still_tracks_connection(self, mock_coordinator):
+        """Regression guard: only event entities are decoupled, not the base."""
+        from custom_components.fermax_blue.entity import FermaxBlueEntity
+
+        mock_coordinator.data = {"connection_state": "Disconnected"}
+        assert FermaxBlueEntity(mock_coordinator).available is False
+
+
 class TestLastOpeningSensor:
     """Test last door opening sensor."""
 
