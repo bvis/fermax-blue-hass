@@ -63,8 +63,8 @@ def _https_url(value: str) -> str:
 
 STEP_CREDENTIALS_SCHEMA = vol.Schema(
     {
-        vol.Required(CONF_FERMAX_AUTH_URL): _https_url,
-        vol.Required(CONF_FERMAX_BASE_URL): _https_url,
+        vol.Required(CONF_FERMAX_AUTH_URL): str,
+        vol.Required(CONF_FERMAX_BASE_URL): str,
         vol.Required(CONF_FERMAX_AUTH_BASIC): str,
         vol.Required(CONF_FIREBASE_API_KEY): str,
         vol.Required(CONF_FIREBASE_SENDER_ID): str,
@@ -111,6 +111,19 @@ class FermaxBlueConfigFlow(ConfigFlow, domain=DOMAIN):
     async def _async_validate_and_create(self, data: dict[str, Any]) -> ConfigFlowResult:
         """Validate credentials and create the config entry."""
         errors: dict[str, str] = {}
+        for field in (CONF_FERMAX_AUTH_URL, CONF_FERMAX_BASE_URL):
+            try:
+                data[field] = _https_url(data[field])
+            except vol.Invalid:
+                errors[field] = "invalid_url"
+
+        if errors:
+            return self.async_show_form(
+                step_id="credentials",
+                data_schema=STEP_CREDENTIALS_SCHEMA,
+                errors=errors,
+            )
+
         client = get_async_client(self.hass)
         api = FermaxBlueApi(
             data[CONF_USERNAME],

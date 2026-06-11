@@ -1,5 +1,6 @@
 """Tests for the Fermax Blue API client."""
 
+import logging
 from dataclasses import FrozenInstanceError
 from unittest.mock import AsyncMock, patch
 
@@ -7,6 +8,7 @@ import httpx
 import pytest
 
 from custom_components.fermax_blue.api import (
+    FermaxApiError,
     FermaxAuthError,
     FermaxBlueApi,
     OpeningRecord,
@@ -94,6 +96,53 @@ class TestAuthentication:
             pytest.raises(FermaxAuthError, match="Bad credentials"),
         ):
             await api.authenticate()
+
+    @pytest.mark.asyncio
+    async def test_invalid_client_mentions_oauth_basic(self, api):
+        """Test invalid_client points to OAuth client credentials."""
+        resp = _mock_response(
+            401,
+            json={
+                "error": "invalid_client",
+                "error_description": "Client authentication failed",
+            },
+        )
+
+        with (
+            patch("httpx.AsyncClient.post", return_value=resp),
+            pytest.raises(FermaxAuthError, match="Auth Basic header"),
+        ):
+            await api.authenticate()
+
+    @pytest.mark.asyncio
+    async def test_non_json_auth_response_raises_api_error_without_leaking_secrets(
+        self, api, caplog
+    ):
+        """Test non-JSON auth responses do not leak JSONDecodeError or secrets."""
+        caplog.set_level(logging.WARNING, logger="custom_components.fermax_blue.api")
+        resp = _mock_response(
+            502,
+            text=(
+                "<html>bad gateway for test@example.com testpass123 "
+                "Basic dGVzdDp0ZXN0 access_token=secret-token</html>"
+            ),
+            headers={"content-type": "text/html"},
+        )
+
+        with (
+            patch("httpx.AsyncClient.post", return_value=resp),
+            pytest.raises(FermaxApiError, match="non-JSON response"),
+        ):
+            await api.authenticate()
+
+        assert "JSONDecodeError" not in caplog.text
+        assert "test@example.com" not in caplog.text
+        assert "testpass123" not in caplog.text
+        assert "dGVzdDp0ZXN0" not in caplog.text
+        assert "access_token" not in caplog.text
+        assert "secret-token" not in caplog.text
+        assert "status=502" in caplog.text
+        assert "content_type=text/html" in caplog.text
 
     @pytest.mark.asyncio
     async def test_token_expiry_detected(self, api):

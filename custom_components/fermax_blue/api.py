@@ -6,9 +6,11 @@ import asyncio
 import base64
 import json
 import logging
+import re
 import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from typing import Any
 from urllib.parse import quote
 
 import httpx
@@ -21,6 +23,38 @@ _LOGGER = logging.getLogger(__name__)
 API_TIMEOUT = 10.0
 MAX_RETRIES = 3
 RETRY_BACKOFF_BASE = 1.0
+AUTH_RESPONSE_LOG_BODY_LIMIT = 500
+
+
+def _redact_sensitive_text(text: str, extra_values: tuple[str | None, ...] = ()) -> str:
+    """Redact known credential/token patterns from diagnostic text."""
+    redacted = text
+    for value in extra_values:
+        if value:
+            redacted = redacted.replace(value, "[redacted]")
+
+    redacted = re.sub(
+        r"(?i)\b(Basic|Bearer)\s+[A-Za-z0-9._~+/=-]+",
+        r"\1 [redacted]",
+        redacted,
+    )
+    redacted = re.sub(
+        r"(?i)\bAuthorization\s*[:=]\s*(?:Basic|Bearer)?\s*[A-Za-z0-9._~+/=-]+",
+        "[redacted]",
+        redacted,
+    )
+    return re.sub(
+        r'(?i)"?(?:access_token|refresh_token|id_token|password|username|email)"?\s*[:=]\s*"?[^",\s&}]+',
+        "[redacted]",
+        redacted,
+    )
+
+
+def _truncate_for_log(text: str, limit: int = AUTH_RESPONSE_LOG_BODY_LIMIT) -> str:
+    """Return a bounded string suitable for logs."""
+    if len(text) <= limit:
+        return text
+    return f"{text[:limit]}..."
 
 
 @dataclass(frozen=True)
@@ -96,7 +130,7 @@ class OpeningRecord:
 
 def _is_retryable(exc: Exception) -> bool:
     """Return True if the exception is transient and worth retrying."""
-    if isinstance(exc, (httpx.ConnectError, httpx.TimeoutException)):
+    if isinstance(exc, httpx.ConnectError | httpx.TimeoutException):
         return True
     return isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code >= 500
 
@@ -151,6 +185,33 @@ class FermaxBlueApi:
         """Return True if we have a valid token."""
         return self._access_token is not None and time.time() < self._token_expires_at
 
+    def _safe_auth_response_body(self, response: httpx.Response) -> str:
+        """Return a safe, bounded auth response body for diagnostics."""
+        return _truncate_for_log(
+            _redact_sensitive_text(
+                response.text,
+                (self._username, self._password, self._auth_basic),
+            )
+        )
+
+    def _format_oauth_error(self, data: dict[str, Any]) -> str:
+        """Build a safe, useful OAuth error message."""
+        error = str(data.get("error", "unknown_error"))
+        description = _redact_sensitive_text(
+            str(data.get("error_description") or ""),
+            (self._username, self._password, self._auth_basic),
+        )
+
+        if error == "invalid_client":
+            return (
+                "OAuth client authentication failed (invalid_client). Check the Fermax "
+                "Auth Basic header/OAuth client credentials extracted from the APK."
+            )
+
+        if description and description != error:
+            return f"OAuth authentication failed ({error}): {description}"
+        return f"OAuth authentication failed: {error}"
+
     def _get_auth_headers(self) -> dict:
         """Get headers for authenticated API requests."""
         return {
@@ -174,9 +235,59 @@ class FermaxBlueApi:
         client = await self._get_client()
         response = await client.post(self._auth_url, headers=headers, content=payload)
 
-        data = response.json()
+        content_type = response.headers.get("content-type", "unknown")
+        try:
+            data = response.json()
+        except ValueError as exc:
+            _LOGGER.warning(
+                "Fermax OAuth endpoint returned a non-JSON response: status=%s "
+                "content_type=%s auth_url=%s body=%r",
+                response.status_code,
+                content_type,
+                self._auth_url,
+                self._safe_auth_response_body(response),
+            )
+            raise FermaxApiError(
+                f"Fermax authentication returned a non-JSON response (HTTP {response.status_code})"
+            ) from exc
+
+        if not isinstance(data, dict):
+            _LOGGER.warning(
+                "Fermax OAuth endpoint returned unexpected JSON: status=%s "
+                "content_type=%s auth_url=%s json_type=%s",
+                response.status_code,
+                content_type,
+                self._auth_url,
+                type(data).__name__,
+            )
+            raise FermaxApiError("Fermax authentication returned unexpected JSON")
+
         if "error" in data:
-            raise FermaxAuthError(data.get("error_description", data["error"]))
+            message = self._format_oauth_error(data)
+            _LOGGER.warning("Fermax OAuth authentication failed: %s", message)
+            raise FermaxAuthError(message)
+
+        if response.status_code >= 400:
+            _LOGGER.warning(
+                "Fermax OAuth endpoint returned HTTP %s without an OAuth error: "
+                "content_type=%s auth_url=%s json_keys=%s",
+                response.status_code,
+                content_type,
+                self._auth_url,
+                sorted(data),
+            )
+            raise FermaxApiError(f"Fermax authentication failed with HTTP {response.status_code}")
+
+        if "access_token" not in data:
+            _LOGGER.warning(
+                "Fermax OAuth response did not include access_token: status=%s "
+                "content_type=%s auth_url=%s json_keys=%s",
+                response.status_code,
+                content_type,
+                self._auth_url,
+                sorted(data),
+            )
+            raise FermaxApiError("Fermax authentication response did not include access_token")
 
         self._access_token = data["access_token"]
         self._token_expires_at = time.time() + data.get("expires_in", 3600) - 60

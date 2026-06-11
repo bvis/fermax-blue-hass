@@ -26,6 +26,7 @@
     },
     "error": {
       "invalid_auth": "Nieprawidłowe dane logowania. Sprawdź e-mail i hasło.",
+      "invalid_url": "Adresy URL Fermax muszą być prawidłowymi adresami HTTPS.",
       "cannot_connect": "Nie można połączyć się z serwerami Fermax Blue.",
       "no_devices": "Nie znaleziono sparowanych urządzeń na tym koncie."
     },

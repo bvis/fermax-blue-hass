@@ -26,6 +26,7 @@
     },
     "error": {
       "invalid_auth": "Geçersiz kimlik bilgileri. E-posta ve şifrenizi kontrol edin.",
+      "invalid_url": "Fermax URL'leri geçerli HTTPS URL'leri olmalıdır.",
       "cannot_connect": "Fermax Blue sunucularına bağlanılamıyor.",
       "no_devices": "Bu hesapta eşleştirilmiş cihaz bulunamadı."
     },

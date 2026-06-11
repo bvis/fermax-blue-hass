@@ -96,13 +96,25 @@ The Firebase credentials can be extracted automatically from the official Fermax
    make extract-credentials APK=/path/to/fermax-blue.apk
    ```
    Or directly: `python scripts/extract_credentials.py /path/to/fermax-blue.apk`
-3. The script extracts Firebase credentials from `resources.arsc` and API URLs from the binary. It also attempts to decrypt AES-encrypted OAuth credentials from the decompiled source if a JADX output directory is found alongside the APK.
+3. The script extracts Firebase credentials from `resources.arsc` and API URLs from the binary. It also attempts to generate the OAuth `Basic` header from `OAuthUtils.java` and `Urls.java` if a JADX output directory is found alongside the APK.
 
 The script reliably finds: `firebase_api_key`, `firebase_sender_id`, `firebase_app_id`, `firebase_project_id`, `firebase_package_name`, `fermax_auth_url`, and `fermax_base_url`.
 
 ##### OAuth client credentials (fermax_auth_basic)
 
-The OAuth `client_id` and `client_secret` (encoded as a `Basic` auth header) are available thanks to the work of the open-source Fermax community. They can be found in these projects:
+The OAuth `client_id` and `client_secret` are encrypted in the Android app and combined by `OAuthUtils.getAuthorizationHeader()` into the `Basic` auth header used for login. When a decompiled JADX directory is available, `scripts/extract_credentials.py` prefers this source:
+
+- `com.fermax.blue.app.core.utils.OAuthUtils.getAuthorizationHeader()`
+- `com.fermax.blue.app.data.remoteconfig.Urls.clientId()`
+- `com.fermax.blue.app.data.remoteconfig.Urls.clientSecret()`
+
+The production values should match the production URLs `oauth-pro-duoxme.fermax.io` and `pro-duoxme.fermax.io`.
+
+Do not use unrelated `Basic` headers from tracing or observability code. In particular, `TraceManagerOtelImpl.java` and `/monitoring/v1/traces` refer to telemetry, not OAuth login, and those headers will cause OAuth `invalid_client` errors.
+
+Never publish `credentials.json`, generated `Basic` headers, Firebase keys, access tokens, refresh tokens, usernames, or passwords.
+
+The OAuth credentials were identified thanks to the work of the open-source Fermax community:
 
 - [fermax-blue-intercom](https://github.com/marcosav/fermax-blue-intercom) by @marcosav
 - [hass-bluecon](https://github.com/AfonsoFGarcia/hass-bluecon) by @AfonsoFGarcia and the [fork](https://github.com/patrikulus/hass-bluecon) by @patrikulus
@@ -116,7 +128,8 @@ This integration exists thanks to the reverse-engineering work of these develope
 If the script doesn't find all values, decompile the APK with JADX and search manually:
 
 1. **API URLs**: search for `oauth/token` and `fermax.io` in `Urls.java`
-2. **Firebase**: found in `google-services.json` inside the APK:
+2. **OAuth Basic header**: inspect `OAuthUtils.getAuthorizationHeader()` and `Urls.clientId()` / `Urls.clientSecret()`. Select the production environment that corresponds to `oauth-pro-duoxme.fermax.io` / `pro-duoxme.fermax.io`, decrypt the encrypted byte arrays from those methods, URL-encode both values, join them as `client_id:client_secret`, then base64 encode that string and prefix it with `Basic `. Ignore telemetry headers from `TraceManagerOtelImpl.java`.
+3. **Firebase**: found in `google-services.json` inside the APK:
    - `firebase_api_key` → `client[0].api_key[0].current_key`
    - `firebase_sender_id` → `project_info.project_number`
    - `firebase_app_id` → `client[0].client_info.mobilesdk_app_id`
@@ -299,6 +312,10 @@ automation:
 
 ### "Invalid credentials" error
 Make sure you're using the same email and password you use in the Fermax Blue mobile app. The password is case-sensitive.
+
+If Home Assistant logs show OAuth `invalid_client`, the problem is usually the OAuth client credentials (`fermax_auth_basic`), not your Fermax user email/password. Re-run the extraction against a JADX decompiled directory so the script can generate the header from `OAuthUtils.java` and `Urls.clientId()` / `Urls.clientSecret()`. Do not use `Basic` headers found near `TraceManagerOtelImpl.java`, `/monitoring/v1/traces`, OpenTelemetry, tracing, or observability code.
+
+If logs show `invalid_grant` or Home Assistant reports `invalid_auth`, the problem is more likely the Fermax account credentials, account state, or an account without access to paired devices.
 
 ### Doorbell notifications not working
 The integration needs to register with Firebase Cloud Messaging. This happens automatically but can take a few minutes on first setup. Check the Home Assistant logs for `fermax_blue` entries.

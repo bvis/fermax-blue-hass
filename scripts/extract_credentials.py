@@ -14,11 +14,44 @@ Output: a credentials.json file ready for use with the integration.
 
 from __future__ import annotations
 
+import base64
 import json
 import re
 import sys
 import zipfile
+from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import quote_plus
+
+BASIC_AUTH_RE = re.compile(r"(Basic\s+[A-Za-z0-9+/=]{50,})")
+PRODUCTION_AUTH_HOST = "oauth-pro-duoxme.fermax.io"
+PRODUCTION_BASE_HOST = "pro-duoxme.fermax.io"
+
+
+@dataclass(frozen=True)
+class OAuthCredentialCandidate:
+    """OAuth Basic candidate generated from encrypted APK OAuth credentials."""
+
+    label: str
+    auth_basic: str
+    auth_url: str = ""
+    base_url: str = ""
+
+
+def _has_monitoring_or_tracing_context(text: str) -> bool:
+    """Return True if text appears to belong to telemetry/tracing code."""
+    lower = text.lower()
+    return any(
+        hint in lower
+        for hint in (
+            "tracemanagerotel",
+            "opentelemetry",
+            "/monitoring/",
+            "/traces",
+            "monitoring/v1/traces",
+            "traceparent",
+        )
+    )
 
 
 def _extract_strings_from_arsc(apk_path: str) -> list[str]:
@@ -59,9 +92,15 @@ def _search_decompiled_dir(dir_path: str) -> list[str]:
     for java_file in root.rglob("*.java"):
         try:
             content = java_file.read_text(errors="ignore")
-            strings.extend(re.findall(r'"([^"]{10,300})"', content))
         except OSError:
             continue
+        monitoring_context = _has_monitoring_or_tracing_context(
+            f"{java_file.as_posix()}\n{content}"
+        )
+        for literal in re.findall(r'"([^"]{10,300})"', content):
+            if monitoring_context and BASIC_AUTH_RE.search(literal):
+                continue
+            strings.append(literal)
 
     for json_file in root.rglob("*.json"):
         try:
@@ -99,6 +138,10 @@ def _parse_java_byte_token(token: str) -> int:
     m = re.search(r"\(byte\)\s*(-?\d+)", token)
     if m:
         return int(m.group(1)) & 0xFF
+    # Byte.valueOf(N)
+    m = re.search(r"Byte\.valueOf\(\s*(-?\d+)\s*\)", token)
+    if m:
+        return int(m.group(1)) & 0xFF
     # Byte.valueOf(Ascii.XX) or just Ascii.XX
     if "Ascii" in token:
         for name, val in _ASCII_MAP.items():
@@ -120,119 +163,195 @@ def _parse_java_byte_list(byte_list_str: str) -> bytes:
     return bytes(_parse_java_byte_token(t) for t in byte_list_str.split(","))
 
 
-def _extract_oauth_from_source(dir_path: str) -> str:
-    """Try to decrypt OAuth Basic auth from OAuthUtils + Urls.java source.
-
-    The Fermax Blue APK encrypts the OAuth client_id and client_secret
-    with AES using a hardcoded key in OAuthUtils.decrypt(). This function
-    finds the AES key, the encrypted byte arrays for the production
-    environment, decrypts them, and constructs the Basic auth header.
-    """
-    import base64
-
-    root = Path(dir_path)
-
-    # Find OAuthUtils.java to get the AES key
-    aes_key: bytes | None = None
-    for f in root.rglob("OAuthUtils.java"):
-        content = f.read_text(errors="ignore")
-        # Match: new byte[]{98, 52, -29, ...}  (the SecretKeySpec bytes)
-        m = re.search(
-            r"SecretKeySpec\(new byte\[]\{([^}]+)\}",
-            content,
-        )
+def _find_oauth_aes_key(root: Path) -> bytes | None:
+    """Find the AES key used by OAuthUtils.decrypt()."""
+    for java_file in root.rglob("OAuthUtils.java"):
+        try:
+            content = java_file.read_text(errors="ignore")
+        except OSError:
+            continue
+        m = re.search(r"SecretKeySpec\(new byte\[]\s*\{([^}]+)\}", content)
         if m:
-            aes_key = _parse_java_byte_list(m.group(1))
-            break
+            return _parse_java_byte_list(m.group(1))
+    return None
 
-    if not aes_key:
-        return ""
 
-    # Find Urls.java to get the encrypted clientId/clientSecret for production
-    for f in root.rglob("Urls.java"):
-        content = f.read_text(errors="ignore")
-        break
-    else:
-        return ""
+def _read_urls_source(root: Path) -> str:
+    """Read the decompiled Urls.java source if present."""
+    for java_file in root.rglob("Urls.java"):
+        try:
+            return java_file.read_text(errors="ignore")
+        except OSError:
+            return ""
+    return ""
 
-    # Parse the production clientId and clientSecret byte arrays
-    # Production is typically the last case (i == 4 || i == 5)
-    def _parse_byte_arrays(method_name: str) -> list[bytes]:
-        """Extract all byte array literals from a method.
 
-        Uses the next method declaration (or EOF) as the boundary so all
-        environments — including PRO after the NoWhenBranch throw — are captured.
-        Also resolves local Byte variables instead of relying on hardcoded heuristics.
-        """
-        m = re.search(
-            rf"public final Byte\[] {method_name}\(\)(.*?)(?=\n    public |\Z)",
-            content,
-            re.DOTALL,
-        )
-        if not m:
-            return []
-        method_body = m.group(1)
+def _parse_byte_arrays_from_method(content: str, method_name: str) -> list[bytes]:
+    """Extract all Java byte array literals from a method body."""
+    m = re.search(
+        rf"\b{re.escape(method_name)}\s*\(\)\s*\{{(.*?)(?=\n\s+(?:public|private|protected)\s|\Z)",
+        content,
+        re.DOTALL,
+    )
+    if not m:
+        return []
 
-        # Build a local-variable lookup from the method body
-        local_vars: dict[str, int] = {}
-        for lv in re.finditer(r"Byte\s+(\w+)\s*=\s*Byte\.valueOf\(Ascii\.(\w+)\)", method_body):
-            var_name, ascii_name = lv.group(1), lv.group(2)
-            local_vars[var_name] = _ASCII_MAP.get(ascii_name, 0)
+    method_body = m.group(1)
+    local_vars: dict[str, int] = {}
+    for lv in re.finditer(r"Byte\s+(\w+)\s*=\s*Byte\.valueOf\(([^;]+)\);", method_body):
+        local_vars[lv.group(1)] = _parse_java_byte_token(lv.group(2))
 
-        arrays: list[bytes] = []
-        for arr_match in re.finditer(r"new Byte\[]\{([^}]+)\}", method_body):
-            tokens = arr_match.group(1).split(",")
-            byte_values: list[int] = []
-            for token in tokens:
-                token = token.strip()
-                # Check local variable reference first
-                if token in local_vars:
-                    byte_values.append(local_vars[token])
-                else:
-                    byte_values.append(_parse_java_byte_token(token))
-            arrays.append(bytes(byte_values))
-        return arrays
+    arrays: list[bytes] = []
+    for arr_match in re.finditer(r"new (?:Byte|byte)\[]\s*\{([^}]+)\}", method_body):
+        byte_values: list[int] = []
+        for token in arr_match.group(1).split(","):
+            token = token.strip()
+            byte_values.append(
+                local_vars[token] if token in local_vars else _parse_java_byte_token(token)
+            )
+        arrays.append(bytes(byte_values))
+    return arrays
 
-    client_id_arrays = _parse_byte_arrays("clientId")
-    client_secret_arrays = _parse_byte_arrays("clientSecret")
 
-    if not client_id_arrays or not client_secret_arrays:
-        return ""
+def _strip_pkcs_padding(data: bytes) -> bytes:
+    """Remove PKCS5/PKCS7 padding."""
+    if not data:
+        raise ValueError("empty decrypted value")
+    padding_length = data[-1]
+    if padding_length < 1 or padding_length > 16:
+        raise ValueError("invalid PKCS padding length")
+    if data[-padding_length:] != bytes([padding_length]) * padding_length:
+        raise ValueError("invalid PKCS padding")
+    return data[:-padding_length]
 
-    # Production is the last array (i == 4 || i == 5)
-    prod_client_id_enc = client_id_arrays[-1]
-    prod_client_secret_enc = client_secret_arrays[-1]
 
-    # Decrypt with AES ECB
+def _decrypt_aes_ecb_pkcs5(encrypted: bytes, aes_key: bytes) -> str:
+    """Decrypt AES/ECB/PKCS5Padding data from the Android app."""
     try:
         from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
-        cipher = Cipher(algorithms.AES(aes_key), modes.ECB())
-        decryptor = cipher.decryptor()
-        client_id = decryptor.update(prod_client_id_enc) + decryptor.finalize()
-        decryptor2 = cipher.decryptor()
-        client_secret = decryptor2.update(prod_client_secret_enc) + decryptor2.finalize()
-        # Remove PKCS padding
-        client_id = client_id[: -client_id[-1]].decode("utf-8")
-        client_secret = client_secret[: -client_secret[-1]].decode("utf-8")
+        decryptor = Cipher(algorithms.AES(aes_key), modes.ECB()).decryptor()
+        decrypted = decryptor.update(encrypted) + decryptor.finalize()
     except ImportError:
-        # Fallback: use PyCryptodome or built-in
         try:
             from Crypto.Cipher import AES as _AES  # type: ignore[import-untyped]
 
-            cipher = _AES.new(aes_key, _AES.MODE_ECB)  # type: ignore[assignment]
-            client_id = cipher.decrypt(prod_client_id_enc)  # type: ignore[assignment]
-            client_id = client_id[: -client_id[-1]].decode("utf-8")  # type: ignore[index,arg-type]
-            cipher2 = _AES.new(aes_key, _AES.MODE_ECB)  # type: ignore[assignment]
-            client_secret = cipher2.decrypt(prod_client_secret_enc)  # type: ignore[assignment]
-            client_secret = client_secret[: -client_secret[-1]].decode("utf-8")  # type: ignore[index,arg-type]
-        except ImportError:
-            return ""
+            decrypted = _AES.new(aes_key, _AES.MODE_ECB).decrypt(encrypted)
+        except ImportError as exc:
+            raise RuntimeError("AES dependency not available") from exc
 
-    # Build Basic auth header
-    cred_str = f"{client_id}:{client_secret}"
-    encoded = base64.b64encode(cred_str.encode()).decode()
-    return f"Basic {encoded}"
+    return _strip_pkcs_padding(decrypted).decode("utf-8")
+
+
+def _build_basic_header(client_id: str, client_secret: str) -> str:
+    """Build the OAuth Basic header the same way as the Android app."""
+    credential = f"{quote_plus(client_id)}:{quote_plus(client_secret)}"
+    return f"Basic {base64.b64encode(credential.encode()).decode()}"
+
+
+def _extract_preferred_urls_from_source(content: str) -> tuple[str, str]:
+    """Find preferred production auth/base URLs from Urls.java."""
+    auth_url = ""
+    base_url = ""
+
+    m = re.search(rf"(https://{re.escape(PRODUCTION_AUTH_HOST)}[^\s\"']*)", content)
+    if m:
+        auth_url = m.group(1).rstrip("/")
+    else:
+        m = re.search(r"(https://oauth-[^\s\"']*fermax\.io[^\s\"']*)", content)
+        if m:
+            auth_url = m.group(1).rstrip("/")
+
+    if auth_url and not auth_url.endswith("/oauth/token"):
+        auth_url = f"{auth_url}/oauth/token"
+
+    m = re.search(rf"(https://{re.escape(PRODUCTION_BASE_HOST)})(?:[/:\"'\s)]|$)", content)
+    if m:
+        base_url = m.group(1)
+    else:
+        for url in re.findall(r"https://[A-Za-z0-9.-]*fermax\.io", content):
+            if not any(skip in url for skip in ("oauth", "signaling", "monitor")):
+                base_url = url
+                break
+
+    return auth_url, base_url
+
+
+def _production_candidate_index(
+    content: str,
+    auth_url: str,
+    base_url: str,
+    candidate_count: int,
+) -> int | None:
+    """Infer which OAuth credential array belongs to production."""
+    if candidate_count == 0:
+        return None
+    if candidate_count == 1:
+        return 0
+    if (
+        PRODUCTION_AUTH_HOST in content
+        or PRODUCTION_BASE_HOST in content
+        or PRODUCTION_AUTH_HOST in auth_url
+        or PRODUCTION_BASE_HOST in base_url
+    ):
+        return candidate_count - 1
+    return None
+
+
+def _select_oauth_candidate(
+    candidates: list[OAuthCredentialCandidate],
+) -> OAuthCredentialCandidate | None:
+    """Select the best OAuth candidate, preserving previous last-candidate fallback."""
+    if not candidates:
+        return None
+    for candidate in candidates:
+        if candidate.label == "production":
+            return candidate
+    return candidates[0] if len(candidates) == 1 else candidates[-1]
+
+
+def _extract_oauth_candidates_from_source(dir_path: str) -> list[OAuthCredentialCandidate]:
+    """Try to decrypt OAuth Basic candidates from OAuthUtils + Urls.java source."""
+    root = Path(dir_path)
+    aes_key = _find_oauth_aes_key(root)
+    content = _read_urls_source(root)
+    if not aes_key or not content:
+        return []
+
+    client_id_arrays = _parse_byte_arrays_from_method(content, "clientId")
+    client_secret_arrays = _parse_byte_arrays_from_method(content, "clientSecret")
+    candidate_count = min(len(client_id_arrays), len(client_secret_arrays))
+    if not candidate_count:
+        return []
+
+    auth_url, base_url = _extract_preferred_urls_from_source(content)
+    production_index = _production_candidate_index(content, auth_url, base_url, candidate_count)
+
+    candidates: list[OAuthCredentialCandidate] = []
+    for index in range(candidate_count):
+        try:
+            client_id = _decrypt_aes_ecb_pkcs5(client_id_arrays[index], aes_key)
+            client_secret = _decrypt_aes_ecb_pkcs5(client_secret_arrays[index], aes_key)
+        except (RuntimeError, UnicodeDecodeError, ValueError):
+            continue
+
+        label = "production" if index == production_index else f"environment {index + 1}"
+        candidates.append(
+            OAuthCredentialCandidate(
+                label=label,
+                auth_basic=_build_basic_header(client_id, client_secret),
+                auth_url=auth_url,
+                base_url=base_url,
+            )
+        )
+
+    return candidates
+
+
+def _extract_oauth_from_source(dir_path: str) -> str:
+    """Return the best generated OAuth Basic header from decompiled source."""
+    candidate = _select_oauth_candidate(_extract_oauth_candidates_from_source(dir_path))
+    return candidate.auth_basic if candidate else ""
 
 
 def _find_credentials(strings: list[str]) -> dict[str, str]:
@@ -299,8 +418,10 @@ def _find_credentials(strings: list[str]) -> dict[str, str]:
 
         # Basic auth header
         if not creds["fermax_auth_basic"]:
-            m = re.search(r"(Basic\s+[A-Za-z0-9+/=]{50,})", s)
+            m = BASIC_AUTH_RE.search(s)
             if m:
+                if _has_monitoring_or_tracing_context(s):
+                    continue
                 creds["fermax_auth_basic"] = m.group(1)
 
     # Try to derive OAuth URL from base URL if only base found
@@ -398,6 +519,17 @@ def _parse_google_services(gs: dict) -> dict[str, str]:
     }
 
 
+def _display_credential_value(key: str, value: str) -> str:
+    """Return a console-safe representation of an extracted credential."""
+    if not value:
+        return value
+    if key == "fermax_auth_basic":
+        return "Basic [redacted]"
+    if key == "firebase_api_key":
+        return "[redacted]"
+    return str(value)[:50] + "..." if len(str(value)) > 50 else value
+
+
 def main() -> None:
     if len(sys.argv) < 2:
         print(f"Usage: {sys.argv[0]} <path-to-fermax-blue.apk-or-decompiled-dir>")
@@ -452,6 +584,7 @@ def main() -> None:
     # Pattern-match all collected strings
     print("  Pattern matching credentials...")
     creds = _find_credentials(all_strings)
+    auth_basic_source = "generic string scan" if creds["fermax_auth_basic"] else ""
 
     # Merge google-services results (higher priority)
     for k, v in gs_creds.items():
@@ -473,10 +606,19 @@ def main() -> None:
 
     if decompiled_dir:
         print("  Decrypting OAuth credentials from source...")
-        oauth_basic = _extract_oauth_from_source(decompiled_dir)
-        if oauth_basic:
-            creds["fermax_auth_basic"] = oauth_basic
-            print("    OK (decrypted from OAuthUtils.java)")
+        oauth_candidates = _extract_oauth_candidates_from_source(decompiled_dir)
+        oauth_candidate = _select_oauth_candidate(oauth_candidates)
+        if oauth_candidate:
+            creds["fermax_auth_basic"] = oauth_candidate.auth_basic
+            auth_basic_source = f"OAuthUtils.java + Urls.java ({oauth_candidate.label})"
+            if oauth_candidate.auth_url:
+                creds["fermax_auth_url"] = oauth_candidate.auth_url
+            if oauth_candidate.base_url:
+                creds["fermax_base_url"] = oauth_candidate.base_url
+            print(f"    OK ({auth_basic_source})")
+            if len(oauth_candidates) > 1:
+                labels = ", ".join(candidate.label for candidate in oauth_candidates)
+                print(f"    Found {len(oauth_candidates)} OAuth environments: {labels}")
         else:
             print("    Not found or decryption failed")
 
@@ -489,18 +631,23 @@ def main() -> None:
 
     for key, value in creds.items():
         status = "OK" if value else "MISSING"
-        display = str(value)[:50] + "..." if len(str(value)) > 50 else value
+        display = _display_credential_value(key, value)
         print(f"  {status:7s} {key}: {display}")
 
-    # Warn about auth_basic — the APK may contain multiple OAuth clients
-    # and the one found by pattern matching may not be the correct one
+    # Warn about auth_basic source — the APK may contain non-OAuth Basic headers.
     if creds["fermax_auth_basic"]:
         print()
-        print("  WARNING: fermax_auth_basic was found automatically, but the APK may")
-        print("  contain multiple OAuth clients. If authentication fails with")
-        print("  'invalid_client', you need to extract the correct one manually.")
-        print("  Use JADX to decompile and search for the OAuth client_id:secret")
-        print("  used in the login/authentication flow. See README.md for details.")
+        if auth_basic_source.startswith("OAuthUtils.java"):
+            print("  NOTE: fermax_auth_basic was generated from OAuthUtils.java and")
+            print("  Urls.java. Keep credentials.json private and never publish the")
+            print("  generated Basic header or Firebase values.")
+        else:
+            print("  WARNING: fermax_auth_basic came from a generic string scan.")
+            print("  APKs may contain unrelated Basic headers for tracing/monitoring")
+            print("  (for example TraceManagerOtelImpl / monitoring/v1/traces).")
+            print("  If authentication fails with 'invalid_client', decompile with")
+            print("  JADX and generate the OAuth header from OAuthUtils.java plus")
+            print("  Urls.clientId()/Urls.clientSecret() instead.")
 
     if found < total:
         missing = [k for k, v in creds.items() if not v]
@@ -516,7 +663,7 @@ def main() -> None:
 
     if found == total:
         print("\nAll credentials found. Verify fermax_auth_basic works before")
-        print("using in integration setup (see WARNING above).")
+        print("using it in integration setup.")
 
 
 if __name__ == "__main__":
