@@ -10,6 +10,7 @@ from dataclasses import replace
 from datetime import timedelta
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_send
@@ -47,6 +48,17 @@ CAMERA_TIMEOUT_SECONDS = 90
 # FCM re-delivers recent notifications when the listener reconnects after a
 # reload/restart, causing phantom doorbell rings. Ignore them briefly.
 NOTIFICATION_GRACE_PERIOD = 10
+ALLOWED_SIGNALING_DOMAIN = ".fermax.io"
+
+
+def _is_trusted_signaling_url(url: str) -> bool:
+    """Reject signaling URLs outside known Fermax domains."""
+    try:
+        parsed = urlparse(url)
+        host = (parsed.hostname or "").lower()
+        return host.endswith(ALLOWED_SIGNALING_DOMAIN) or host == "fermax.io"
+    except ValueError:
+        return False
 
 
 class FermaxBlueCoordinator(DataUpdateCoordinator):
@@ -349,6 +361,12 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         )
         if should_stream:
             socket_url = data.get("SocketUrl", DEFAULT_SIGNALING_URL)
+            if not _is_trusted_signaling_url(socket_url):
+                _LOGGER.warning(
+                    "Rejected untrusted signaling URL from notification: %s",
+                    socket_url,
+                )
+                socket_url = DEFAULT_SIGNALING_URL
             fermax_token = data.get("FermaxToken", "")
             self.hass.async_create_task(self._start_stream(room_id, socket_url, fermax_token))
             if (

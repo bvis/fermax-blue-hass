@@ -10,7 +10,10 @@ from custom_components.fermax_blue.api import (
     FermaxBlueApi,
     Pairing,
 )
-from custom_components.fermax_blue.coordinator import FermaxBlueCoordinator
+from custom_components.fermax_blue.coordinator import (
+    FermaxBlueCoordinator,
+    _is_trusted_signaling_url,
+)
 
 
 @pytest.fixture
@@ -198,3 +201,33 @@ class TestCoordinatorScanInterval:
             FermaxBlueCoordinator(mock_hass, mock_api, pairing, scan_interval=10)
             call_kwargs = mock_init.call_args
             assert call_kwargs.kwargs["update_interval"].total_seconds() == 600
+
+
+class TestSignalingUrlValidation:
+    """Test signaling URL domain validation."""
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "https://signaling-pro-duoxme.fermax.io",
+            "https://signaling.fermax.io/path",
+            "wss://signaling-pro-duoxme.fermax.io",
+            "https://fermax.io",
+        ],
+    )
+    def test_trusted_urls_accepted(self, url):
+        assert _is_trusted_signaling_url(url) is True
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "https://evil.com",
+            "https://notfermax.io",
+            "https://fermax.io.evil.com",
+            "https://evil-fermax.io",
+            "",
+            "not-a-url",
+        ],
+    )
+    def test_untrusted_urls_rejected(self, url):
+        assert _is_trusted_signaling_url(url) is False
