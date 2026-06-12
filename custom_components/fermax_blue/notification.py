@@ -56,7 +56,9 @@ class _FcmExcInfoRateLimitFilter(logging.Filter):
         self._timestamps: deque[float] = deque()
 
     def filter(self, record: logging.LogRecord) -> bool:
-        if not record.exc_info:
+        # exc_info=True outside an except block yields the truthy (None, None,
+        # None) tuple — no traceback to strip, so it must not consume budget.
+        if not record.exc_info or record.exc_info[0] is None:
             return True
 
         now = time.monotonic()
@@ -247,7 +249,8 @@ class FermaxNotificationListener:
         ``_lifecycle_lock`` so overlapping ticks cannot spawn parallel
         ``FcmPushClient`` instances.
 
-        Returns True when the listener is running after the call.
+        Returns True when the listener is running, or when a restart attempt
+        was successfully initiated (the client may still be connecting).
         """
         if self.is_started:
             self._restart_backoff = FCM_RESTART_BACKOFF_INITIAL
@@ -264,8 +267,13 @@ class FermaxNotificationListener:
             now = time.monotonic()
             if self._restart_at is None:
                 self._restart_at = now + self._restart_backoff
-                _LOGGER.warning(
-                    "FCM listener is not running; restart scheduled in %.0f seconds",
+                # INFO, not WARNING: is_started() is also False during
+                # seconds-long transient states (RESETTING, STARTING_*), and a
+                # healthy next tick clears this schedule silently. WARNING is
+                # reserved for the restart actually firing below.
+                _LOGGER.info(
+                    "FCM listener is not running; restart scheduled in %.0f seconds "
+                    "(cleared automatically if the listener recovers on its own)",
                     self._restart_backoff,
                 )
                 return False
@@ -284,7 +292,13 @@ class FermaxNotificationListener:
 
             try:
                 await self._start_locked()
-            except (ConnectionError, OSError, RuntimeError):
+            except Exception:
+                # Catch everything: the register() path can raise types beyond
+                # connection errors, and the watchdog gathers with
+                # return_exceptions=True and discards results — anything
+                # escaping here would be swallowed with no log line at all.
                 _LOGGER.exception("Failed to restart FCM listener")
                 return False
-            return self.is_started
+            # The client is usually still connecting (STARTING_*) here, so
+            # report the success of the start call rather than is_started.
+            return True
