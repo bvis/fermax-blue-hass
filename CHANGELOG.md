@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.16.5-beta.1] - 2026-06-12
+
+### Fixed
+- **FCM watchdog observability** (#16) — follow-up to the reconnect-storm hardening in 0.16.4, no behavior changes to the restart state machine:
+  - The "FCM listener is not running; restart scheduled" message is now logged at INFO instead of WARNING. `is_started()` is also False during seconds-long transient states (socket resets, initial connection), so a watchdog tick landing inside one produced a recurring, alarming WARNING that the next healthy tick silently cleared. WARNING is now reserved for the restart actually firing.
+  - `ensure_running()` catches all exceptions around the restart (not just connection errors) and logs them with traceback. Previously, errors raised by the `register()` path (e.g. HTTP or validation errors) escaped the catch and were silently discarded by the watchdog's `return_exceptions=True` gather — a failed restart attempt left no log line at all.
+  - `ensure_running()` now returns the success of the start call instead of `is_started` (which is usually still False while the freshly restarted client is connecting), matching its documented contract.
+  - The traceback rate-limit filter no longer consumes throttle budget on records carrying `exc_info=(None, None, None)` (produced by `exc_info=True` outside an `except` block) — such records have no traceback to strip and now pass through untouched.
+
 ## [0.16.4] - 2026-06-11
 
 ### Fixed

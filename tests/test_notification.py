@@ -273,6 +273,74 @@ async def test_healthy_observation_resets_backoff(listener):
     assert listener._restart_at is None
 
 
+async def test_transient_reset_window_emits_no_warning(listener, caplog):
+    """A tick landing inside a routine reset window must not alarm the operator.
+
+    ``is_started()`` is also False during seconds-long transient states
+    (RESETTING, STARTING_*); scheduling the restart must stay below WARNING,
+    and the next healthy tick must clear the schedule without restarting.
+    """
+    client = _dead_client()
+    listener._push_client = client
+    clock = _FakeClock()
+
+    with (
+        patch("custom_components.fermax_blue.notification.time", clock),
+        patch("custom_components.fermax_blue.notification.FcmPushClient") as fcm_cls,
+        caplog.at_level(logging.DEBUG, logger="custom_components.fermax_blue.notification"),
+    ):
+        assert await listener.ensure_running() is False  # tick inside the reset window
+        client.is_started.return_value = True  # client recovered on its own
+        assert await listener.ensure_running() is True
+
+    fcm_cls.assert_not_called()
+    assert listener._restart_at is None
+    assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
+
+
+async def test_ensure_running_logs_unexpected_restart_errors(listener, caplog):
+    """Restart failures outside the connection-error family must not vanish.
+
+    The watchdog gathers with ``return_exceptions=True`` and discards results,
+    so anything escaping this catch is swallowed with no log line at all.
+    """
+    listener._push_client = _dead_client()
+    listener._restart_at = 0.0  # backoff deadline already elapsed
+
+    new_client = _dead_client()
+    new_client.start = AsyncMock(side_effect=ValueError("bad registration payload"))
+
+    with (
+        patch(
+            "custom_components.fermax_blue.notification.FcmPushClient",
+            return_value=new_client,
+        ),
+        caplog.at_level(logging.ERROR, logger="custom_components.fermax_blue.notification"),
+    ):
+        assert await listener.ensure_running() is False
+
+    assert any(
+        r.exc_info and "Failed to restart FCM listener" in r.getMessage() for r in caplog.records
+    )
+
+
+async def test_ensure_running_returns_true_while_restarted_client_connects(listener):
+    """A successful restart returns True even though the client is still in STARTING_*."""
+    listener._push_client = _dead_client()
+    listener._restart_at = 0.0  # backoff deadline already elapsed
+
+    connecting_client = _dead_client()  # is_started stays False while connecting
+    connecting_client.start = AsyncMock()
+
+    with patch(
+        "custom_components.fermax_blue.notification.FcmPushClient",
+        return_value=connecting_client,
+    ):
+        assert await listener.ensure_running() is True
+
+    connecting_client.start.assert_awaited_once()
+
+
 async def test_start_installs_exc_rate_limit_filter_once(listener):
     """start() attaches the rate-limit filter to the upstream logger exactly once."""
     upstream = logging.getLogger(FCM_UPSTREAM_LOGGER)
@@ -328,6 +396,34 @@ def test_exc_filter_allows_tracebacks_again_after_window():
         record = _exc_record()
         assert log_filter.filter(record) is True
         assert record.exc_info is not None
+
+
+def test_exc_filter_ignores_none_exc_info_tuple():
+    """exc_info=(None, None, None) carries no traceback and must pass untouched.
+
+    ``logging`` produces this truthy tuple for ``exc_info=True`` outside an
+    ``except`` block; it must not consume throttle budget or gain the
+    "suppressed" suffix.
+    """
+    clock = _FakeClock()
+    with patch("custom_components.fermax_blue.notification.time", clock):
+        log_filter = _FcmExcInfoRateLimitFilter()
+        record = logging.LogRecord(
+            FCM_UPSTREAM_LOGGER,
+            logging.ERROR,
+            __file__,
+            1,
+            "no traceback",
+            None,
+            (None, None, None),
+        )
+        assert log_filter.filter(record) is True
+        assert record.getMessage() == "no traceback"
+
+        # The full traceback budget must still be available afterwards.
+        real_records = [_exc_record() for _ in range(FCM_EXC_LOG_LIMIT)]
+        assert all(log_filter.filter(r) for r in real_records)
+        assert all(r.exc_info for r in real_records)
 
 
 def test_exc_filter_ignores_records_without_exc_info():
