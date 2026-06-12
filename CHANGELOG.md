@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.16.5-beta.2] - 2026-06-12
+
+### Fixed
+- **Signaling URL domain validation** — the `SocketUrl` delivered in FCM push notifications was used directly to open the WebSocket signaling connection. A compromised or spoofed push could redirect the connection to an attacker-controlled signaling server, exposing OAuth and FCM tokens. Signaling URLs are now validated against `*.fermax.io` (covers all known Fermax environments: pro, devel, staging, SIS); untrusted URLs are logged and replaced with the default signaling URL. Contributed by @aitoraznar (#18).
+
+### Added
+- **Dependabot** — weekly automated dependency update PRs for the Python dev toolchain and GitHub Actions (#18).
+
 ## [0.16.5-beta.1] - 2026-06-12
 
 ### Fixed
