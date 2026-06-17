@@ -83,6 +83,44 @@ def _install_fcm_log_rate_limit() -> None:
         upstream.addFilter(_FcmExcInfoRateLimitFilter())
 
 
+def _b64_pad(value: str) -> str:
+    """Right-pad a urlsafe base64 string with '=' to a length multiple of 4."""
+    return value + "=" * (-len(value) % 4)
+
+
+def _patch_fcm_crypto_key_padding() -> None:
+    """Make firebase_messaging tolerant of unpadded crypto-key/encryption headers.
+
+    Upstream ``FcmPushClient._decrypt_raw_data`` pads the stored ``private`` and
+    ``secret`` keys before base64-decoding them, but NOT the per-message
+    ``crypto-key`` (dh=) and ``encryption`` (salt=) headers. Some FCM data
+    messages carry header values whose base64 length is not a multiple of 4, so
+    ``urlsafe_b64decode`` raises ``binascii.Error: Incorrect padding`` inside the
+    ``_listen`` loop. The upstream catch-all treats that as an unknown error and
+    shuts the whole client down, taking push notifications offline (issue #21).
+
+    Right-pad both headers before delegating to the original implementation; the
+    padding is deterministic from the string length, so a correctly-padded value
+    is passed through unchanged. Idempotent: safe to call on every (re)start.
+    """
+    original = FcmPushClient._decrypt_raw_data
+    if getattr(original, "_fermax_padding_patched", False):
+        return
+
+    def _decrypt_raw_data_padded(
+        credentials: dict[str, dict[str, str]],
+        crypto_key_str: str,
+        salt_str: str,
+        raw_data: bytes,
+    ) -> bytes:
+        return original(credentials, _b64_pad(crypto_key_str), _b64_pad(salt_str), raw_data)
+
+    _decrypt_raw_data_padded._fermax_padding_patched = True  # type: ignore[attr-defined]
+    FcmPushClient._decrypt_raw_data = staticmethod(  # type: ignore[assignment]
+        _decrypt_raw_data_padded
+    )
+
+
 _SENSITIVE_LOG_KEYS = frozenset(
     {"FermaxToken", "fermaxOauthToken", "appToken", "token", "fcm_token"}
 )
@@ -208,6 +246,7 @@ class FermaxNotificationListener:
             return
 
         _install_fcm_log_rate_limit()
+        _patch_fcm_crypto_key_padding()
 
         # Bounded abort: let the upstream client give up after a few sequential
         # errors instead of spinning forever on a poisoned reader; the watchdog
