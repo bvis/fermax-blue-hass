@@ -1,10 +1,14 @@
 """Tests for the FCM notification listener."""
 
 import asyncio
+import binascii
+import inspect
 import logging
+from base64 import urlsafe_b64decode
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from firebase_messaging.fcmpushclient import FcmPushClient
 
 from custom_components.fermax_blue.notification import (
     FCM_ABORT_SEQUENTIAL_ERROR_COUNT,
@@ -14,7 +18,9 @@ from custom_components.fermax_blue.notification import (
     FCM_RESTART_BACKOFF_MAX,
     FCM_UPSTREAM_LOGGER,
     FermaxNotificationListener,
+    _b64_pad,
     _FcmExcInfoRateLimitFilter,
+    _patch_fcm_crypto_key_padding,
 )
 
 
@@ -439,3 +445,70 @@ def test_exc_filter_ignores_records_without_exc_info():
         )
         assert log_filter.filter(record) is True
         assert record.getMessage() == "plain message"
+
+
+@pytest.fixture
+def restore_fcm_decrypt():
+    """Restore FcmPushClient._decrypt_raw_data after a test mutates it via the patch."""
+    original = inspect.getattr_static(FcmPushClient, "_decrypt_raw_data")
+    yield
+    FcmPushClient._decrypt_raw_data = original
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("A" * 86, "A" * 86 + "=="),  # len % 4 == 2
+        ("A" * 87, "A" * 87 + "="),  # len % 4 == 3
+        ("A" * 88, "A" * 88),  # already a multiple of 4 -> unchanged
+        ("", ""),
+    ],
+)
+def test_b64_pad_normalises_length_to_multiple_of_four(value, expected):
+    padded = _b64_pad(value)
+    assert padded == expected
+    assert len(padded) % 4 == 0
+
+
+def test_b64_pad_makes_incorrect_padding_value_decodable():
+    """An 'Incorrect padding' base64 value becomes decodable after padding (issue #21)."""
+    unpadded = "A" * 86  # len % 4 == 2 -> urlsafe_b64decode raises Incorrect padding
+    with pytest.raises(binascii.Error):
+        urlsafe_b64decode(unpadded.encode("ascii"))
+    # Must not raise after padding.
+    urlsafe_b64decode(_b64_pad(unpadded).encode("ascii"))
+
+
+def test_patch_pads_crypto_key_and_salt_before_delegating(restore_fcm_decrypt):
+    """The patch right-pads the crypto-key/encryption headers before handing them
+    to the upstream decrypter, so an unpadded header no longer raises
+    binascii.Error in the listen loop and shuts the client down (issue #21)."""
+    received: dict[str, str] = {}
+
+    def _spy(credentials, crypto_key_str, salt_str, raw_data):
+        received["crypto_key"] = crypto_key_str
+        received["salt"] = salt_str
+        return b"decrypted"
+
+    FcmPushClient._decrypt_raw_data = staticmethod(_spy)
+    _patch_fcm_crypto_key_padding()
+
+    result = FcmPushClient._decrypt_raw_data({}, "A" * 86, "B" * 87, b"raw")
+
+    assert result == b"decrypted"
+    assert received["crypto_key"] == "A" * 86 + "=="
+    assert received["salt"] == "B" * 87 + "="
+    assert len(received["crypto_key"]) % 4 == 0
+    assert len(received["salt"]) % 4 == 0
+
+
+def test_patch_is_idempotent(restore_fcm_decrypt):
+    """Calling the patch twice does not re-wrap _decrypt_raw_data."""
+    FcmPushClient._decrypt_raw_data = staticmethod(
+        lambda credentials, crypto_key_str, salt_str, raw_data: b""
+    )
+    _patch_fcm_crypto_key_padding()
+    first = inspect.getattr_static(FcmPushClient, "_decrypt_raw_data")
+    _patch_fcm_crypto_key_padding()
+    second = inspect.getattr_static(FcmPushClient, "_decrypt_raw_data")
+    assert first is second
