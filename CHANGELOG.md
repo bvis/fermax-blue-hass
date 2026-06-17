@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.16.6-beta.1] - 2026-06-17
+## [0.16.6] - 2026-06-18
 
 ### Fixed
 - **FCM client no longer shuts down on a malformed push** (#21) — some Fermax FCM data messages carry a `crypto-key`/`encryption` header whose base64 value is not a multiple of 4. Upstream `firebase-messaging` pads the stored key material before decoding but not these per-message headers, so `urlsafe_b64decode` raised `binascii.Error: Incorrect padding` inside the `_listen` loop; the library's catch-all then shut the whole `FcmPushClient` down, taking push notifications offline until the watchdog restarted it (and re-killing it if the message was redelivered). The integration now right-pads both headers before the upstream decrypt runs, so the affected messages decrypt normally instead of crashing the listener.
