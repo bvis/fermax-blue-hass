@@ -1,0 +1,11 @@
+name: "Fermax Blue CodeQL config"
+
+# Keep CodeQL focused on the shipped integration (custom_components/).
+# scripts/ is an offline, dev-only utility that decrypts Fermax APK credentials
+# (it must use AES-ECB because that is what the app uses, and it prints the
+# extracted credentials to the user by design); tests/ replicates that crypto to
+# build fixtures. Those paths produce only expected, repeatedly-dismissed alerts,
+# so exclude them from analysis instead of triaging the same findings forever.
+paths-ignore:
+  - scripts
+  - tests
