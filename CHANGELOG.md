@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.16.7-beta.1] - 2026-06-18
 
 ### Fixed
 - **FCM listener no longer dies in a reconnect loop on an undecryptable push** (#25) — after the #21 padding fix, a malformed `crypto-key` (`dh=`) value that decodes to an invalid P-256 point made `http_ece` raise `ValueError: Invalid EC key`, which (like any decrypt error) propagated to the upstream `_listen` catch-all and shut the client down. Because the crash happened before the message was acknowledged, MCS redelivered the same poisoned message on every reconnect — an endless crash/restart loop with no notifications. The per-message decrypt is now isolated: any decode/decrypt failure is logged and that single message is skipped (empty payload) so the upstream handler acks it and the listener stays alive to process the next push.
