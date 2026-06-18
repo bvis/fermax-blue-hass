@@ -88,36 +88,53 @@ def _b64_pad(value: str) -> str:
     return value + "=" * (-len(value) % 4)
 
 
-def _patch_fcm_crypto_key_padding() -> None:
-    """Make firebase_messaging tolerant of unpadded crypto-key/encryption headers.
+def _patch_fcm_decrypt() -> None:
+    """Make firebase_messaging's per-message decrypt resilient (issues #21, #25).
 
-    Upstream ``FcmPushClient._decrypt_raw_data`` pads the stored ``private`` and
-    ``secret`` keys before base64-decoding them, but NOT the per-message
-    ``crypto-key`` (dh=) and ``encryption`` (salt=) headers. Some FCM data
-    messages carry header values whose base64 length is not a multiple of 4, so
-    ``urlsafe_b64decode`` raises ``binascii.Error: Incorrect padding`` inside the
-    ``_listen`` loop. The upstream catch-all treats that as an unknown error and
-    shuts the whole client down, taking push notifications offline (issue #21).
+    Two upstream weaknesses let a single bad push crash the whole FcmPushClient,
+    because ``_handle_data_message`` does not guard ``_decrypt_raw_data`` and any
+    exception propagates to the ``_listen`` catch-all that shuts the client down:
 
-    Right-pad both headers before delegating to the original implementation; the
-    padding is deterministic from the string length, so a correctly-padded value
-    is passed through unchanged. Idempotent: safe to call on every (re)start.
+    1. ``_decrypt_raw_data`` base64-decodes the per-message ``crypto-key`` (dh=)
+       and ``encryption`` (salt=) headers without padding them, so an unpadded
+       value (legal per RFC 8188/8291) raises ``binascii.Error: Incorrect
+       padding`` (issue #21).
+    2. Even with padding fixed, a malformed ``dh`` value decodes to bytes that
+       are not a valid P-256 point, so ``http_ece`` raises
+       ``ValueError: Invalid EC key`` (issue #25). The exception propagates
+       before the listen loop records/acks the message, so MCS redelivers the
+       same poisoned message on every reconnect — an endless crash/restart loop.
+
+    Pad both headers before decoding, and swallow any decrypt failure by
+    returning ``b""``: the upstream handler then logs a decrypt warning, acks the
+    message (breaking the redelivery loop) and the listener stays alive to
+    process the next push. Idempotent: safe to call on every (re)start.
     """
     original = FcmPushClient._decrypt_raw_data
-    if getattr(original, "_fermax_padding_patched", False):
+    if getattr(original, "_fermax_decrypt_patched", False):
         return
 
-    def _decrypt_raw_data_padded(
+    def _decrypt_raw_data_safe(
         credentials: dict[str, dict[str, str]],
         crypto_key_str: str,
         salt_str: str,
         raw_data: bytes,
     ) -> bytes:
-        return original(credentials, _b64_pad(crypto_key_str), _b64_pad(salt_str), raw_data)
+        try:
+            return original(credentials, _b64_pad(crypto_key_str), _b64_pad(salt_str), raw_data)
+        except Exception:
+            # Returning b"" lets the upstream handler ack and skip this single
+            # message (breaking the redelivery loop) instead of letting the
+            # exception tear the whole client down.
+            _LOGGER.warning(
+                "Skipping an undecryptable FCM push; FCM listener kept alive",
+                exc_info=True,
+            )
+            return b""
 
-    _decrypt_raw_data_padded._fermax_padding_patched = True  # type: ignore[attr-defined]
+    _decrypt_raw_data_safe._fermax_decrypt_patched = True  # type: ignore[attr-defined]
     FcmPushClient._decrypt_raw_data = staticmethod(  # type: ignore[assignment]
-        _decrypt_raw_data_padded
+        _decrypt_raw_data_safe
     )
 
 
@@ -246,7 +263,7 @@ class FermaxNotificationListener:
             return
 
         _install_fcm_log_rate_limit()
-        _patch_fcm_crypto_key_padding()
+        _patch_fcm_decrypt()
 
         # Bounded abort: let the upstream client give up after a few sequential
         # errors instead of spinning forever on a poisoned reader; the watchdog

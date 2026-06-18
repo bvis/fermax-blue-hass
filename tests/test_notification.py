@@ -20,7 +20,7 @@ from custom_components.fermax_blue.notification import (
     FermaxNotificationListener,
     _b64_pad,
     _FcmExcInfoRateLimitFilter,
-    _patch_fcm_crypto_key_padding,
+    _patch_fcm_decrypt,
 )
 
 
@@ -491,7 +491,7 @@ def test_patch_pads_crypto_key_and_salt_before_delegating(restore_fcm_decrypt):
         return b"decrypted"
 
     FcmPushClient._decrypt_raw_data = staticmethod(_spy)
-    _patch_fcm_crypto_key_padding()
+    _patch_fcm_decrypt()
 
     result = FcmPushClient._decrypt_raw_data({}, "A" * 86, "B" * 87, b"raw")
 
@@ -502,13 +502,29 @@ def test_patch_pads_crypto_key_and_salt_before_delegating(restore_fcm_decrypt):
     assert len(received["salt"]) % 4 == 0
 
 
+def test_patch_returns_empty_bytes_on_decrypt_failure(restore_fcm_decrypt):
+    """A decrypt failure (e.g. malformed dh -> Invalid EC key) is swallowed and
+    returns b"" so the upstream listener acks/skips the poisoned message instead
+    of shutting the whole client down on every reconnect (issue #25)."""
+
+    def _boom(credentials, crypto_key_str, salt_str, raw_data):
+        raise ValueError("Invalid EC key.")
+
+    FcmPushClient._decrypt_raw_data = staticmethod(_boom)
+    _patch_fcm_decrypt()
+
+    result = FcmPushClient._decrypt_raw_data({}, "A" * 86, "B" * 86, b"raw")
+
+    assert result == b""
+
+
 def test_patch_is_idempotent(restore_fcm_decrypt):
     """Calling the patch twice does not re-wrap _decrypt_raw_data."""
     FcmPushClient._decrypt_raw_data = staticmethod(
         lambda credentials, crypto_key_str, salt_str, raw_data: b""
     )
-    _patch_fcm_crypto_key_padding()
+    _patch_fcm_decrypt()
     first = inspect.getattr_static(FcmPushClient, "_decrypt_raw_data")
-    _patch_fcm_crypto_key_padding()
+    _patch_fcm_decrypt()
     second = inspect.getattr_static(FcmPushClient, "_decrypt_raw_data")
     assert first is second
