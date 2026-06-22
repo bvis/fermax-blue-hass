@@ -17,7 +17,7 @@ jobs:
         python-version: ["3.12", "3.13"]
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Build dev image (Python ${{ matrix.python-version }})
         run: docker build -t fermax-blue-dev --build-arg PYTHON_VERSION=${{ matrix.python-version }} -f Dockerfile.dev .
@@ -28,7 +28,7 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Build dev image
         run: docker build -t fermax-blue-dev -f Dockerfile.dev .
@@ -42,7 +42,7 @@ jobs:
   type-check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Build dev image
         run: docker build -t fermax-blue-dev -f Dockerfile.dev .
@@ -53,7 +53,7 @@ jobs:
   dead-code:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Build dev image
         run: docker build -t fermax-blue-dev -f Dockerfile.dev .
       - name: Dead code check
@@ -62,7 +62,7 @@ jobs:
   hassfest:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Hassfest validation
         uses: home-assistant/actions/hassfest@master
@@ -70,7 +70,7 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: HACS validation
         uses: hacs/action@main
