@@ -1,7 +1,7 @@
 """Tests for entity platforms."""
 
 from datetime import UTC
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -393,3 +393,37 @@ class TestOptimisticSwitches:
         mock_coordinator.set_photo_caller.assert_awaited_once_with(True)
         # After completion, optimistic state is cleared; falls back to coordinator
         assert switch.is_on is True  # device_info.photocaller = True in fixture
+
+
+class TestCameraStreamingDepsGuard:
+    """Camera turn_on must not request auto-on when live-video deps are missing."""
+
+    def _make_camera(self, mock_coordinator):
+        from custom_components.fermax_blue.camera import FermaxCamera
+
+        return FermaxCamera(mock_coordinator)
+
+    @pytest.mark.asyncio
+    async def test_turn_on_skipped_without_deps(self, mock_coordinator):
+        camera = self._make_camera(mock_coordinator)
+
+        with patch(
+            "custom_components.fermax_blue.camera.streaming_deps_available",
+            return_value=False,
+        ):
+            await camera.async_turn_on()
+
+        mock_coordinator.start_camera_preview.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_turn_on_starts_preview_with_deps(self, mock_coordinator):
+        camera = self._make_camera(mock_coordinator)
+        mock_coordinator.start_camera_preview = AsyncMock(return_value=None)
+
+        with patch(
+            "custom_components.fermax_blue.camera.streaming_deps_available",
+            return_value=True,
+        ):
+            await camera.async_turn_on()
+
+        mock_coordinator.start_camera_preview.assert_awaited_once()

@@ -15,6 +15,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from .const import DOMAIN, SIGNAL_DOORBELL_RING
 from .coordinator import FermaxBlueCoordinator
 from .entity import FermaxBlueEntity
+from .streaming import streaming_deps_available
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -143,6 +144,14 @@ class FermaxCamera(FermaxBlueEntity, Camera):
 
     async def async_turn_on(self) -> None:
         """Start live camera stream via auto-on + mediasoup."""
+        if not streaming_deps_available():
+            _LOGGER.warning(
+                "Live video is unavailable for %s: optional streaming "
+                "dependencies (pymediasoup/aiortc) are not installed",
+                self.entity_id,
+            )
+            return
+
         result = await self.coordinator.start_camera_preview()
         if result:
             _LOGGER.info("Camera auto-on started: %s", result.description)

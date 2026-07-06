@@ -21,11 +21,26 @@ import logging
 import os
 from collections.abc import Callable
 from dataclasses import dataclass
+from functools import cache
+from importlib.util import find_spec
 from typing import Any
 
 import socketio
 
 _LOGGER = logging.getLogger(__name__)
+
+
+@cache
+def streaming_deps_available() -> bool:
+    """Return True when the optional live-video deps (pymediasoup/aiortc) are installed.
+
+    They are not in the manifest requirements because aiortc pins av<17, which
+    conflicts with the av>=17 shipped by Home Assistant 2026.7+. Callers must
+    skip stream work — including the auto-on request that wakes the physical
+    intercom — when this returns False.
+    """
+    return find_spec("pymediasoup") is not None
+
 
 # Suppress noisy H264 decode warnings (expected on stream start before first keyframe)
 logging.getLogger("aiortc.codecs.h264").setLevel(logging.ERROR)
