@@ -418,6 +418,21 @@ class FermaxStreamSession:
         """Start the full streaming pipeline."""
         try:
             return await self._start_inner()
+        except ImportError as err:
+            # Live video needs pymediasoup + aiortc. These are optional (not in
+            # manifest requirements) because aiortc currently caps av<17, which
+            # conflicts with Home Assistant builds shipping av>=17 (2026.7+),
+            # making them unresolvable. The rest of the integration (door open,
+            # calls, sensors) works fine; only live streaming is unavailable.
+            _LOGGER.warning(
+                "Fermax Blue live video is unavailable: optional streaming "
+                "dependencies (pymediasoup/aiortc) are not installed. This is "
+                "expected on Home Assistant builds using av>=17 (aiortc has no "
+                "compatible release yet). Everything else works normally. (%s)",
+                err,
+            )
+            await self.stop()
+            return False
         except Exception:
             _LOGGER.exception("Failed to start stream session")
             await self.stop()
