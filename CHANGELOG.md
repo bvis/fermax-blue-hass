@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.16.8-beta.1] - 2026-07-07
+## [0.16.8] - 2026-07-07
 
 ### Fixed
 - **Integration loads again on Home Assistant 2026.7+** (#34) — HA 2026.7 ships `av>=17`, and no release of `aiortc` (a `pymediasoup` dependency) supports it yet, so the required `pymediasoup` package became uninstallable and the whole integration failed to set up. The live-video dependencies are now optional: they are no longer listed in the manifest requirements, and every stream entry point checks their availability first — `start_camera_preview()` skips the auto-on request entirely (the physical intercom is never woken up for a stream that cannot start), FCM-triggered stream starts are ignored with a WARNING, and turning the camera on logs a clear per-entity message. Everything except live video/audio keeps working: doorbell detection, door opening, visitor photo, F1, call guard, DND, photo caller, and call history. On HA ≤ 2026.6 live video can be restored by installing `pymediasoup` manually (see README); the hard requirement will return once `aiortc` supports `av>=17`. Contributed by @kikorr (#35).
