@@ -100,6 +100,52 @@ def coordinator(mock_hass, mock_api, pairing):
     return coord
 
 
+class TestStreamingDepsGuard:
+    """Optional live-video deps: never wake the intercom when they are missing."""
+
+    @pytest.mark.asyncio
+    async def test_preview_skipped_without_deps(self, coordinator, mock_api):
+        coordinator.notification_listener = MagicMock()
+        coordinator.notification_listener.fcm_token = "tok"
+
+        with patch(
+            "custom_components.fermax_blue.coordinator.streaming_deps_available",
+            return_value=False,
+        ):
+            result = await coordinator.start_camera_preview()
+
+        assert result is None
+        mock_api.auto_on.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_preview_requests_auto_on_with_deps(self, coordinator, mock_api):
+        coordinator.notification_listener = MagicMock()
+        coordinator.notification_listener.fcm_token = "tok"
+        mock_api.auto_on = AsyncMock(return_value=None)
+
+        with patch(
+            "custom_components.fermax_blue.coordinator.streaming_deps_available",
+            return_value=True,
+        ):
+            await coordinator.start_camera_preview()
+
+        mock_api.auto_on.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_start_stream_skipped_without_deps(self, coordinator):
+        coordinator._stream_session = None
+        coordinator.stop_stream = AsyncMock()
+
+        with patch(
+            "custom_components.fermax_blue.coordinator.streaming_deps_available",
+            return_value=False,
+        ):
+            await coordinator._start_stream("room1", "https://signaling-pro-duoxme.fermax.io")
+
+        coordinator.stop_stream.assert_not_awaited()
+        assert coordinator.stream_session is None
+
+
 class TestCoordinatorDnd:
     """Test DND coordination."""
 

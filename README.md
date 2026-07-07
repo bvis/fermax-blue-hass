@@ -8,7 +8,7 @@ This integration simulates a Fermax Blue mobile app client, connecting to the Fe
 
 ## Features
 
-- **Live video streaming** — Real-time MJPEG video from the intercom camera (~720x480, ~24fps). The card auto-switches between static preview and live stream
+- **Live video streaming** — Real-time MJPEG video from the intercom camera (~720x480, ~24fps). The card auto-switches between static preview and live stream. Requires the optional `pymediasoup` package — see [Live video not available on HA 2026.7+](#live-video-not-available-on-ha-20267)
 - **Camera preview** — Last captured frame persists across HA restarts, always visible in the camera card
 - **Doorbell detection** — Real-time push notification when someone rings (via Firebase Cloud Messaging)
 - **Door opening** — Open your building's door remotely (lock entity + button)
@@ -322,6 +322,12 @@ The integration needs to register with Firebase Cloud Messaging. This happens au
 
 ### Camera shows no image
 Press the "Camera preview" button to trigger the first stream. After that, the last frame will be saved and shown as preview even after restarts.
+
+### Live video not available on HA 2026.7+
+Home Assistant 2026.7 ships `av>=17`, and `aiortc` (a dependency of `pymediasoup`, the library that powers live video) has no release compatible with it yet. To keep the integration loading at all, the live-video dependencies are **optional** since v0.16.8: everything else works normally — doorbell detection, door opening, visitor photos, F1, DND, photo caller, call log — and the camera keeps showing the last visitor photo. Only live video/audio streaming is disabled, with a WARNING in the logs when a stream is requested.
+
+- **On HA 2026.6 or older** you can restore live video by installing the package manually into the Home Assistant Python environment and restarting HA, e.g. on a container/Supervised install: `docker exec homeassistant pip install "pymediasoup>=1.1.0"` (repeat after HA core updates). Installs that upgraded from v0.16.7 or earlier usually still have it installed.
+- **On HA 2026.7+** there is currently no way to install a compatible `pymediasoup`. The hard requirement will be restored in a future release once `aiortc` supports `av>=17`.
 
 ### Diagnostics
 For troubleshooting, you can download diagnostics from **Settings** > **Devices & Services** > **Fermax Blue** > **3 dots menu** > **Download diagnostics**. Credentials are automatically redacted.

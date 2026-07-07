@@ -39,7 +39,7 @@ from .const import (
     SIGNAL_DOORBELL_RING,
 )
 from .notification import FermaxNotificationListener, _redact_notification
-from .streaming import DEFAULT_SIGNALING_URL, FermaxStreamSession
+from .streaming import DEFAULT_SIGNALING_URL, FermaxStreamSession, streaming_deps_available
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -449,6 +449,14 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
             _LOGGER.error("Cannot start camera: no FCM token available")
             return None
 
+        if not streaming_deps_available():
+            _LOGGER.warning(
+                "Camera preview unavailable: optional live-video dependencies "
+                "(pymediasoup/aiortc) are not installed; skipping auto-on so the "
+                "intercom is not woken up for a stream that cannot start"
+            )
+            return None
+
         result = await self.api.auto_on(
             self.pairing.device_id,
             self.notification_listener.fcm_token,
@@ -518,6 +526,14 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
 
     async def _start_stream(self, room_id: str, signaling_url: str, fermax_token: str = "") -> None:
         """Start a video stream session for the given room."""
+        if not streaming_deps_available():
+            _LOGGER.warning(
+                "Ignoring stream request for room %s: optional live-video "
+                "dependencies (pymediasoup/aiortc) are not installed",
+                room_id,
+            )
+            return
+
         await self.stop_stream()
 
         if not self.notification_listener:

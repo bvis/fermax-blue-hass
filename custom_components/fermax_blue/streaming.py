@@ -21,11 +21,26 @@ import logging
 import os
 from collections.abc import Callable
 from dataclasses import dataclass
+from functools import cache
+from importlib.util import find_spec
 from typing import Any
 
 import socketio
 
 _LOGGER = logging.getLogger(__name__)
+
+
+@cache
+def streaming_deps_available() -> bool:
+    """Return True when the optional live-video deps (pymediasoup/aiortc) are installed.
+
+    They are not in the manifest requirements because aiortc pins av<17, which
+    conflicts with the av>=17 shipped by Home Assistant 2026.7+. Callers must
+    skip stream work — including the auto-on request that wakes the physical
+    intercom — when this returns False.
+    """
+    return find_spec("pymediasoup") is not None
+
 
 # Suppress noisy H264 decode warnings (expected on stream start before first keyframe)
 logging.getLogger("aiortc.codecs.h264").setLevel(logging.ERROR)
@@ -418,6 +433,21 @@ class FermaxStreamSession:
         """Start the full streaming pipeline."""
         try:
             return await self._start_inner()
+        except ImportError as err:
+            # Live video needs pymediasoup + aiortc. These are optional (not in
+            # manifest requirements) because aiortc currently caps av<17, which
+            # conflicts with Home Assistant builds shipping av>=17 (2026.7+),
+            # making them unresolvable. The rest of the integration (door open,
+            # calls, sensors) works fine; only live streaming is unavailable.
+            _LOGGER.warning(
+                "Fermax Blue live video is unavailable: optional streaming "
+                "dependencies (pymediasoup/aiortc) are not installed. This is "
+                "expected on Home Assistant builds using av>=17 (aiortc has no "
+                "compatible release yet). Everything else works normally. (%s)",
+                err,
+            )
+            await self.stop()
+            return False
         except Exception:
             _LOGGER.exception("Failed to start stream session")
             await self.stop()
