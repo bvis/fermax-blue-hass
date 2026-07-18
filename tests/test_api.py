@@ -666,3 +666,52 @@ class TestFrozenModels:
         record = OpeningRecord(timestamp="2026-01-01", user="u", door="d")
         with pytest.raises(FrozenInstanceError):
             record.user = "other"
+
+
+class TestRedactEmail:
+    """Tests for the redact_email() PII helper."""
+
+    def test_normal_email(self):
+        from custom_components.fermax_blue.api import redact_email
+
+        assert redact_email("basilio.vera@gmail.com") == "b***a@g***.com"
+
+    def test_short_local_two_chars(self):
+        from custom_components.fermax_blue.api import redact_email
+
+        assert redact_email("jo@example.com") == "***@e***.com"
+
+    def test_short_local_one_char(self):
+        from custom_components.fermax_blue.api import redact_email
+
+        assert redact_email("j@example.com") == "***@e***.com"
+
+    def test_multi_dot_domain(self):
+        from custom_components.fermax_blue.api import redact_email
+
+        assert redact_email("jo@sub.example.co.uk") == "***@s***.uk"
+
+    def test_domain_without_dots(self):
+        from custom_components.fermax_blue.api import redact_email
+
+        assert redact_email("user@localhost") == "u***r@l***"
+
+    def test_non_email_passes_through(self):
+        from custom_components.fermax_blue.api import redact_email
+
+        assert redact_email("Portero") == "Portero"
+
+    def test_none_passes_through(self):
+        from custom_components.fermax_blue.api import redact_email
+
+        assert redact_email(None) is None
+
+    def test_empty_string_passes_through(self):
+        from custom_components.fermax_blue.api import redact_email
+
+        assert redact_email("") == ""
+
+    def test_empty_domain(self):
+        from custom_components.fermax_blue.api import redact_email
+
+        assert redact_email("user@") == "u***r@***"

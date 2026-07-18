@@ -50,6 +50,26 @@ def _redact_sensitive_text(text: str, extra_values: tuple[str | None, ...] = ())
     )
 
 
+def redact_email(value: str | None) -> str | None:
+    """Partially redact an email for exposure in entity attributes.
+
+    ``basilio.vera@gmail.com`` -> ``b***a@g***.com``. Local parts of one or
+    two characters are fully masked; strings without ``@`` (display names)
+    pass through unchanged, as do ``None`` and ``""``.
+    """
+    if not value or "@" not in value:
+        return value
+    local, domain = value.rsplit("@", 1)
+    local_masked = f"{local[0]}***{local[-1]}" if len(local) > 2 else "***"
+    if not domain:
+        domain_masked = "***"
+    elif "." in domain:
+        domain_masked = f"{domain[0]}***.{domain.rsplit('.', 1)[1]}"
+    else:
+        domain_masked = f"{domain[0]}***"
+    return f"{local_masked}@{domain_masked}"
+
+
 def _truncate_for_log(text: str, limit: int = AUTH_RESPONSE_LOG_BODY_LIMIT) -> str:
     """Return a bounded string suitable for logs."""
     if len(text) <= limit:
