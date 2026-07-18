@@ -267,7 +267,23 @@ class TestLastOpeningSensor:
         sensor = FermaxLastOpeningSensor(mock_coordinator)
         assert sensor.native_value == "2026-04-05T10:30:00Z"
 
-    def test_last_opening_extra_attrs(self, mock_coordinator):
+    def test_last_opening_extra_attrs_redacts_emails(self, mock_coordinator):
+        from custom_components.fermax_blue.api import OpeningRecord
+        from custom_components.fermax_blue.sensor import FermaxLastOpeningSensor
+
+        mock_coordinator.last_opening = OpeningRecord(
+            timestamp="2026-04-05T10:30:00Z",
+            user="john.doe@example.com",
+            door="Portal",
+            guest_email="guest@test.com",
+        )
+        sensor = FermaxLastOpeningSensor(mock_coordinator)
+        attrs = sensor.extra_state_attributes
+        assert attrs["user"] == "j***e@e***.com"
+        assert attrs["door"] == "Portal"
+        assert attrs["guest_email"] == "g***t@t***.com"
+
+    def test_last_opening_extra_attrs_non_email_user(self, mock_coordinator):
         from custom_components.fermax_blue.api import OpeningRecord
         from custom_components.fermax_blue.sensor import FermaxLastOpeningSensor
 
@@ -275,13 +291,11 @@ class TestLastOpeningSensor:
             timestamp="2026-04-05T10:30:00Z",
             user="John",
             door="Portal",
-            guest_email="guest@test.com",
         )
         sensor = FermaxLastOpeningSensor(mock_coordinator)
         attrs = sensor.extra_state_attributes
         assert attrs["user"] == "John"
-        assert attrs["door"] == "Portal"
-        assert attrs["guest_email"] == "guest@test.com"
+        assert attrs["guest_email"] is None
 
 
 class TestLastCallSensor:

@@ -14,6 +14,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from .api import redact_email
 from .const import DOMAIN
 from .coordinator import FermaxBlueCoordinator
 from .entity import FermaxBlueEntity
@@ -108,9 +109,9 @@ class FermaxSensor(FermaxBlueEntity, SensorEntity):
                 return None
             record = self.coordinator.last_opening
             return {
-                "user": record.user,
+                "user": redact_email(record.user),
                 "door": record.door,
-                "guest_email": record.guest_email,
+                "guest_email": redact_email(record.guest_email),
             }
         if self._key == "last_call":
             if not self.coordinator.last_call:
