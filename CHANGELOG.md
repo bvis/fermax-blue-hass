@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.17.0-beta.1] - 2026-07-18
+
+### Changed
+- **Live video restored on Home Assistant 2026.7+** (#38) — `aiortc` 1.15.0 supports `av>=14,<18`, compatible with the `av==17.0.1` shipped by HA 2026.7+, so the live-video dependencies are hard requirements again: `pymediasoup>=1.5.0` and `aiortc>=1.15.0` are back in the manifest and installed automatically — no manual `pip install` needed on any supported HA version. The v0.16.8 availability guards remain as defense in depth: installs that upgraded while the deps were optional keep working (a restart lets HA install the requirements), and everything except live video continues to work if they are ever missing (#39).
+
 ## [0.16.8] - 2026-07-07
 
 ### Fixed
