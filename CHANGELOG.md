@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.17.1-beta.1] - 2026-07-18
+## [0.17.1] - 2026-07-18
 
 ### Fixed
 - **Email addresses no longer stored in clear text by the recorder** (#42) — the `last_opening` sensor exposed the opener's full email (`user`) and `guest_email` in its entity attributes, so full addresses were persisted in the recorder database and shown in logbook, dashboards, and exports. Both attributes are now partially redacted (`john.doe@example.com` → `j***e@e***.com`); non-email display names pass through unchanged. **Note:** automations or template sensors comparing the full email in these attributes need updating to the redacted format.
