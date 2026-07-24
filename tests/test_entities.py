@@ -146,6 +146,99 @@ class TestPhotoCallerSwitch:
         mock_coordinator.set_photo_caller.assert_called_once_with(False)
 
 
+class TestRingPreviewSwitch:
+    """Test the ring preview switch and its restore behavior."""
+
+    def test_ring_preview_unique_id(self, mock_coordinator):
+        from custom_components.fermax_blue.switch import FermaxRingPreviewSwitch
+
+        switch = FermaxRingPreviewSwitch(mock_coordinator)
+        assert switch.unique_id == "test_dev_ring_preview"
+
+    @pytest.mark.asyncio
+    async def test_ring_preview_turn_on_off(self, mock_coordinator):
+        from custom_components.fermax_blue.switch import FermaxRingPreviewSwitch
+
+        switch = FermaxRingPreviewSwitch(mock_coordinator)
+        switch.async_write_ha_state = MagicMock()
+
+        await switch.async_turn_on()
+        assert mock_coordinator.ring_preview is True
+        await switch.async_turn_off()
+        assert mock_coordinator.ring_preview is False
+
+    @pytest.mark.asyncio
+    async def test_ring_preview_restores_last_state(self, mock_coordinator):
+        from homeassistant.core import State
+
+        from custom_components.fermax_blue.switch import FermaxRingPreviewSwitch
+
+        switch = FermaxRingPreviewSwitch(mock_coordinator)
+        switch.async_get_last_state = AsyncMock(return_value=State("switch.t", "on"))
+
+        with patch(
+            "homeassistant.helpers.update_coordinator.CoordinatorEntity.async_added_to_hass",
+            AsyncMock(),
+        ):
+            await switch.async_added_to_hass()
+
+        assert mock_coordinator.ring_preview is True
+
+
+class TestRestoredControls:
+    """Stream duration and call mode keep their prior state across restarts."""
+
+    @pytest.mark.asyncio
+    async def test_stream_duration_restored(self, mock_coordinator):
+        from custom_components.fermax_blue.number import FermaxStreamDurationNumber
+
+        number = FermaxStreamDurationNumber(mock_coordinator)
+        number.async_get_last_number_data = AsyncMock(return_value=MagicMock(native_value=60.0))
+
+        with patch(
+            "homeassistant.helpers.update_coordinator.CoordinatorEntity.async_added_to_hass",
+            AsyncMock(),
+        ):
+            await number.async_added_to_hass()
+
+        assert mock_coordinator.stream_duration == 60
+
+    @pytest.mark.asyncio
+    async def test_call_mode_restored(self, mock_coordinator):
+        from homeassistant.core import State
+
+        from custom_components.fermax_blue.select import FermaxCallModeSelect
+
+        select = FermaxCallModeSelect(mock_coordinator)
+        select.async_get_last_state = AsyncMock(return_value=State("select.t", "record"))
+
+        with patch(
+            "homeassistant.helpers.update_coordinator.CoordinatorEntity.async_added_to_hass",
+            AsyncMock(),
+        ):
+            await select.async_added_to_hass()
+
+        assert mock_coordinator.call_mode == "record"
+
+    @pytest.mark.asyncio
+    async def test_call_mode_ignores_invalid_state(self, mock_coordinator):
+        from homeassistant.core import State
+
+        from custom_components.fermax_blue.select import FermaxCallModeSelect
+
+        mock_coordinator.call_mode = "notify_only"
+        select = FermaxCallModeSelect(mock_coordinator)
+        select.async_get_last_state = AsyncMock(return_value=State("select.t", "unavailable"))
+
+        with patch(
+            "homeassistant.helpers.update_coordinator.CoordinatorEntity.async_added_to_hass",
+            AsyncMock(),
+        ):
+            await select.async_added_to_hass()
+
+        assert mock_coordinator.call_mode == "notify_only"
+
+
 class TestF1Button:
     """Test F1 auxiliary button."""
 

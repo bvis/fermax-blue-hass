@@ -10,6 +10,7 @@ from custom_components.fermax_blue.api import (
     FermaxBlueApi,
     Pairing,
 )
+from custom_components.fermax_blue.const import CALL_MODE_NOTIFY, CALL_MODE_RECORD
 from custom_components.fermax_blue.coordinator import (
     FermaxBlueCoordinator,
     _is_trusted_signaling_url,
@@ -90,6 +91,9 @@ def coordinator(mock_hass, mock_api, pairing):
         coord._camera_active = False
         coord._last_divert_response = None
         coord._photo_fetch_pending = False
+        coord._call_mode = CALL_MODE_NOTIFY
+        coord._auto_response_file = ""
+        coord._ring_preview = False
         coord._doorbell_reset_unsub = None
         coord._camera_timeout_unsub = None
         coord._dnd_enabled = None
@@ -227,6 +231,57 @@ class TestCoordinatorPhotoCaller:
         await coordinator.set_photo_caller(True)
         mock_api.set_photo_caller.assert_called_once_with("dev1", enabled=True)
         assert coordinator.device_info.photocaller is True
+
+
+class TestRingPreview:
+    """The ring preview option starts a receive-only stream without answering."""
+
+    def _ring(self, coordinator, persistent_id="n1"):
+        notification = {
+            "data": {
+                "FermaxNotificationType": "Call",
+                "RoomId": "room1",
+                "SocketUrl": "https://signaling-pro-duoxme.fermax.io",
+                "FermaxToken": "ftok",
+            }
+        }
+        with (
+            patch("custom_components.fermax_blue.coordinator.async_dispatcher_send"),
+            patch(
+                "custom_components.fermax_blue.coordinator.async_call_later",
+                return_value=MagicMock(),
+            ),
+        ):
+            coordinator._handle_notification(notification, persistent_id)
+
+    def test_ring_starts_receive_only_stream(self, coordinator):
+        coordinator.hass.async_create_task = MagicMock(side_effect=lambda coro: coro.close())
+        coordinator._ring_preview = True
+        coordinator._start_stream = MagicMock()
+
+        self._ring(coordinator)
+
+        coordinator._start_stream.assert_called_once_with(
+            "room1", "https://signaling-pro-duoxme.fermax.io", "ftok", receive_only=True
+        )
+
+    def test_no_stream_in_notify_mode_by_default(self, coordinator):
+        coordinator.hass.async_create_task = MagicMock(side_effect=lambda coro: coro.close())
+        coordinator._start_stream = MagicMock()
+
+        self._ring(coordinator)
+
+        coordinator._start_stream.assert_not_called()
+
+    def test_attending_call_mode_still_picks_up(self, coordinator):
+        coordinator.hass.async_create_task = MagicMock(side_effect=lambda coro: coro.close())
+        coordinator._ring_preview = True
+        coordinator._call_mode = CALL_MODE_RECORD
+        coordinator._start_stream = MagicMock()
+
+        self._ring(coordinator)
+
+        assert coordinator._start_stream.call_args.kwargs["receive_only"] is False
 
 
 class TestCoordinatorScanInterval:

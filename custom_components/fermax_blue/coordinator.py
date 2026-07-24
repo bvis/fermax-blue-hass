@@ -98,6 +98,7 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         self._stream_session: FermaxStreamSession | None = None
         self._storage_path: Path | None = None
         self._auto_response_file = auto_response_file
+        self._ring_preview = False
         self._call_mode = CALL_MODE_NOTIFY
         self._stream_duration = DEFAULT_STREAM_DURATION
         self._stream_stop_unsub: CALLBACK_TYPE | None = None
@@ -114,6 +115,16 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
     def call_mode(self, value: str) -> None:
         """Set the call mode."""
         self._call_mode = value
+
+    @property
+    def ring_preview(self) -> bool:
+        """Return whether the receive-only ring preview is enabled."""
+        return self._ring_preview
+
+    @ring_preview.setter
+    def ring_preview(self, value: bool) -> None:
+        """Enable or disable the receive-only ring preview."""
+        self._ring_preview = value
 
     @property
     def stream_duration(self) -> int:
@@ -353,11 +364,15 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
 
         # Start video stream based on call mode:
         # - Autoon (camera preview button): always start stream
-        # - Call (doorbell): depends on call_mode setting
+        # - Call (doorbell): depends on call_mode setting; with the ring
+        #   preview option a receive-only stream starts even in notify mode,
+        #   showing the current visitor without answering the call
         room_id = data.get("RoomId")
+        attend = notification_type == "Call" and self._call_mode != CALL_MODE_NOTIFY
         should_stream = room_id and (
             notification_type == "Autoon"
-            or (notification_type == "Call" and self._call_mode != CALL_MODE_NOTIFY)
+            or attend
+            or (notification_type == "Call" and self._ring_preview)
         )
         if should_stream:
             socket_url = data.get("SocketUrl", DEFAULT_SIGNALING_URL)
@@ -368,7 +383,10 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
                 )
                 socket_url = DEFAULT_SIGNALING_URL
             fermax_token = data.get("FermaxToken", "")
-            self.hass.async_create_task(self._start_stream(room_id, socket_url, fermax_token))
+            receive_only = notification_type == "Call" and not attend
+            self.hass.async_create_task(
+                self._start_stream(room_id, socket_url, fermax_token, receive_only=receive_only)
+            )
             if (
                 notification_type == "Call"
                 and self._call_mode == CALL_MODE_AUTO_RESPOND
@@ -524,7 +542,13 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         if self.device_info:
             self.device_info = replace(self.device_info, photocaller=enabled)
 
-    async def _start_stream(self, room_id: str, signaling_url: str, fermax_token: str = "") -> None:
+    async def _start_stream(
+        self,
+        room_id: str,
+        signaling_url: str,
+        fermax_token: str = "",
+        receive_only: bool = False,
+    ) -> None:
         """Start a video stream session for the given room."""
         if not streaming_deps_available():
             _LOGGER.warning(
@@ -565,6 +589,7 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
             room_id=room_id,
             on_end=_on_stream_end,
             media_root=media_root,
+            receive_only=receive_only,
         )
 
         success = await self._stream_session.start()

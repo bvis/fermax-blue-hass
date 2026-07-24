@@ -146,6 +146,9 @@
       },
       "photo_caller": {
         "name": "Photo caller"
+      },
+      "ring_preview": {
+        "name": "Ring preview"
       }
     }
   }

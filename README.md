@@ -179,6 +179,7 @@ For each paired intercom device, the integration creates:
 | `switch.<name>_notifications` | Switch | Enable/disable push notifications |
 | `switch.<name>_dnd` | Switch | Do Not Disturb mode |
 | `switch.<name>_photo_caller` | Switch | Enable/disable automatic visitor photos |
+| `switch.<name>_ring_preview` | Switch | Live preview on ring (default: off) — starts a view-only video stream when someone rings, so the camera shows the current visitor within a few seconds. The call is never answered and keeps ringing; no audio is sent or received. Stops after the stream duration or when the call ends |
 
 ## Dashboard Card
 

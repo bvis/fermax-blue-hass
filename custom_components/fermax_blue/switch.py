@@ -7,8 +7,10 @@ from typing import Any
 
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import STATE_ON
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.restore_state import RestoreEntity
 
 from .const import DOMAIN
 from .coordinator import FermaxBlueCoordinator
@@ -31,6 +33,7 @@ async def async_setup_entry(
             entities.append(FermaxNotificationSwitch(coordinator))
         entities.append(FermaxDndSwitch(coordinator))
         entities.append(FermaxPhotoCallerSwitch(coordinator))
+        entities.append(FermaxRingPreviewSwitch(coordinator))
 
     async_add_entities(entities)
 
@@ -65,6 +68,48 @@ class FermaxNotificationSwitch(FermaxBlueEntity, SwitchEntity):
             await self.coordinator.notification_listener.stop()
             self._is_on = False
             self.async_write_ha_state()
+
+
+class FermaxRingPreviewSwitch(FermaxBlueEntity, SwitchEntity, RestoreEntity):
+    """Switch for the receive-only live preview on doorbell ring.
+
+    Per-device, purely local (no Fermax API involved), and restored across
+    restarts. When on, a ring starts a receive-only stream so the camera
+    shows the current visitor; the call is never answered.
+    """
+
+    _attr_translation_key = "ring_preview"
+
+    def __init__(self, coordinator: FermaxBlueCoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{self._device_id}_ring_preview"
+
+    async def async_added_to_hass(self) -> None:
+        """Restore the previous setting when added to hass."""
+        await super().async_added_to_hass()
+        last_state = await self.async_get_last_state()
+        if last_state is not None:
+            self.coordinator.ring_preview = last_state.state == STATE_ON
+
+    @property
+    def is_on(self) -> bool:
+        """Return True if ring preview is enabled."""
+        return self.coordinator.ring_preview
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Enable ring preview."""
+        self.coordinator.ring_preview = True
+        self.async_write_ha_state()
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Disable ring preview."""
+        self.coordinator.ring_preview = False
+        self.async_write_ha_state()
+
+    @property
+    def available(self) -> bool:
+        """Always available — a local setting, not device state."""
+        return True
 
 
 class FermaxDndSwitch(FermaxBlueEntity, SwitchEntity):
