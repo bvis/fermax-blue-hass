@@ -45,6 +45,9 @@ _LOGGER = logging.getLogger(__name__)
 
 DOORBELL_RESET_SECONDS = 30
 CAMERA_TIMEOUT_SECONDS = 90
+# The server bounds unattended preview sessions by the push payload's
+# PreviewTimeout field (29 s by default), independent of our local timer.
+DEFAULT_PREVIEW_TIMEOUT = 29
 # FCM re-delivers recent notifications when the listener reconnects after a
 # reload/restart, causing phantom doorbell rings. Ignore them briefly.
 NOTIFICATION_GRACE_PERIOD = 10
@@ -385,7 +388,13 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
             fermax_token = data.get("FermaxToken", "")
             receive_only = notification_type == "Call" and not attend
             self.hass.async_create_task(
-                self._start_stream(room_id, socket_url, fermax_token, receive_only=receive_only)
+                self._start_stream(
+                    room_id,
+                    socket_url,
+                    fermax_token,
+                    receive_only=receive_only,
+                    preview_timeout=data.get("PreviewTimeout"),
+                )
             )
             if (
                 notification_type == "Call"
@@ -440,7 +449,10 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
                 fcm_token=fcm_token,
                 call_as=self.pairing.device_id,
             )
-        else:
+            if not success:
+                _LOGGER.warning("In-call door open failed, falling back to the standard endpoint")
+
+        if not success:
             door = self.pairing.access_doors.get(door_name)
             if not door:
                 for d in self.pairing.access_doors.values():
@@ -548,6 +560,7 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         signaling_url: str,
         fermax_token: str = "",
         receive_only: bool = False,
+        preview_timeout: str | int | None = None,
     ) -> None:
         """Start a video stream session for the given room."""
         if not streaming_deps_available():
@@ -598,16 +611,28 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
             _LOGGER.info("Video stream started for room %s", room_id)
             async_dispatcher_send(self.hass, SIGNAL_CAMERA_ON.format(self.pairing.device_id))
 
-            # Schedule auto-stop after configured duration
+            # Schedule auto-stop after configured duration. Receive-only
+            # sessions are torn down server-side after PreviewTimeout
+            # (carried in the push payload, 29 s by default), so clamp the
+            # local timer to it: a longer stream_duration would leave the
+            # entities reporting a live stream after teardown.
+            stop_after = self._stream_duration
+            if receive_only:
+                try:
+                    timeout = int(preview_timeout)  # type: ignore[arg-type]
+                except (TypeError, ValueError):
+                    timeout = DEFAULT_PREVIEW_TIMEOUT
+                if timeout <= 0:
+                    timeout = DEFAULT_PREVIEW_TIMEOUT
+                stop_after = min(stop_after, timeout)
+
             @callback
             def _auto_stop_stream(_now: Any) -> None:
-                _LOGGER.info("Stream auto-stop after %ds", self._stream_duration)
+                _LOGGER.info("Stream auto-stop after %ds", stop_after)
                 self._stream_stop_unsub = None
                 self.hass.async_create_task(self.stop_stream())
 
-            self._stream_stop_unsub = async_call_later(
-                self.hass, self._stream_duration, _auto_stop_stream
-            )
+            self._stream_stop_unsub = async_call_later(self.hass, stop_after, _auto_stop_stream)
         else:
             _LOGGER.warning("Failed to start video stream for room %s", room_id)
             self._stream_session = None
