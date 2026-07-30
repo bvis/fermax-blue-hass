@@ -146,6 +146,9 @@
       },
       "photo_caller": {
         "name": "Besucherfoto"
+      },
+      "ring_preview": {
+        "name": "Vorschau beim Klingeln"
       }
     }
   }

@@ -146,6 +146,9 @@
       },
       "photo_caller": {
         "name": "Foto de visitante"
+      },
+      "ring_preview": {
+        "name": "Vista previa al llamar"
       }
     }
   }

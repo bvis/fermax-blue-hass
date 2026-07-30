@@ -146,6 +146,9 @@
       },
       "photo_caller": {
         "name": "صورة الزائر"
+      },
+      "ring_preview": {
+        "name": "معاينة الرنين"
       }
     }
   }

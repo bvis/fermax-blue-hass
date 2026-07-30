@@ -10,6 +10,7 @@ from custom_components.fermax_blue.api import (
     FermaxBlueApi,
     Pairing,
 )
+from custom_components.fermax_blue.const import CALL_MODE_NOTIFY, CALL_MODE_RECORD
 from custom_components.fermax_blue.coordinator import (
     FermaxBlueCoordinator,
     _is_trusted_signaling_url,
@@ -90,6 +91,9 @@ def coordinator(mock_hass, mock_api, pairing):
         coord._camera_active = False
         coord._last_divert_response = None
         coord._photo_fetch_pending = False
+        coord._call_mode = CALL_MODE_NOTIFY
+        coord._auto_response_file = ""
+        coord._ring_preview = False
         coord._doorbell_reset_unsub = None
         coord._camera_timeout_unsub = None
         coord._dnd_enabled = None
@@ -227,6 +231,172 @@ class TestCoordinatorPhotoCaller:
         await coordinator.set_photo_caller(True)
         mock_api.set_photo_caller.assert_called_once_with("dev1", enabled=True)
         assert coordinator.device_info.photocaller is True
+
+
+class TestRingPreview:
+    """The ring preview option starts a receive-only stream without answering."""
+
+    def _ring(self, coordinator, persistent_id="n1"):
+        notification = {
+            "data": {
+                "FermaxNotificationType": "Call",
+                "RoomId": "room1",
+                "SocketUrl": "https://signaling-pro-duoxme.fermax.io",
+                "FermaxToken": "ftok",
+                "PreviewTimeout": "29",
+            }
+        }
+        with (
+            patch("custom_components.fermax_blue.coordinator.async_dispatcher_send"),
+            patch(
+                "custom_components.fermax_blue.coordinator.async_call_later",
+                return_value=MagicMock(),
+            ),
+        ):
+            coordinator._handle_notification(notification, persistent_id)
+
+    def test_ring_starts_receive_only_stream(self, coordinator):
+        coordinator.hass.async_create_task = MagicMock(side_effect=lambda coro: coro.close())
+        coordinator._ring_preview = True
+        coordinator._start_stream = MagicMock()
+
+        self._ring(coordinator)
+
+        coordinator._start_stream.assert_called_once_with(
+            "room1",
+            "https://signaling-pro-duoxme.fermax.io",
+            "ftok",
+            receive_only=True,
+            preview_timeout="29",
+        )
+
+    def test_no_stream_in_notify_mode_by_default(self, coordinator):
+        coordinator.hass.async_create_task = MagicMock(side_effect=lambda coro: coro.close())
+        coordinator._start_stream = MagicMock()
+
+        self._ring(coordinator)
+
+        coordinator._start_stream.assert_not_called()
+
+    def test_attending_call_mode_still_picks_up(self, coordinator):
+        coordinator.hass.async_create_task = MagicMock(side_effect=lambda coro: coro.close())
+        coordinator._ring_preview = True
+        coordinator._call_mode = CALL_MODE_RECORD
+        coordinator._start_stream = MagicMock()
+
+        self._ring(coordinator)
+
+        assert coordinator._start_stream.call_args.kwargs["receive_only"] is False
+
+
+class TestPreviewTimeoutClamp:
+    """Receive-only sessions honour the server-side PreviewTimeout ceiling."""
+
+    async def _start(self, coordinator, *, receive_only, preview_timeout, stream_duration):
+        coordinator._stream_session = None
+        coordinator._stream_stop_unsub = None
+        coordinator._stream_duration = stream_duration
+        listener = MagicMock()
+        listener.fcm_token = "tok"
+        coordinator.notification_listener = listener
+        session = MagicMock()
+        session.start = AsyncMock(return_value=True)
+        with (
+            patch(
+                "custom_components.fermax_blue.coordinator.streaming_deps_available",
+                return_value=True,
+            ),
+            patch(
+                "custom_components.fermax_blue.coordinator.FermaxStreamSession",
+                return_value=session,
+            ),
+            patch("custom_components.fermax_blue.coordinator.async_dispatcher_send"),
+            patch(
+                "custom_components.fermax_blue.coordinator.async_call_later",
+                return_value=MagicMock(),
+            ) as call_later,
+        ):
+            await coordinator._start_stream(
+                "room1",
+                "https://signaling-pro-duoxme.fermax.io",
+                "ftok",
+                receive_only=receive_only,
+                preview_timeout=preview_timeout,
+            )
+        return call_later.call_args.args[1]
+
+    @pytest.mark.asyncio
+    async def test_clamped_to_payload_timeout(self, coordinator):
+        delay = await self._start(
+            coordinator, receive_only=True, preview_timeout="29", stream_duration=120
+        )
+        assert delay == 29
+
+    @pytest.mark.asyncio
+    async def test_defaults_to_29_when_absent(self, coordinator):
+        delay = await self._start(
+            coordinator, receive_only=True, preview_timeout=None, stream_duration=60
+        )
+        assert delay == 29
+
+    @pytest.mark.asyncio
+    async def test_shorter_stream_duration_wins(self, coordinator):
+        delay = await self._start(
+            coordinator, receive_only=True, preview_timeout="60", stream_duration=15
+        )
+        assert delay == 15
+
+    @pytest.mark.asyncio
+    async def test_invalid_timeout_falls_back(self, coordinator):
+        delay = await self._start(
+            coordinator, receive_only=True, preview_timeout="garbage", stream_duration=120
+        )
+        assert delay == 29
+
+    @pytest.mark.asyncio
+    async def test_attended_stream_not_clamped(self, coordinator):
+        delay = await self._start(
+            coordinator, receive_only=False, preview_timeout="29", stream_duration=120
+        )
+        assert delay == 120
+
+
+class TestOpenDoorFallback:
+    """In-call door opening falls back to the standard endpoint on failure."""
+
+    def _active_session(self, coordinator):
+        session = MagicMock()
+        session.is_active = True
+        session._room_id = "room1"
+        coordinator._stream_session = session
+
+    @pytest.mark.asyncio
+    async def test_incall_endpoint_used_during_stream(self, coordinator, mock_api):
+        self._active_session(coordinator)
+        mock_api.open_door_incall = AsyncMock(return_value=True)
+        with patch("custom_components.fermax_blue.coordinator.async_dispatcher_send"):
+            assert await coordinator.open_door() is True
+        mock_api.open_door.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_falls_back_when_incall_fails(self, coordinator, mock_api):
+        self._active_session(coordinator)
+        mock_api.open_door_incall = AsyncMock(return_value=False)
+        mock_api.open_door = AsyncMock(return_value=True)
+        with patch("custom_components.fermax_blue.coordinator.async_dispatcher_send"):
+            assert await coordinator.open_door() is True
+        mock_api.open_door_incall.assert_awaited_once()
+        mock_api.open_door.assert_awaited_once_with(
+            "dev1", {"block": 100, "subblock": -1, "number": 0}
+        )
+
+    @pytest.mark.asyncio
+    async def test_standard_endpoint_without_stream(self, coordinator, mock_api):
+        coordinator._stream_session = None
+        mock_api.open_door = AsyncMock(return_value=True)
+        with patch("custom_components.fermax_blue.coordinator.async_dispatcher_send"):
+            assert await coordinator.open_door() is True
+        mock_api.open_door_incall.assert_not_called()
 
 
 class TestCoordinatorScanInterval:

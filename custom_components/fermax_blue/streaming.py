@@ -153,10 +153,12 @@ class FermaxSignalingClient:
         signaling_url: str = DEFAULT_SIGNALING_URL,
         oauth_token: str = "",
         fcm_token: str = "",
+        send_hangup: bool = True,
     ) -> None:
         self._signaling_url = signaling_url
         self._oauth_token = oauth_token
         self._fcm_token = fcm_token
+        self._send_hangup = send_hangup
         self._sio: socketio.AsyncClient | None = None
         self._connected = False
         self._room_join_result: RoomJoinResult | None = None
@@ -364,7 +366,9 @@ class FermaxSignalingClient:
     async def disconnect(self) -> None:
         if self._sio:
             try:
-                if self._connected:
+                # A session that never picked up leaves silently: hang_up on a
+                # still-ringing call could end it for the visitor and monitor.
+                if self._connected and self._send_hangup:
                     await self.hangup()
                 await self._sio.disconnect()
             except Exception:
@@ -389,6 +393,7 @@ class FermaxStreamSession:
         room_id: str,
         on_end: Callable[[], None] | None = None,
         media_root: str = "/media",
+        receive_only: bool = False,
     ) -> None:
         # Enforce secure scheme for signaling URL
         if signaling_url and not signaling_url.startswith(("https://", "wss://")):
@@ -403,7 +408,9 @@ class FermaxStreamSession:
             signaling_url=signaling_url,
             oauth_token=oauth_token,
             fcm_token=fcm_token,
+            send_hangup=not receive_only,
         )
+        self._receive_only = receive_only
         self._room_id = room_id
         self._on_end = on_end
         self._media_root = media_root
@@ -618,14 +625,20 @@ class FermaxStreamSession:
 
             return str(our_producer_id)
 
-        # 6. Produce audio (48kHz like the APK) — triggers onProduce → pickup
-        self._switchable_track = _create_switchable_audio_track()
-        self._audio_producer = await self._send_transport.produce(
-            track=self._switchable_track,
-            stopTracks=False,
-            appData={},
-        )
-        _LOGGER.info("Audio producer started, pickup completed")
+        # 6. Produce audio (48kHz like the APK) — triggers onProduce → pickup.
+        # A receive-only session skips this: without pickup the call is never
+        # answered, so it keeps ringing while we watch the video (like the
+        # app's preview screen before attending).
+        if self._receive_only:
+            _LOGGER.info("Receive-only session, skipping pickup")
+        else:
+            self._switchable_track = _create_switchable_audio_track()
+            self._audio_producer = await self._send_transport.produce(
+                track=self._switchable_track,
+                stopTracks=False,
+                appData={},
+            )
+            _LOGGER.info("Audio producer started, pickup completed")
 
         # 8. Initialize recording (frames collected in _grab_frames)
         self._init_recording()

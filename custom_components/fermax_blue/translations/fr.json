@@ -146,6 +146,9 @@
       },
       "photo_caller": {
         "name": "Photo visiteur"
+      },
+      "ring_preview": {
+        "name": "Aperçu à la sonnerie"
       }
     }
   }

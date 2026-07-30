@@ -45,6 +45,12 @@
         "state": {
           "off": "mdi:camera-off"
         }
+      },
+      "ring_preview": {
+        "default": "mdi:cctv",
+        "state": {
+          "off": "mdi:cctv-off"
+        }
       }
     },
     "lock": {

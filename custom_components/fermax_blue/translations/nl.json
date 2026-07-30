@@ -146,6 +146,9 @@
       },
       "photo_caller": {
         "name": "Bezoeker foto"
+      },
+      "ring_preview": {
+        "name": "Voorbeeld bij aanbellen"
       }
     }
   }

@@ -146,6 +146,9 @@
       },
       "photo_caller": {
         "name": "Ziyaretçi fotoğrafı"
+      },
+      "ring_preview": {
+        "name": "Zil önizlemesi"
       }
     }
   }

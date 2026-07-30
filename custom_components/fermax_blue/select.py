@@ -8,6 +8,7 @@ from homeassistant.components.select import SelectEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.restore_state import RestoreEntity
 
 from .const import CALL_MODES, DOMAIN
 from .coordinator import FermaxBlueCoordinator
@@ -26,7 +27,7 @@ async def async_setup_entry(
     async_add_entities(FermaxCallModeSelect(c) for c in coordinators)
 
 
-class FermaxCallModeSelect(FermaxBlueEntity, SelectEntity):
+class FermaxCallModeSelect(FermaxBlueEntity, SelectEntity, RestoreEntity):
     """Select entity to control doorbell call behavior."""
 
     _attr_translation_key = "call_mode"
@@ -35,6 +36,13 @@ class FermaxCallModeSelect(FermaxBlueEntity, SelectEntity):
     def __init__(self, coordinator: FermaxBlueCoordinator) -> None:
         super().__init__(coordinator)
         self._attr_unique_id = f"{self._device_id}_call_mode"
+
+    async def async_added_to_hass(self) -> None:
+        """Restore the previous call mode when added to hass."""
+        await super().async_added_to_hass()
+        last_state = await self.async_get_last_state()
+        if last_state is not None and last_state.state in CALL_MODES:
+            self.coordinator.call_mode = last_state.state
 
     @property
     def current_option(self) -> str:
