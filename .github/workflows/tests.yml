@@ -5,6 +5,14 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # Dependency drift check. Dockerfile.dev installs its dependencies unpinned,
+  # so a scheduled rebuild resolves fresh versions and surfaces breakage that
+  # commit-triggered runs cannot see: a dependency dropping support for a Python
+  # version in the matrix, a transitive conflict, or a manifest.json requirement
+  # going stale. Without this, such drift only appears on the next unrelated PR.
+  schedule:
+    - cron: "0 6 * * 1" # Mondays 06:00 UTC
+  workflow_dispatch:
 
 permissions:
   contents: read
