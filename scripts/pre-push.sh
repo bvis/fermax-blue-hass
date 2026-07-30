@@ -23,7 +23,7 @@ echo -e "${YELLOW}════════════════════�
 echo -e "${YELLOW}  Pre-push CI replica (Dockerfile.dev)        ${NC}"
 echo -e "${YELLOW}══════════════════════════════════════════════${NC}"
 
-for PY in 3.12 3.13; do
+for PY in 3.13 3.14; do
     TAG="${DEV_IMG}:py${PY}"
     step "Building image Python ${PY}"
     docker build -q -t "$TAG" --build-arg PYTHON_VERSION="$PY" -f "$PROJECT_DIR/Dockerfile.dev" "$PROJECT_DIR" > /dev/null \
@@ -31,7 +31,7 @@ for PY in 3.12 3.13; do
 
     RUN="docker run --rm -v $PROJECT_DIR:/app -w /app $TAG"
 
-    if [ "$PY" = "3.12" ]; then
+    if [ "$PY" = "3.13" ]; then
         step "Lint (py${PY})"
         $RUN ruff check custom_components/ tests/ scripts/ \
             && pass "Lint" || fail "Lint"
