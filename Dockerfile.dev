@@ -1,4 +1,4 @@
-ARG PYTHON_VERSION=3.12
+ARG PYTHON_VERSION=3.13
 FROM python:${PYTHON_VERSION}-slim
 
 RUN apt-get update -qq && \
@@ -10,7 +10,7 @@ RUN pip install --no-cache-dir \
     pytest pytest-asyncio pytest-cov \
     httpx firebase-messaging homeassistant \
     "python-socketio[asyncio_client]>=5.12.0" \
-    "av==13.1.0" pymediasoup Pillow numpy PyTurboJPEG \
-    && pip install --no-cache-dir "aiodns==3.2.0" "pycares==4.4.0"
+    av pymediasoup Pillow numpy PyTurboJPEG \
+    && pip install --no-cache-dir aiodns pycares
 
 WORKDIR /app
