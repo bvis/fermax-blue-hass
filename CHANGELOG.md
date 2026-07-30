@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.18.0-beta.1] - 2026-07-31
+## [0.18.0] - 2026-07-31
 
 ### Added
 - **Live preview on ring, without answering the call** (#45) — a new per-device `switch.<name>_ring_preview` starts a receive-only video stream when the doorbell rings, so the camera shows the current visitor within a few seconds while the panel keeps ringing. The call is never answered and no audio is sent or received, mirroring the preview screen the official app shows before attending. Until now live video on ring required `record` or `auto_respond` call mode, both of which answer the call. The switch is **off by default** (no behavior change unless enabled) and only has an effect in `notify_only` mode. The stream stops after the configured stream duration, capped by the server-side preview limit carried in the push payload (~29 s) — a longer `stream_duration` would otherwise leave the entities reporting a live stream after the server had already torn it down. Note that, like any stream session, the preview is recorded to the media folder (subject to the retention setting) and updates the last visitor photo, so every ring leaves a snapshot without answering. Contributed by @kiosion.
