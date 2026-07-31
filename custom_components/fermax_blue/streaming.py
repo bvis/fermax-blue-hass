@@ -424,6 +424,7 @@ class FermaxStreamSession:
         self._recorder: Any = None
         self._frame_task: asyncio.Task | None = None
         self._latest_frame: bytes | None = None
+        self._last_raw_frame: bytes | None = None
         self._active = False
         self._room: Any = None
         self._recording_path: str | None = None
@@ -436,6 +437,11 @@ class FermaxStreamSession:
     def latest_frame(self) -> bytes | None:
         """Return the latest JPEG frame, or None if no frames yet."""
         return self._latest_frame
+
+    @property
+    def latest_frame_raw(self) -> bytes | None:
+        """Return the latest frame without the LIVE overlay (for still previews)."""
+        return self._last_raw_frame or self._latest_frame
 
     async def start(self) -> bool:
         """Start the full streaming pipeline."""
@@ -815,9 +821,14 @@ class FermaxStreamSession:
             now = datetime.now().strftime("%H:%M:%S")
             font = ImageFont.load_default(size=16)
 
-            # Red "● LIVE" badge top-left
-            draw.rectangle([(6, 6), (130, 28)], fill=(200, 0, 0))
-            draw.text((10, 7), f"\u25cf LIVE {now}", fill=(255, 255, 255), font=font)
+            # Red "LIVE" badge top-left; the dot is drawn as an ellipse
+            # because the default PIL font has no glyph for U+25CF, and the
+            # badge width is sized to the rendered text
+            text = f"LIVE {now}"
+            text_w = draw.textlength(text, font=font)
+            draw.rectangle([(6, 6), (26 + text_w + 8, 28)], fill=(200, 0, 0))
+            draw.ellipse([(12, 12), (22, 22)], fill=(255, 255, 255))
+            draw.text((26, 7), text, fill=(255, 255, 255), font=font)
         except Exception:
             pass  # Never let overlay failure break the stream
 
@@ -863,6 +874,9 @@ class FermaxStreamSession:
                 raw_jpeg = raw_buf.getvalue()
                 if hasattr(self, "_recording_frames") and self._recording_frames is not None:
                     self._recording_frames.append(raw_jpeg)
+                # Keep the overlay-free frame so still previews after the
+                # stream ends don't show a stale "LIVE" badge (see stop())
+                self._last_raw_frame = raw_jpeg
 
                 # Add LIVE overlay for display
                 img = self._overlay_live_indicator(img)
@@ -938,7 +952,10 @@ class FermaxStreamSession:
         # Give aiortc a moment to clean up internal tasks
         await asyncio.sleep(0.1)
 
-        # Keep _latest_frame for preview after stream ends
+        # Keep _latest_frame for preview after stream ends, but swap in the
+        # overlay-free version - a frozen "LIVE HH:MM:SS" badge is misleading
+        if self._last_raw_frame:
+            self._latest_frame = self._last_raw_frame
         _LOGGER.info("Stream session stopped")
 
     async def send_audio(self, audio_path: str) -> bool:
