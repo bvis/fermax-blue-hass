@@ -1,6 +1,6 @@
 """Tests for the Fermax Blue config flow."""
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 import voluptuous as vol
@@ -290,3 +290,177 @@ class TestCredentials:
         assert "fermax.io" not in source
         assert "AIza" not in source
         assert "oauth/token" not in source
+
+
+def _credentials_payload() -> dict:
+    """Return a complete set of config-flow credentials."""
+    return {
+        CONF_USERNAME: "User@Example.com",
+        CONF_PASSWORD: "secret",
+        CONF_FERMAX_AUTH_URL: "https://oauth-pro-duoxme.fermax.io/oauth/token",
+        CONF_FERMAX_BASE_URL: "https://pro-duoxme.fermax.io",
+        CONF_FERMAX_AUTH_BASIC: "Basic abc",
+        CONF_FIREBASE_API_KEY: "AIza-key",
+        CONF_FIREBASE_APP_ID: "1:1:android:1",
+        CONF_FIREBASE_SENDER_ID: "1",
+        CONF_FIREBASE_PROJECT_ID: "proj",
+        CONF_FIREBASE_PACKAGE_NAME: "com.fermax.blue.app",
+    }
+
+
+def _make_flow():
+    """Build a config flow with the HA plumbing stubbed out."""
+    from unittest.mock import MagicMock
+
+    from custom_components.fermax_blue.config_flow import FermaxBlueConfigFlow
+
+    flow = FermaxBlueConfigFlow()
+    flow.hass = MagicMock()
+    flow.async_set_unique_id = AsyncMock()
+    flow._abort_if_unique_id_configured = MagicMock()
+    flow.async_show_form = MagicMock(side_effect=lambda **kwargs: {"type": "form", **kwargs})
+    flow.async_create_entry = MagicMock(
+        side_effect=lambda **kwargs: {"type": "create_entry", **kwargs}
+    )
+    return flow
+
+
+class TestConfigFlowSteps:
+    """The interactive steps of the config flow."""
+
+    @pytest.mark.asyncio
+    async def test_user_step_shows_the_form_first(self):
+        result = await _make_flow().async_step_user()
+
+        assert result["type"] == "form"
+        assert result["step_id"] == "user"
+
+    @pytest.mark.asyncio
+    async def test_user_step_advances_to_credentials(self):
+        flow = _make_flow()
+
+        result = await flow.async_step_user(
+            {CONF_USERNAME: "user@example.com", CONF_PASSWORD: "secret"}
+        )
+
+        assert result["step_id"] == "credentials"
+        assert flow._user_data[CONF_USERNAME] == "user@example.com"
+
+    @pytest.mark.asyncio
+    async def test_credentials_step_shows_the_form_first(self):
+        result = await _make_flow().async_step_credentials()
+
+        assert result["type"] == "form"
+        assert result["step_id"] == "credentials"
+
+    @pytest.mark.asyncio
+    async def test_http_urls_are_rejected_without_calling_the_api(self, monkeypatch):
+        """Plain HTTP would send the OAuth Basic header in clear text."""
+        from custom_components.fermax_blue import config_flow
+
+        api_factory = MagicMock()
+        monkeypatch.setattr(config_flow, "FermaxBlueApi", api_factory)
+
+        data = _credentials_payload()
+        data[CONF_FERMAX_AUTH_URL] = "http://oauth-pro-duoxme.fermax.io/oauth/token"
+
+        result = await _make_flow()._async_validate_and_create(data)
+
+        assert result["errors"] == {CONF_FERMAX_AUTH_URL: "invalid_url"}
+        api_factory.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_invalid_auth_is_reported_on_the_credentials_step(self, monkeypatch):
+        from custom_components.fermax_blue import config_flow
+
+        api = MagicMock()
+        api.authenticate = AsyncMock(side_effect=FermaxAuthError("bad"))
+        monkeypatch.setattr(config_flow, "FermaxBlueApi", MagicMock(return_value=api))
+
+        result = await _make_flow()._async_validate_and_create(_credentials_payload())
+
+        assert result["step_id"] == "credentials"
+        assert result["errors"] == {"base": "invalid_auth"}
+
+    @pytest.mark.asyncio
+    async def test_unexpected_errors_map_to_cannot_connect(self, monkeypatch):
+        from custom_components.fermax_blue import config_flow
+
+        api = MagicMock()
+        api.authenticate = AsyncMock(side_effect=OSError("network down"))
+        monkeypatch.setattr(config_flow, "FermaxBlueApi", MagicMock(return_value=api))
+
+        result = await _make_flow()._async_validate_and_create(_credentials_payload())
+
+        assert result["errors"] == {"base": "cannot_connect"}
+
+    @pytest.mark.asyncio
+    async def test_account_without_pairings_is_rejected(self, monkeypatch):
+        from custom_components.fermax_blue import config_flow
+
+        api = MagicMock()
+        api.authenticate = AsyncMock()
+        api.get_pairings = AsyncMock(return_value=[])
+        monkeypatch.setattr(config_flow, "FermaxBlueApi", MagicMock(return_value=api))
+
+        result = await _make_flow()._async_validate_and_create(_credentials_payload())
+
+        assert result["errors"] == {"base": "no_devices"}
+
+    @pytest.mark.asyncio
+    async def test_successful_setup_creates_the_entry(self, monkeypatch):
+        from custom_components.fermax_blue import config_flow
+
+        pairing = MagicMock()
+        pairing.tag = "Home"
+        api = MagicMock()
+        api.authenticate = AsyncMock()
+        api.get_pairings = AsyncMock(return_value=[pairing])
+        monkeypatch.setattr(config_flow, "FermaxBlueApi", MagicMock(return_value=api))
+        flow = _make_flow()
+
+        result = await flow._async_validate_and_create(_credentials_payload())
+
+        assert result["type"] == "create_entry"
+        assert result["title"] == "Fermax Blue (Home)"
+        # The unique id is case-insensitive so the same account cannot be added twice
+        flow.async_set_unique_id.assert_awaited_once_with("user@example.com")
+        flow._abort_if_unique_id_configured.assert_called_once()
+
+
+class TestOptionsFlow:
+    """The options flow (scan interval, retention)."""
+
+    @pytest.mark.asyncio
+    async def test_shows_the_form_first(self):
+        from unittest.mock import MagicMock
+
+        from custom_components.fermax_blue.config_flow import FermaxBlueOptionsFlow
+
+        flow = FermaxBlueOptionsFlow()
+        flow.hass = MagicMock()
+        flow.handler = "entry_1"
+        flow.hass.config_entries.async_get_entry.return_value = MagicMock(options={})
+        flow.async_show_form = MagicMock(side_effect=lambda **kwargs: {"type": "form", **kwargs})
+
+        result = await flow.async_step_init()
+
+        assert result["step_id"] == "init"
+
+    @pytest.mark.asyncio
+    async def test_submitting_saves_the_options(self):
+        from unittest.mock import MagicMock
+
+        from custom_components.fermax_blue.config_flow import FermaxBlueOptionsFlow
+
+        flow = FermaxBlueOptionsFlow()
+        flow.hass = MagicMock()
+        flow.handler = "entry_1"
+        flow.hass.config_entries.async_get_entry.return_value = MagicMock(options={})
+        flow.async_create_entry = MagicMock(
+            side_effect=lambda **kwargs: {"type": "create_entry", **kwargs}
+        )
+
+        result = await flow.async_step_init({"scan_interval": 10})
+
+        assert result["data"] == {"scan_interval": 10}
