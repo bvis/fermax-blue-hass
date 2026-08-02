@@ -46,7 +46,9 @@ paths = ["custom_components/fermax_blue"]
 source = ["custom_components/fermax_blue"]
 
 [tool.coverage.report]
-fail_under = 40
+# Raise this as coverage improves; the remaining gap is concentrated in
+# streaming.py, __init__.py and coordinator.py. Target is 80%.
+fail_under = 65
 show_missing = true
 exclude_lines = [
     "pragma: no cover",

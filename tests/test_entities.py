@@ -534,3 +534,429 @@ class TestCameraStreamingDepsGuard:
             await camera.async_turn_on()
 
         mock_coordinator.start_camera_preview.assert_awaited_once()
+
+
+class TestDoorLock:
+    """The lock platform is what actually opens doors."""
+
+    def _make_lock(self, mock_coordinator):
+        from custom_components.fermax_blue.lock import FermaxDoorLock
+
+        return FermaxDoorLock(mock_coordinator, "GENERAL", "Portal")
+
+    def test_unique_id_and_name(self, mock_coordinator):
+        lock = self._make_lock(mock_coordinator)
+
+        assert lock.unique_id == "test_dev_GENERAL_lock"
+        assert lock.name == "Portal"
+
+    def test_falls_back_to_door_name_without_title(self, mock_coordinator):
+        from custom_components.fermax_blue.lock import FermaxDoorLock
+
+        lock = FermaxDoorLock(mock_coordinator, "GENERAL", "")
+        assert lock.name == "GENERAL"
+
+    def test_starts_locked(self, mock_coordinator):
+        assert self._make_lock(mock_coordinator).is_locked is True
+
+    @pytest.mark.asyncio
+    async def test_unlock_opens_the_door_and_reports_unlocked(self, mock_coordinator):
+        mock_coordinator.open_door = AsyncMock(return_value=True)
+        lock = self._make_lock(mock_coordinator)
+        lock.hass = MagicMock()
+        lock.async_write_ha_state = MagicMock()
+
+        with patch("custom_components.fermax_blue.lock.async_call_later"):
+            await lock.async_unlock()
+
+        mock_coordinator.open_door.assert_awaited_once_with("GENERAL")
+        assert lock.is_locked is False
+
+    @pytest.mark.asyncio
+    async def test_stays_locked_when_the_api_call_fails(self, mock_coordinator):
+        """A failed open must not tell the user the door is open."""
+        mock_coordinator.open_door = AsyncMock(return_value=False)
+        lock = self._make_lock(mock_coordinator)
+        lock.hass = MagicMock()
+        lock.async_write_ha_state = MagicMock()
+
+        with patch("custom_components.fermax_blue.lock.async_call_later") as call_later:
+            await lock.async_unlock()
+
+        assert lock.is_locked is True
+        call_later.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_auto_relocks_after_the_timer_fires(self, mock_coordinator):
+        from custom_components.fermax_blue.lock import AUTO_LOCK_SECONDS
+
+        mock_coordinator.open_door = AsyncMock(return_value=True)
+        lock = self._make_lock(mock_coordinator)
+        lock.hass = MagicMock()
+        lock.async_write_ha_state = MagicMock()
+
+        with patch("custom_components.fermax_blue.lock.async_call_later") as call_later:
+            await lock.async_unlock()
+            assert call_later.call_args[0][1] == AUTO_LOCK_SECONDS
+            auto_lock = call_later.call_args[0][2]
+
+        auto_lock(None)
+
+        assert lock.is_locked is True
+
+    @pytest.mark.asyncio
+    async def test_second_unlock_cancels_the_pending_relock(self, mock_coordinator):
+        """Otherwise the first timer relocks the door mid-way through the second opening."""
+        mock_coordinator.open_door = AsyncMock(return_value=True)
+        lock = self._make_lock(mock_coordinator)
+        lock.hass = MagicMock()
+        lock.async_write_ha_state = MagicMock()
+        first_unsub = MagicMock()
+
+        with patch(
+            "custom_components.fermax_blue.lock.async_call_later",
+            side_effect=[first_unsub, MagicMock()],
+        ):
+            await lock.async_unlock()
+            await lock.async_unlock()
+
+        first_unsub.assert_called_once()
+        assert lock.is_locked is False
+
+    @pytest.mark.asyncio
+    async def test_lock_is_a_local_no_op(self, mock_coordinator):
+        """Doors auto-lock physically; locking must not call the API."""
+        mock_coordinator.open_door = AsyncMock(return_value=True)
+        lock = self._make_lock(mock_coordinator)
+        lock.hass = MagicMock()
+        lock.async_write_ha_state = MagicMock()
+
+        with patch("custom_components.fermax_blue.lock.async_call_later"):
+            await lock.async_unlock()
+        await lock.async_lock()
+
+        assert lock.is_locked is True
+        mock_coordinator.open_door.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_setup_entry_creates_one_lock_per_door(self, mock_coordinator):
+        from custom_components.fermax_blue.api import AccessDoor
+        from custom_components.fermax_blue.const import DOMAIN
+        from custom_components.fermax_blue.lock import async_setup_entry
+
+        mock_coordinator.pairing.access_doors["ZAGUAN"] = AccessDoor(
+            name="ZAGUAN",
+            title="Zaguan",
+            access_id={"block": 100, "subblock": -1, "number": 1},
+            visible=False,
+        )
+        entry = MagicMock()
+        entry.entry_id = "entry_1"
+        hass = MagicMock()
+        hass.data = {DOMAIN: {"entry_1": [mock_coordinator]}}
+        added = []
+
+        await async_setup_entry(hass, entry, lambda entities: added.extend(entities))
+
+        # Doors are created regardless of the unreliable `visible` flag
+        assert sorted(lock.unique_id for lock in added) == [
+            "test_dev_GENERAL_lock",
+            "test_dev_ZAGUAN_lock",
+        ]
+
+
+class TestConnectionBinarySensor:
+    """Connectivity sensor must report unknown, not offline, when data is missing."""
+
+    def _make_sensor(self, mock_coordinator):
+        from custom_components.fermax_blue.binary_sensor import FermaxConnectionSensor
+
+        return FermaxConnectionSensor(mock_coordinator)
+
+    def test_unique_id_and_device_class(self, mock_coordinator):
+        from homeassistant.components.binary_sensor import BinarySensorDeviceClass
+
+        sensor = self._make_sensor(mock_coordinator)
+
+        assert sensor.unique_id == "test_dev_connection"
+        assert sensor.device_class == BinarySensorDeviceClass.CONNECTIVITY
+
+    def test_on_when_connected(self, mock_coordinator):
+        assert self._make_sensor(mock_coordinator).is_on is True
+
+    def test_off_when_disconnected(self, mock_coordinator):
+        mock_coordinator.data = {"connection_state": "Disconnected"}
+        assert self._make_sensor(mock_coordinator).is_on is False
+
+    def test_unknown_without_data(self, mock_coordinator):
+        """None (unknown) is honest; False would claim the intercom is offline."""
+        mock_coordinator.data = None
+        assert self._make_sensor(mock_coordinator).is_on is None
+
+    @pytest.mark.asyncio
+    async def test_setup_entry_creates_the_descriptor_sensors(self, mock_coordinator):
+        from custom_components.fermax_blue.binary_sensor import (
+            BINARY_SENSOR_TYPES,
+            async_setup_entry,
+        )
+        from custom_components.fermax_blue.const import DOMAIN
+
+        entry = MagicMock()
+        entry.entry_id = "entry_1"
+        hass = MagicMock()
+        hass.data = {DOMAIN: {"entry_1": [mock_coordinator]}}
+        added = []
+
+        await async_setup_entry(hass, entry, lambda entities: added.extend(entities))
+
+        assert len(added) == len(BINARY_SENSOR_TYPES)
+
+
+class TestOpenDoorButton:
+    """Per-door open button — the other path that opens a door."""
+
+    def _make_button(self, mock_coordinator):
+        from custom_components.fermax_blue.button import FermaxOpenDoorButton
+
+        return FermaxOpenDoorButton(mock_coordinator, "GENERAL", "Portal")
+
+    def test_unique_id_and_name(self, mock_coordinator):
+        button = self._make_button(mock_coordinator)
+
+        assert button.unique_id == "test_dev_GENERAL_open"
+        assert button.name == "Open Portal"
+
+    def test_falls_back_to_door_name_without_title(self, mock_coordinator):
+        from custom_components.fermax_blue.button import FermaxOpenDoorButton
+
+        assert FermaxOpenDoorButton(mock_coordinator, "GENERAL", "").name == "Open GENERAL"
+
+    @pytest.mark.asyncio
+    async def test_press_opens_the_door(self, mock_coordinator):
+        mock_coordinator.open_door = AsyncMock(return_value=True)
+        button = self._make_button(mock_coordinator)
+
+        await button.async_press()
+
+        mock_coordinator.open_door.assert_awaited_once_with("GENERAL")
+
+    @pytest.mark.asyncio
+    async def test_failed_press_does_not_raise(self, mock_coordinator):
+        """A failed open is logged, not raised — HA would mark the entity broken."""
+        mock_coordinator.open_door = AsyncMock(return_value=False)
+        button = self._make_button(mock_coordinator)
+
+        await button.async_press()
+
+        mock_coordinator.open_door.assert_awaited_once()
+
+
+class TestCameraPreviewButton:
+    """Camera preview button."""
+
+    def _make_button(self, mock_coordinator):
+        from custom_components.fermax_blue.button import FermaxCameraPreviewButton
+
+        return FermaxCameraPreviewButton(mock_coordinator)
+
+    def test_unique_id(self, mock_coordinator):
+        assert self._make_button(mock_coordinator).unique_id == "test_dev_camera_preview"
+
+    @pytest.mark.asyncio
+    async def test_press_starts_preview(self, mock_coordinator):
+        result = MagicMock()
+        result.description = "Auto on is starting"
+        mock_coordinator.start_camera_preview = AsyncMock(return_value=result)
+        button = self._make_button(mock_coordinator)
+
+        await button.async_press()
+
+        mock_coordinator.start_camera_preview.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_press_handles_refused_preview(self, mock_coordinator):
+        mock_coordinator.start_camera_preview = AsyncMock(return_value=None)
+        button = self._make_button(mock_coordinator)
+
+        await button.async_press()
+
+        mock_coordinator.start_camera_preview.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_setup_entry_creates_a_button_per_door_plus_the_fixed_three(
+        self, mock_coordinator
+    ):
+        from custom_components.fermax_blue.button import async_setup_entry
+        from custom_components.fermax_blue.const import DOMAIN
+
+        entry = MagicMock()
+        entry.entry_id = "entry_1"
+        hass = MagicMock()
+        hass.data = {DOMAIN: {"entry_1": [mock_coordinator]}}
+        added = []
+
+        await async_setup_entry(hass, entry, lambda entities: added.extend(entities))
+
+        ids = sorted(button.unique_id for button in added)
+        assert ids == [
+            "test_dev_GENERAL_open",
+            "test_dev_call_guard",
+            "test_dev_camera_preview",
+            "test_dev_f1",
+        ]
+
+
+class TestCameraImageSelection:
+    """Which frame the camera serves, and when it reports itself available."""
+
+    def _make_camera(self, mock_coordinator):
+        from custom_components.fermax_blue.camera import FermaxCamera
+
+        return FermaxCamera(mock_coordinator)
+
+    def test_unique_id(self, mock_coordinator):
+        mock_coordinator.last_photo = None
+        mock_coordinator.stream_session = None
+        assert self._make_camera(mock_coordinator).unique_id == "test_dev_camera"
+
+    @pytest.mark.asyncio
+    async def test_live_frame_wins_over_last_photo(self, mock_coordinator):
+        mock_coordinator.last_photo = b"old-photo"
+        mock_coordinator.stream_session = MagicMock(latest_frame=b"live-frame")
+
+        assert await self._make_camera(mock_coordinator).async_camera_image() == b"live-frame"
+
+    @pytest.mark.asyncio
+    async def test_falls_back_to_last_photo_without_a_stream(self, mock_coordinator):
+        mock_coordinator.last_photo = b"old-photo"
+        mock_coordinator.stream_session = None
+
+        assert await self._make_camera(mock_coordinator).async_camera_image() == b"old-photo"
+
+    @pytest.mark.asyncio
+    async def test_returns_none_with_nothing_to_serve(self, mock_coordinator):
+        mock_coordinator.last_photo = None
+        mock_coordinator.stream_session = None
+
+        assert await self._make_camera(mock_coordinator).async_camera_image() is None
+
+    def test_available_with_only_a_persisted_photo(self, mock_coordinator):
+        """Survives a restart: the persisted frame alone keeps the entity usable."""
+        mock_coordinator.last_photo = b"photo"
+        mock_coordinator.stream_session = None
+
+        assert self._make_camera(mock_coordinator).available is True
+
+    def test_available_with_only_a_live_frame(self, mock_coordinator):
+        mock_coordinator.last_photo = None
+        mock_coordinator.stream_session = MagicMock(latest_frame=b"frame")
+
+        assert self._make_camera(mock_coordinator).available is True
+
+    def test_is_on_true_whenever_a_photo_exists(self, mock_coordinator):
+        """HA answers 503 on camera_proxy when is_on is False."""
+        mock_coordinator.last_photo = b"photo"
+        mock_coordinator.stream_session = None
+        camera = self._make_camera(mock_coordinator)
+
+        assert camera.is_streaming is False
+        assert camera.is_on is True
+
+    def test_is_on_false_when_there_is_nothing(self, mock_coordinator):
+        mock_coordinator.last_photo = None
+        mock_coordinator.stream_session = None
+
+        assert self._make_camera(mock_coordinator).is_on is False
+
+    def test_is_streaming_tracks_the_session(self, mock_coordinator):
+        mock_coordinator.last_photo = None
+        mock_coordinator.stream_session = MagicMock(is_active=True)
+
+        camera = self._make_camera(mock_coordinator)
+        assert camera.is_streaming is True
+        assert camera.is_on is True
+
+    @pytest.mark.asyncio
+    async def test_turn_off_stops_the_stream(self, mock_coordinator):
+        mock_coordinator.last_photo = None
+        mock_coordinator.stream_session = None
+        mock_coordinator.stop_stream = AsyncMock()
+
+        await self._make_camera(mock_coordinator).async_turn_off()
+
+        mock_coordinator.stop_stream.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_setup_entry_creates_one_camera(self, mock_coordinator):
+        from custom_components.fermax_blue.camera import async_setup_entry
+        from custom_components.fermax_blue.const import DOMAIN
+
+        entry = MagicMock()
+        entry.entry_id = "entry_1"
+        hass = MagicMock()
+        hass.data = {DOMAIN: {"entry_1": [mock_coordinator]}}
+        added = []
+
+        await async_setup_entry(hass, entry, lambda entities: added.extend(entities))
+
+        assert [camera.unique_id for camera in added] == ["test_dev_camera"]
+
+
+class TestEventEntities:
+    """Doorbell, door-opened and camera-on event entities."""
+
+    def _make(self, cls, mock_coordinator):
+        entity = cls(mock_coordinator)
+        entity.hass = MagicMock()
+        entity.async_write_ha_state = MagicMock()
+        entity._trigger_event = MagicMock()
+        return entity
+
+    def test_unique_ids_and_types(self, mock_coordinator):
+        from custom_components.fermax_blue.event import (
+            FermaxCameraOnEvent,
+            FermaxDoorOpenedEvent,
+        )
+
+        opened = FermaxDoorOpenedEvent(mock_coordinator)
+        camera_on = FermaxCameraOnEvent(mock_coordinator)
+
+        assert opened.unique_id == "test_dev_door_opened_event"
+        assert opened.event_types == ["door_opened"]
+        assert camera_on.unique_id == "test_dev_camera_on_event"
+        assert camera_on.event_types == ["camera_on"]
+
+    def test_each_entity_fires_its_own_event_type(self, mock_coordinator):
+        from custom_components.fermax_blue.event import (
+            FermaxCameraOnEvent,
+            FermaxDoorbellEvent,
+            FermaxDoorOpenedEvent,
+        )
+
+        for cls, event_type in (
+            (FermaxDoorbellEvent, "ring"),
+            (FermaxDoorOpenedEvent, "door_opened"),
+            (FermaxCameraOnEvent, "camera_on"),
+        ):
+            entity = self._make(cls, mock_coordinator)
+            entity._handle_event()
+            entity._trigger_event.assert_called_once_with(event_type)
+
+    @pytest.mark.asyncio
+    async def test_setup_entry_creates_the_three_event_entities(self, mock_coordinator):
+        from custom_components.fermax_blue.const import DOMAIN
+        from custom_components.fermax_blue.event import async_setup_entry
+
+        entry = MagicMock()
+        entry.entry_id = "entry_1"
+        hass = MagicMock()
+        hass.data = {DOMAIN: {"entry_1": [mock_coordinator]}}
+        added = []
+
+        await async_setup_entry(hass, entry, lambda entities: added.extend(entities))
+
+        assert sorted(entity.unique_id for entity in added) == [
+            "test_dev_camera_on_event",
+            "test_dev_door_opened_event",
+            "test_dev_doorbell_event",
+        ]
