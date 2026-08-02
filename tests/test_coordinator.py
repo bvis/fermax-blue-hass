@@ -482,3 +482,42 @@ class TestSnapshotOverlay:
     def test_invalid_jpeg_returned_unchanged(self):
         data = b"not a jpeg"
         assert FermaxBlueCoordinator._overlay_snapshot_indicator(data) == data
+
+
+class TestPersistedPreviewIsUnbadged:
+    """The frame persisted to .storage must be the raw, unstamped one.
+
+    Persisting the badged preview would resurrect a stale SNAPSHOT
+    timestamp after a restart via _load_last_photo().
+    """
+
+    @pytest.mark.asyncio
+    async def test_stop_stream_persists_raw_frame(self, coordinator):
+        raw = TestSnapshotOverlay._jpeg()
+        session = MagicMock()
+        session.latest_frame = b"badged-display-frame"
+        session.latest_frame_raw = raw
+        session.stop = AsyncMock()
+        coordinator._stream_session = session
+        coordinator._save_last_photo = MagicMock(return_value=None)
+        coordinator.hass.async_create_task = MagicMock()
+
+        await coordinator.stop_stream()
+
+        coordinator._save_last_photo.assert_called_once_with(raw)
+        # the in-memory preview still gets the badge
+        assert coordinator._last_photo != raw
+
+    @pytest.mark.asyncio
+    async def test_save_last_photo_prefers_explicit_photo(self, coordinator, tmp_path):
+        coordinator._storage_path = tmp_path
+        coordinator._last_photo = b"stamped"
+        await coordinator._save_last_photo(b"raw-bytes")
+        assert (tmp_path / "last_frame_dev1.jpg").read_bytes() == b"raw-bytes"
+
+    @pytest.mark.asyncio
+    async def test_save_last_photo_falls_back_to_last_photo(self, coordinator, tmp_path):
+        coordinator._storage_path = tmp_path
+        coordinator._last_photo = b"fallback"
+        await coordinator._save_last_photo()
+        assert (tmp_path / "last_frame_dev1.jpg").read_bytes() == b"fallback"
