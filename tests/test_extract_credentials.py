@@ -153,6 +153,37 @@ public final class Urls {{
     return tmp_path
 
 
+@pytest.fixture
+def fake_buildconfig_decompiled(tmp_path: Path) -> Path:
+    """Decompiled source in the 4.3.4 layout: plaintext OAuth constants in BuildConfig."""
+    app = tmp_path / "sources" / "com" / "fermax" / "blue" / "app"
+    remoteconfig = (
+        tmp_path / "sources" / "com" / "fermax" / "blue" / "app" / "data" / "remoteconfig"
+    )
+    app.mkdir(parents=True)
+    remoteconfig.mkdir(parents=True)
+
+    (app / "BuildConfig.java").write_text(
+        "public final class BuildConfig {\n"
+        "    public static final boolean DEBUG = false;\n"
+        '    public static final String APPLICATION_ID = "com.fermax.blue.app";\n'
+        '    public static final String BUILD_TYPE = "release";\n'
+        '    public static final String OAUTH_CLIENT_ID = "blue-app-prod";\n'
+        '    public static final String OAUTH_CLIENT_SECRET = "s3cr3t/value:x";\n'
+        '    public static final String TRACING_BASIC_AUTH = "Basic ' + "C" * 60 + '";\n'
+        '    public static final String VERSION_NAME = "4.3.4";\n'
+        "}\n"
+    )
+    (remoteconfig / "Urls.java").write_text(
+        "public final class Urls {\n"
+        '    public final String authUrl() { return "https://oauth-pro-duoxme.fermax.io"; }\n'
+        '    public final String baseUrl() { return "https://pro-duoxme.fermax.io"; }\n'
+        "}\n"
+    )
+
+    return tmp_path
+
+
 class TestExtractFromApk:
     """Test credential extraction from APK files."""
 
@@ -235,6 +266,112 @@ class TestExtractFromDecompiled:
         assert selected.auth_basic == expected_basic
         assert selected.auth_url == "https://oauth-pro-duoxme.fermax.io/oauth/token"
         assert selected.base_url == "https://pro-duoxme.fermax.io"
+
+
+class TestBuildConfigOAuth:
+    """OAuth credentials stored in plain text in BuildConfig (APK 4.3.4+)."""
+
+    def test_generates_oauth_basic_from_build_config(
+        self, script_module, fake_buildconfig_decompiled
+    ):
+        candidates = script_module._extract_oauth_candidates_from_source(
+            str(fake_buildconfig_decompiled)
+        )
+        selected = script_module._select_oauth_candidate(candidates)
+
+        expected_payload = f"{quote_plus('blue-app-prod')}:{quote_plus('s3cr3t/value:x')}"
+        expected_basic = "Basic " + base64.b64encode(expected_payload.encode()).decode()
+
+        assert selected is not None
+        assert selected.auth_basic == expected_basic
+        assert selected.source == "BuildConfig.java"
+
+    def test_urls_still_come_from_urls_source(self, script_module, fake_buildconfig_decompiled):
+        selected = script_module._select_oauth_candidate(
+            script_module._extract_oauth_candidates_from_source(str(fake_buildconfig_decompiled))
+        )
+
+        assert selected.auth_url == "https://oauth-pro-duoxme.fermax.io/oauth/token"
+        assert selected.base_url == "https://pro-duoxme.fermax.io"
+
+    def test_tracing_basic_auth_is_never_used_as_oauth(
+        self, script_module, fake_buildconfig_decompiled
+    ):
+        """The telemetry header sits next to the OAuth constants — it must not win."""
+        tracing_basic = "Basic " + "C" * 60
+
+        selected = script_module._select_oauth_candidate(
+            script_module._extract_oauth_candidates_from_source(str(fake_buildconfig_decompiled))
+        )
+        assert selected.auth_basic != tracing_basic
+
+        # ...and the generic literal scan must not surface it either
+        strings = script_module._search_decompiled_dir(str(fake_buildconfig_decompiled))
+        creds = script_module._find_credentials(strings)
+        assert creds["fermax_auth_basic"] == ""
+
+    def test_build_config_without_oauth_constants_is_ignored(self, script_module, tmp_path):
+        src = tmp_path / "sources" / "com" / "fermax" / "blue" / "app"
+        src.mkdir(parents=True)
+        (src / "BuildConfig.java").write_text(
+            "public final class BuildConfig {\n"
+            '    public static final String APPLICATION_ID = "com.fermax.blue.app";\n'
+            '    public static final String VERSION_NAME = "4.3.4";\n'
+            "}\n"
+        )
+
+        assert script_module._extract_oauth_candidates_from_source(str(tmp_path)) == []
+
+    def test_encrypted_layout_wins_when_both_are_present(
+        self, script_module, fake_oauth_decompiled
+    ):
+        """A 4.3.0-style APK keeps using the proven encrypted path."""
+        app = fake_oauth_decompiled / "sources" / "com" / "fermax" / "blue" / "app"
+        (app / "BuildConfig.java").write_text(
+            "public final class BuildConfig {\n"
+            '    public static final String OAUTH_CLIENT_ID = "decoy";\n'
+            '    public static final String OAUTH_CLIENT_SECRET = "decoy-secret";\n'
+            "}\n"
+        )
+
+        selected = script_module._select_oauth_candidate(
+            script_module._extract_oauth_candidates_from_source(str(fake_oauth_decompiled))
+        )
+
+        expected_payload = f"{quote_plus('prod client/id')}:{quote_plus('prod secret:with/slash')}"
+        assert (
+            selected.auth_basic == "Basic " + base64.b64encode(expected_payload.encode()).decode()
+        )
+        assert selected.source == "OAuthUtils.java + Urls.java"
+
+    def test_picks_the_build_config_carrying_the_oauth_constants(self, script_module, tmp_path):
+        """Library modules ship their own BuildConfig.java; only one has the credentials."""
+        base = tmp_path / "sources"
+        lib = base / "androidx" / "core"
+        app = base / "com" / "fermax" / "blue" / "app"
+        lib.mkdir(parents=True)
+        app.mkdir(parents=True)
+
+        (lib / "BuildConfig.java").write_text(
+            "public final class BuildConfig {\n"
+            '    public static final String LIBRARY_PACKAGE_NAME = "androidx.core";\n'
+            "}\n"
+        )
+        (app / "BuildConfig.java").write_text(
+            "public final class BuildConfig {\n"
+            '    public static final String OAUTH_CLIENT_ID = "real-id";\n'
+            '    public static final String OAUTH_CLIENT_SECRET = "real-secret";\n'
+            "}\n"
+        )
+
+        selected = script_module._select_oauth_candidate(
+            script_module._extract_oauth_candidates_from_source(str(tmp_path))
+        )
+
+        expected_payload = f"{quote_plus('real-id')}:{quote_plus('real-secret')}"
+        assert (
+            selected.auth_basic == "Basic " + base64.b64encode(expected_payload.encode()).decode()
+        )
 
 
 class TestGoogleServicesJson:
