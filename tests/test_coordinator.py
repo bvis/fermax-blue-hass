@@ -472,7 +472,8 @@ class TestSnapshotOverlay:
         img = Image.open(io.BytesIO(out))
         # Blue badge background, white dot (JPEG is lossy, so approximate)
         r, g, b = img.getpixel((8, 8))
-        assert b > 100 and b > r
+        assert b > 100
+        assert b > r
         r, g, b = img.getpixel((17, 17))
         assert min(r, g, b) > 180
 
