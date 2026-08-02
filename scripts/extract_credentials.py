@@ -27,15 +27,28 @@ BASIC_AUTH_RE = re.compile(r"(Basic\s+[A-Za-z0-9+/=]{50,})")
 PRODUCTION_AUTH_HOST = "oauth-pro-duoxme.fermax.io"
 PRODUCTION_BASE_HOST = "pro-duoxme.fermax.io"
 
+# Constants whose name marks them as telemetry credentials. The app ships a
+# TRACING_BASIC_AUTH header right next to the OAuth ones; picking it up as
+# fermax_auth_basic yields a Basic header the OAuth endpoint rejects.
+TRACING_CONSTANT_RE = re.compile(
+    r'\b[A-Z0-9_]*(?:TRACING|TRACE|MONITORING|OTEL|TELEMETRY)[A-Z0-9_]*\s*=\s*"([^"]{10,300})"'
+)
+
+# APK 4.3.4+ dropped the AES-encrypted arrays and stores the OAuth credentials
+# as plain string constants in BuildConfig instead.
+BUILD_CONFIG_CLIENT_ID_RE = re.compile(r'\bOAUTH_CLIENT_ID\s*=\s*"([^"]+)"')
+BUILD_CONFIG_CLIENT_SECRET_RE = re.compile(r'\bOAUTH_CLIENT_SECRET\s*=\s*"([^"]+)"')
+
 
 @dataclass(frozen=True)
 class OAuthCredentialCandidate:
-    """OAuth Basic candidate generated from encrypted APK OAuth credentials."""
+    """OAuth Basic candidate generated from APK OAuth credentials."""
 
     label: str
     auth_basic: str
     auth_url: str = ""
     base_url: str = ""
+    source: str = "OAuthUtils.java + Urls.java"
 
 
 def _has_monitoring_or_tracing_context(text: str) -> bool:
@@ -97,8 +110,11 @@ def _search_decompiled_dir(dir_path: str) -> list[str]:
         monitoring_context = _has_monitoring_or_tracing_context(
             f"{java_file.as_posix()}\n{content}"
         )
+        # Values assigned to a telemetry-named constant are never OAuth
+        # credentials, whatever file they live in (BuildConfig carries both).
+        tracing_values = set(TRACING_CONSTANT_RE.findall(content))
         for literal in re.findall(r'"([^"]{10,300})"', content):
-            if monitoring_context and BASIC_AUTH_RE.search(literal):
+            if BASIC_AUTH_RE.search(literal) and (monitoring_context or literal in tracing_values):
                 continue
             strings.append(literal)
 
@@ -310,11 +326,30 @@ def _select_oauth_candidate(
     return candidates[0] if len(candidates) == 1 else candidates[-1]
 
 
-def _extract_oauth_candidates_from_source(dir_path: str) -> list[OAuthCredentialCandidate]:
-    """Try to decrypt OAuth Basic candidates from OAuthUtils + Urls.java source."""
-    root = Path(dir_path)
+def _find_build_config_oauth(root: Path) -> tuple[str, str] | None:
+    """Find plaintext OAuth credentials in BuildConfig.java (APK 4.3.4+).
+
+    Library modules ship their own BuildConfig.java, so every match is checked
+    and only the one carrying both OAuth constants is used. The neighbouring
+    TRACING_BASIC_AUTH constant is deliberately never read.
+    """
+    for java_file in root.rglob("BuildConfig.java"):
+        try:
+            content = java_file.read_text(errors="ignore")
+        except OSError:
+            continue
+        client_id = BUILD_CONFIG_CLIENT_ID_RE.search(content)
+        client_secret = BUILD_CONFIG_CLIENT_SECRET_RE.search(content)
+        if client_id and client_secret:
+            return client_id.group(1), client_secret.group(1)
+    return None
+
+
+def _encrypted_oauth_candidates(
+    root: Path, content: str, auth_url: str, base_url: str
+) -> list[OAuthCredentialCandidate]:
+    """Decrypt the AES-encrypted OAuth arrays used up to APK 4.3.0."""
     aes_key = _find_oauth_aes_key(root)
-    content = _read_urls_source(root)
     if not aes_key or not content:
         return []
 
@@ -324,7 +359,6 @@ def _extract_oauth_candidates_from_source(dir_path: str) -> list[OAuthCredential
     if not candidate_count:
         return []
 
-    auth_url, base_url = _extract_preferred_urls_from_source(content)
     production_index = _production_candidate_index(content, auth_url, base_url, candidate_count)
 
     candidates: list[OAuthCredentialCandidate] = []
@@ -346,6 +380,36 @@ def _extract_oauth_candidates_from_source(dir_path: str) -> list[OAuthCredential
         )
 
     return candidates
+
+
+def _extract_oauth_candidates_from_source(dir_path: str) -> list[OAuthCredentialCandidate]:
+    """Build OAuth Basic candidates from decompiled source.
+
+    Prefers the encrypted OAuthUtils + Urls.java layout (APK <= 4.3.0) and
+    falls back to the plaintext BuildConfig constants introduced in 4.3.4.
+    """
+    root = Path(dir_path)
+    content = _read_urls_source(root)
+    auth_url, base_url = _extract_preferred_urls_from_source(content) if content else ("", "")
+
+    candidates = _encrypted_oauth_candidates(root, content, auth_url, base_url)
+    if candidates:
+        return candidates
+
+    plaintext = _find_build_config_oauth(root)
+    if not plaintext:
+        return []
+
+    client_id, client_secret = plaintext
+    return [
+        OAuthCredentialCandidate(
+            label="production",
+            auth_basic=_build_basic_header(client_id, client_secret),
+            auth_url=auth_url,
+            base_url=base_url,
+            source="BuildConfig.java",
+        )
+    ]
 
 
 def _extract_oauth_from_source(dir_path: str) -> str:
@@ -605,12 +669,12 @@ def main() -> None:
             decompiled_dir = str(possible)
 
     if decompiled_dir:
-        print("  Decrypting OAuth credentials from source...")
+        print("  Reading OAuth credentials from source...")
         oauth_candidates = _extract_oauth_candidates_from_source(decompiled_dir)
         oauth_candidate = _select_oauth_candidate(oauth_candidates)
         if oauth_candidate:
             creds["fermax_auth_basic"] = oauth_candidate.auth_basic
-            auth_basic_source = f"OAuthUtils.java + Urls.java ({oauth_candidate.label})"
+            auth_basic_source = f"{oauth_candidate.source} ({oauth_candidate.label})"
             if oauth_candidate.auth_url:
                 creds["fermax_auth_url"] = oauth_candidate.auth_url
             if oauth_candidate.base_url:
@@ -637,17 +701,20 @@ def main() -> None:
     # Warn about auth_basic source — the APK may contain non-OAuth Basic headers.
     if creds["fermax_auth_basic"]:
         print()
-        if auth_basic_source.startswith("OAuthUtils.java"):
-            print("  NOTE: fermax_auth_basic was generated from OAuthUtils.java and")
-            print("  Urls.java. Keep credentials.json private and never publish the")
-            print("  generated Basic header or Firebase values.")
+        if auth_basic_source and not auth_basic_source.startswith("generic"):
+            print(f"  NOTE: fermax_auth_basic was generated from {auth_basic_source}.")
+            print("  Keep credentials.json private and never publish the generated")
+            print("  Basic header or Firebase values.")
         else:
             print("  WARNING: fermax_auth_basic came from a generic string scan.")
             print("  APKs may contain unrelated Basic headers for tracing/monitoring")
-            print("  (for example TraceManagerOtelImpl / monitoring/v1/traces).")
+            print("  (for example TraceManagerOtelImpl / monitoring/v1/traces, or the")
+            print("  TRACING_BASIC_AUTH constant in BuildConfig).")
             print("  If authentication fails with 'invalid_client', decompile with")
-            print("  JADX and generate the OAuth header from OAuthUtils.java plus")
-            print("  Urls.clientId()/Urls.clientSecret() instead.")
+            print("  JADX and run this script against the output directory: it reads")
+            print("  OAuthUtils.java + Urls.clientId()/clientSecret() (APK <= 4.3.0)")
+            print("  or the OAUTH_CLIENT_ID/OAUTH_CLIENT_SECRET constants in")
+            print("  BuildConfig.java (APK 4.3.4+).")
 
     if found < total:
         missing = [k for k, v in creds.items() if not v]
