@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.19.0-beta.1] - 2026-08-07
+
+### Added
+- **Still previews are stamped with a SNAPSHOT badge** (#51) — after a stream ends, and when a doorbell ring fetches the visitor photo, the camera keeps showing a static frame; that preview now carries a `SNAPSHOT HH:MM:SS` badge so it is not mistaken for live video. Only the preview is stamped: the copies saved to `/media` and the frame persisted for restarts stay clean, so a preview restored after a Home Assistant restart never shows a stale timestamp from a previous session. Contributed by @RazorMeister.
+- **Credential extraction supports APK 4.3.4+** (#52) — newer app builds store the OAuth credentials as plaintext `BuildConfig` constants instead of the encrypted byte arrays of 4.3.0, so `scripts/extract_credentials.py` fell through to a generic scan that could pick up the telemetry `TRACING_BASIC_AUTH` header instead (the failure mode behind #33). The script now reads the `BuildConfig` constants directly and skips `Basic` literals assigned to tracing/monitoring constants.
+
+### Fixed
+- **LIVE badge no longer shows a placeholder box** (#51) — the recording indicator dot (`●`) has no glyph in the only font available inside the Home Assistant container, so the live overlay rendered a tofu box (`□`). The dot is now drawn as a shape, and the badge background is sized to its text instead of a fixed width. Contributed by @RazorMeister.
+
 ## [0.18.0] - 2026-07-31
 
 ### Added
