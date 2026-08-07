@@ -144,17 +144,61 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         """Return the last captured photo."""
         return self._last_photo
 
+    @staticmethod
+    def _overlay_snapshot_indicator(jpeg: bytes | None) -> bytes | None:
+        """Burn a blue "SNAPSHOT HH:MM:SS" badge into a preview photo.
+
+        Counterpart of the red LIVE badge in streaming.py - it lets the user
+        tell a frozen still preview apart from a live stream. Recordings and
+        call photos saved to /media stay clean; only the camera preview frame
+        shown by the camera entity is stamped.
+        """
+        if not jpeg:
+            return jpeg
+        try:
+            import io
+            from datetime import datetime
+
+            from PIL import Image, ImageDraw, ImageFont
+
+            img = Image.open(io.BytesIO(jpeg)).convert("RGB")
+            draw = ImageDraw.Draw(img)
+            now = datetime.now().strftime("%H:%M:%S")
+            font = ImageFont.load_default(size=16)
+
+            # Blue "SNAPSHOT" badge top-left (the LIVE badge is red); the dot
+            # is drawn as an ellipse because the default PIL font has no glyph
+            # for U+25CF, and the badge width is sized to the rendered text
+            text = f"SNAPSHOT {now}"
+            text_w = draw.textlength(text, font=font)
+            draw.rectangle([(6, 6), (26 + text_w + 8, 28)], fill=(20, 80, 180))
+            draw.ellipse([(12, 12), (22, 22)], fill=(255, 255, 255))
+            draw.text((26, 7), text, fill=(255, 255, 255), font=font)
+
+            buf = io.BytesIO()
+            # 90: this is a second lossy pass over an already-encoded JPEG;
+            # 75 left the preview visibly softer than the /media copy
+            img.save(buf, format="JPEG", quality=90)
+            return buf.getvalue()
+        except Exception:
+            return jpeg  # Never let overlay failure lose the photo
+
     def _last_frame_path(self) -> Path | None:
         """Return the path for persisting the last camera frame."""
         if self._storage_path:
             return self._storage_path / f"last_frame_{self.pairing.device_id}.jpg"
         return None
 
-    async def _save_last_photo(self) -> None:
-        """Persist last photo to disk for survival across restarts."""
+    async def _save_last_photo(self, photo: bytes | None = None) -> None:
+        """Persist last photo to disk for survival across restarts.
+
+        Pass the raw (unbadged) frame explicitly: persisting the stamped
+        preview would resurrect a stale SNAPSHOT timestamp on the next start.
+        """
         path = self._last_frame_path()
-        if path and self._last_photo:
-            await asyncio.to_thread(path.write_bytes, self._last_photo)
+        data = photo if photo is not None else self._last_photo
+        if path and data:
+            await asyncio.to_thread(path.write_bytes, data)
 
     async def _save_call_photo(self, photo: bytes) -> None:
         """Save a doorbell call photo to the recordings directory."""
@@ -249,7 +293,9 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
                         if latest.photo_id and latest.photo_id != self._last_photo_id:
                             photo = await self.api.get_call_photo(latest.photo_id)
                             if photo:
-                                self._last_photo = photo
+                                # Badge only the preview; the call photo saved
+                                # to /media stays clean
+                                self._last_photo = self._overlay_snapshot_indicator(photo)
                                 self._last_photo_id = latest.photo_id
                                 self.hass.async_create_task(self._save_call_photo(photo))
             except Exception:
@@ -588,8 +634,9 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
                 self._stream_stop_unsub = None
             # Save last frame as photo preview before releasing the session
             if self._stream_session and self._stream_session.latest_frame:
-                self._last_photo = self._stream_session.latest_frame
-                self.hass.async_create_task(self._save_last_photo())
+                raw = self._stream_session.latest_frame_raw
+                self._last_photo = self._overlay_snapshot_indicator(raw)
+                self.hass.async_create_task(self._save_last_photo(raw))
             self._stream_session = None
             self._camera_active = False
             self.async_set_updated_data(self.data)
@@ -654,8 +701,9 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         if self._stream_session:
             # Save last frame before stopping (stop() may clear internal state)
             if self._stream_session.latest_frame:
-                self._last_photo = self._stream_session.latest_frame
-                self.hass.async_create_task(self._save_last_photo())
+                raw = self._stream_session.latest_frame_raw
+                self._last_photo = self._overlay_snapshot_indicator(raw)
+                self.hass.async_create_task(self._save_last_photo(raw))
             await self._stream_session.stop()
             self._stream_session = None
             self._camera_active = False

@@ -447,3 +447,78 @@ class TestSignalingUrlValidation:
     )
     def test_untrusted_urls_rejected(self, url):
         assert _is_trusted_signaling_url(url) is False
+
+
+class TestSnapshotOverlay:
+    """The blue SNAPSHOT badge burned into still previews."""
+
+    @staticmethod
+    def _jpeg() -> bytes:
+        import io
+
+        from PIL import Image
+
+        buf = io.BytesIO()
+        Image.new("RGB", (368, 288), (0, 0, 0)).save(buf, format="JPEG")
+        return buf.getvalue()
+
+    def test_badge_is_burned_into_the_photo(self):
+        import io
+
+        from PIL import Image
+
+        out = FermaxBlueCoordinator._overlay_snapshot_indicator(self._jpeg())
+
+        img = Image.open(io.BytesIO(out))
+        # Blue badge background, white dot (JPEG is lossy, so approximate)
+        r, g, b = img.getpixel((8, 8))
+        assert b > 100
+        assert b > r
+        r, g, b = img.getpixel((17, 17))
+        assert min(r, g, b) > 180
+
+    def test_none_passthrough(self):
+        assert FermaxBlueCoordinator._overlay_snapshot_indicator(None) is None
+
+    def test_invalid_jpeg_returned_unchanged(self):
+        data = b"not a jpeg"
+        assert FermaxBlueCoordinator._overlay_snapshot_indicator(data) == data
+
+
+class TestPersistedPreviewIsUnbadged:
+    """The frame persisted to .storage must be the raw, unstamped one.
+
+    Persisting the badged preview would resurrect a stale SNAPSHOT
+    timestamp after a restart via _load_last_photo().
+    """
+
+    @pytest.mark.asyncio
+    async def test_stop_stream_persists_raw_frame(self, coordinator):
+        raw = TestSnapshotOverlay._jpeg()
+        session = MagicMock()
+        session.latest_frame = b"badged-display-frame"
+        session.latest_frame_raw = raw
+        session.stop = AsyncMock()
+        coordinator._stream_session = session
+        coordinator._save_last_photo = MagicMock(return_value=None)
+        coordinator.hass.async_create_task = MagicMock()
+
+        await coordinator.stop_stream()
+
+        coordinator._save_last_photo.assert_called_once_with(raw)
+        # the in-memory preview still gets the badge
+        assert coordinator._last_photo != raw
+
+    @pytest.mark.asyncio
+    async def test_save_last_photo_prefers_explicit_photo(self, coordinator, tmp_path):
+        coordinator._storage_path = tmp_path
+        coordinator._last_photo = b"stamped"
+        await coordinator._save_last_photo(b"raw-bytes")
+        assert (tmp_path / "last_frame_dev1.jpg").read_bytes() == b"raw-bytes"
+
+    @pytest.mark.asyncio
+    async def test_save_last_photo_falls_back_to_last_photo(self, coordinator, tmp_path):
+        coordinator._storage_path = tmp_path
+        coordinator._last_photo = b"fallback"
+        await coordinator._save_last_photo()
+        assert (tmp_path / "last_frame_dev1.jpg").read_bytes() == b"fallback"

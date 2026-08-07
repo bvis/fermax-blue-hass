@@ -163,3 +163,38 @@ class TestSignalingHangup:
         await client.disconnect()
 
         sio.emit.assert_not_awaited()
+
+
+class TestPreviewFrames:
+    """LIVE overlay rendering and the overlay-free preview frame."""
+
+    def _session(self) -> FermaxStreamSession:
+        return FermaxStreamSession(
+            signaling_url="https://signaling-pro-duoxme.fermax.io",
+            oauth_token="oauth",
+            fcm_token="fcm",
+            room_id="room1",
+        )
+
+    def test_overlay_live_indicator_draws_badge(self):
+        from PIL import Image
+
+        img = Image.new("RGB", (368, 288), (0, 0, 0))
+        out = FermaxStreamSession._overlay_live_indicator(img)
+
+        # Red badge background with the white dot drawn as an ellipse
+        assert out.getpixel((8, 8)) == (200, 0, 0)
+        assert out.getpixel((17, 17)) == (255, 255, 255)
+
+    def test_latest_frame_raw_prefers_overlay_free_frame(self):
+        session = self._session()
+        session._latest_frame = b"with-overlay"
+        session._last_raw_frame = b"raw"
+
+        assert session.latest_frame_raw == b"raw"
+
+    def test_latest_frame_raw_falls_back_to_latest_frame(self):
+        session = self._session()
+        session._latest_frame = b"with-overlay"
+
+        assert session.latest_frame_raw == b"with-overlay"
