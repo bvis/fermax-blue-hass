@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.19.0-beta.1] - 2026-08-07
+## [0.19.0] - 2026-08-07
 
 ### Added
 - **Still previews are stamped with a SNAPSHOT badge** (#51) — after a stream ends, and when a doorbell ring fetches the visitor photo, the camera keeps showing a static frame; that preview now carries a `SNAPSHOT HH:MM:SS` badge so it is not mistaken for live video. Only the preview is stamped: the copies saved to `/media` and the frame persisted for restarts stay clean, so a preview restored after a Home Assistant restart never shows a stale timestamp from a previous session. Contributed by @RazorMeister.
