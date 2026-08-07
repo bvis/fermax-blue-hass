@@ -1,0 +1,15 @@
+# Gitleaks configuration for fermax-blue-hass.
+# Extends the built-in default ruleset and allowlists known non-secret
+# values so the scan stays low-noise. Real credentials live only in the
+# gitignored credentials.json and must never be committed.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Known non-secrets and test fixtures"
+
+# Paths that only ever contain placeholders or synthesized values.
+paths = [
+  '''tests/.*''',
+  '''credentials\.example\.json''',
+]
