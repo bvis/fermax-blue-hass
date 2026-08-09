@@ -4,6 +4,7 @@
 Usage:
     python scripts/extract_credentials.py /path/to/fermax-blue.apk
     python scripts/extract_credentials.py /path/to/decompiled-dir/
+    python scripts/extract_credentials.py --client-id <ID> --client-secret <SECRET>
 
 Extracts:
   - Firebase credentials from resources.arsc / google-services.json
@@ -263,6 +264,34 @@ def _build_basic_header(client_id: str, client_secret: str) -> str:
     """Build the OAuth Basic header the same way as the Android app."""
     credential = f"{quote_plus(client_id)}:{quote_plus(client_secret)}"
     return f"Basic {base64.b64encode(credential.encode()).decode()}"
+
+
+def _flag_value(args: list[str], name: str) -> str | None:
+    """Return the value of --name VALUE or --name=VALUE, or None if absent."""
+    prefix = f"{name}="
+    for index, arg in enumerate(args):
+        if arg == name:
+            return args[index + 1] if index + 1 < len(args) else ""
+        if arg.startswith(prefix):
+            return arg[len(prefix) :]
+    return None
+
+
+def _auth_basic_from_args(args: list[str]) -> str | None:
+    """Build fermax_auth_basic from --client-id/--client-secret if both are given.
+
+    Returns None when neither flag is present so the caller falls back to APK
+    analysis. Raises ValueError when the flags are used incorrectly.
+    """
+    client_id = _flag_value(args, "--client-id")
+    client_secret = _flag_value(args, "--client-secret")
+    if client_id is None and client_secret is None:
+        return None
+    if client_id is None or client_secret is None:
+        raise ValueError("both --client-id and --client-secret are required together")
+    if not client_id or not client_secret:
+        raise ValueError("--client-id and --client-secret must not be empty")
+    return _build_basic_header(client_id, client_secret)
 
 
 def _extract_preferred_urls_from_source(content: str) -> tuple[str, str]:
@@ -595,15 +624,38 @@ def _display_credential_value(key: str, value: str) -> str:
 
 
 def main() -> None:
-    if len(sys.argv) < 2:
+    args = sys.argv[1:]
+
+    # Manual mode: build the Basic header from OAuth client id/secret the user
+    # already has, without needing the APK at all.
+    try:
+        manual_header = _auth_basic_from_args(args)
+    except ValueError as error:
+        print(f"Error: {error}")
+        sys.exit(1)
+    if manual_header is not None:
+        print("fermax_auth_basic (paste this into the integration):")
+        print()
+        print(f"  {manual_header}")
+        print()
+        print("This is the Authorization header the login endpoint expects. Keep")
+        print("it private and never share it. If login still fails, double-check")
+        print("that the client id and secret came from the Fermax Blue app and")
+        print("not from a tracing/monitoring value.")
+        sys.exit(0)
+
+    if not args:
         print(f"Usage: {sys.argv[0]} <path-to-fermax-blue.apk-or-decompiled-dir>")
+        print(f"   or: {sys.argv[0]} --client-id <ID> --client-secret <SECRET>")
         print()
         print("Extracts API and Firebase credentials from the Fermax Blue APK.")
         print("Accepts either an .apk file or a decompiled directory (JADX/apktool).")
+        print("With --client-id/--client-secret it only builds the Basic auth header")
+        print("from OAuth values you already have.")
         print("Output: credentials.json")
         sys.exit(1)
 
-    target = sys.argv[1]
+    target = args[0]
     target_path = Path(target)
     if not target_path.exists():
         print(f"Error: not found: {target}")

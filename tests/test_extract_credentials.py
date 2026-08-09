@@ -374,6 +374,42 @@ class TestBuildConfigOAuth:
         )
 
 
+class TestManualAuthBasic:
+    """Build fermax_auth_basic directly from the two OAuth values."""
+
+    def test_returns_none_when_no_oauth_flags(self, script_module):
+        assert script_module._auth_basic_from_args(["some.apk"]) is None
+
+    def test_builds_header_from_both_flags(self, script_module):
+        header = script_module._auth_basic_from_args(
+            ["--client-id", "blue-app-prod", "--client-secret", "s3cr3t"]
+        )
+        expected_payload = f"{quote_plus('blue-app-prod')}:{quote_plus('s3cr3t')}"
+        assert header == "Basic " + base64.b64encode(expected_payload.encode()).decode()
+
+    def test_supports_equals_syntax(self, script_module):
+        header = script_module._auth_basic_from_args(
+            ["--client-id=blue-app-prod", "--client-secret=s3cr3t"]
+        )
+        expected_payload = f"{quote_plus('blue-app-prod')}:{quote_plus('s3cr3t')}"
+        assert header == "Basic " + base64.b64encode(expected_payload.encode()).decode()
+
+    def test_url_encodes_special_characters(self, script_module):
+        header = script_module._auth_basic_from_args(
+            ["--client-id", "id/with space", "--client-secret", "secret:with/slash"]
+        )
+        expected_payload = f"{quote_plus('id/with space')}:{quote_plus('secret:with/slash')}"
+        assert header == "Basic " + base64.b64encode(expected_payload.encode()).decode()
+
+    def test_raises_when_only_one_flag_given(self, script_module):
+        with pytest.raises(ValueError, match="both"):
+            script_module._auth_basic_from_args(["--client-id", "blue-app-prod"])
+
+    def test_raises_when_value_is_empty(self, script_module):
+        with pytest.raises(ValueError, match="empty"):
+            script_module._auth_basic_from_args(["--client-id", "id", "--client-secret", ""])
+
+
 class TestGoogleServicesJson:
     """Test google-services.json parsing."""
 
