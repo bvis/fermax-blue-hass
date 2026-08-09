@@ -140,7 +140,15 @@ This integration exists thanks to the reverse-engineering work of these develope
 If the script doesn't find all values, decompile the APK with JADX and search manually:
 
 1. **API URLs**: search for `oauth/token` and `fermax.io` in `Urls.java`
-2. **OAuth Basic header**: on APK 4.3.4+, read `OAUTH_CLIENT_ID` and `OAUTH_CLIENT_SECRET` straight from `BuildConfig.java` — they are stored in plain text. On APK 4.3.0 and earlier, inspect `OAuthUtils.getAuthorizationHeader()` and `Urls.clientId()` / `Urls.clientSecret()`, select the production environment that corresponds to `oauth-pro-duoxme.fermax.io` / `pro-duoxme.fermax.io`, and decrypt the encrypted byte arrays from those methods. Either way, URL-encode both values, join them as `client_id:client_secret`, then base64 encode that string and prefix it with `Basic `. Ignore telemetry headers from `TraceManagerOtelImpl.java` and the `TRACING_BASIC_AUTH` constant.
+2. **OAuth Basic header**: on APK 4.3.4+, read `OAUTH_CLIENT_ID` and `OAUTH_CLIENT_SECRET` straight from `BuildConfig.java` — they are stored in plain text. On APK 4.3.0 and earlier, inspect `OAuthUtils.getAuthorizationHeader()` and `Urls.clientId()` / `Urls.clientSecret()`, select the production environment that corresponds to `oauth-pro-duoxme.fermax.io` / `pro-duoxme.fermax.io`, and decrypt the encrypted byte arrays from those methods. Either way, URL-encode both values, join them as `client_id:client_secret`, then base64 encode that string and prefix it with `Basic `.
+
+   If you already have the two OAuth values, let the script build the header for you instead of doing it by hand:
+
+   ```bash
+   python scripts/extract_credentials.py --client-id <CLIENT_ID> --client-secret <CLIENT_SECRET>
+   ```
+
+   It prints the ready-to-paste `fermax_auth_basic` value. Ignore telemetry headers from `TraceManagerOtelImpl.java` and the `TRACING_BASIC_AUTH` constant.
 3. **Firebase**: found in `google-services.json` inside the APK:
    - `firebase_api_key` → `client[0].api_key[0].current_key`
    - `firebase_sender_id` → `project_info.project_number`
