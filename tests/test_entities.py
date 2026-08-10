@@ -960,3 +960,418 @@ class TestEventEntities:
             "test_dev_door_opened_event",
             "test_dev_doorbell_event",
         ]
+
+
+def _setup_hass(mock_coordinator):
+    """Return (hass, entry) wired so a platform's async_setup_entry finds the coordinator."""
+    from custom_components.fermax_blue.const import DOMAIN
+
+    entry = MagicMock()
+    entry.entry_id = "entry_1"
+    hass = MagicMock()
+    hass.data = {DOMAIN: {"entry_1": [mock_coordinator]}}
+    return hass, entry
+
+
+class TestNotificationSwitch:
+    """The notifications switch mirrors and drives the FCM listener."""
+
+    def _make(self, mock_coordinator):
+        from custom_components.fermax_blue.switch import FermaxNotificationSwitch
+
+        switch = FermaxNotificationSwitch(mock_coordinator)
+        switch.async_write_ha_state = MagicMock()
+        return switch
+
+    def test_unique_id(self, mock_coordinator):
+        assert self._make(mock_coordinator).unique_id == "test_dev_notifications"
+
+    def test_is_on_reflects_listener_started(self, mock_coordinator):
+        mock_coordinator.notification_listener.is_started = True
+        assert self._make(mock_coordinator).is_on is True
+        mock_coordinator.notification_listener.is_started = False
+        assert self._make(mock_coordinator).is_on is False
+
+    def test_is_on_falls_back_to_local_flag_without_listener(self, mock_coordinator):
+        mock_coordinator.notification_listener = None
+        assert self._make(mock_coordinator).is_on is True
+
+    @pytest.mark.asyncio
+    async def test_turn_on_starts_the_listener(self, mock_coordinator):
+        mock_coordinator.notification_listener.start = AsyncMock()
+        switch = self._make(mock_coordinator)
+
+        await switch.async_turn_on()
+
+        mock_coordinator.notification_listener.start.assert_awaited_once()
+        assert switch._is_on is True
+
+    @pytest.mark.asyncio
+    async def test_turn_off_stops_the_listener(self, mock_coordinator):
+        mock_coordinator.notification_listener.stop = AsyncMock()
+        switch = self._make(mock_coordinator)
+
+        await switch.async_turn_off()
+
+        mock_coordinator.notification_listener.stop.assert_awaited_once()
+        assert switch._is_on is False
+
+    @pytest.mark.asyncio
+    async def test_turn_on_is_a_no_op_without_listener(self, mock_coordinator):
+        mock_coordinator.notification_listener = None
+        switch = self._make(mock_coordinator)
+
+        await switch.async_turn_on()  # must not raise
+
+        switch.async_write_ha_state.assert_not_called()
+
+
+class TestSwitchStateReads:
+    """Optimistic and local-setting reads on the remaining switches."""
+
+    def test_dnd_returns_optimistic_state_while_pending(self, mock_coordinator):
+        from custom_components.fermax_blue.switch import FermaxDndSwitch
+
+        mock_coordinator.dnd_enabled = False
+        switch = FermaxDndSwitch(mock_coordinator)
+        switch._optimistic_state = True
+        assert switch.is_on is True
+
+    def test_photo_caller_optimistic_and_missing_device_info(self, mock_coordinator):
+        from custom_components.fermax_blue.switch import FermaxPhotoCallerSwitch
+
+        switch = FermaxPhotoCallerSwitch(mock_coordinator)
+        switch._optimistic_state = True
+        assert switch.is_on is True
+
+        switch._optimistic_state = None
+        mock_coordinator.device_info = None
+        assert switch.is_on is None
+
+    def test_ring_preview_reads_coordinator_and_is_always_available(self, mock_coordinator):
+        from custom_components.fermax_blue.switch import FermaxRingPreviewSwitch
+
+        mock_coordinator.ring_preview = True
+        switch = FermaxRingPreviewSwitch(mock_coordinator)
+        assert switch.is_on is True
+        assert switch.available is True
+
+    @pytest.mark.asyncio
+    async def test_setup_creates_all_four_switches_with_listener(self, mock_coordinator):
+        from custom_components.fermax_blue.switch import async_setup_entry
+
+        hass, entry = _setup_hass(mock_coordinator)
+        added = []
+        await async_setup_entry(hass, entry, lambda entities: added.extend(entities))
+
+        assert sorted(entity.unique_id for entity in added) == [
+            "test_dev_dnd",
+            "test_dev_notifications",
+            "test_dev_photo_caller",
+            "test_dev_ring_preview",
+        ]
+
+    @pytest.mark.asyncio
+    async def test_setup_skips_notifications_without_listener(self, mock_coordinator):
+        from custom_components.fermax_blue.switch import async_setup_entry
+
+        mock_coordinator.notification_listener = None
+        hass, entry = _setup_hass(mock_coordinator)
+        added = []
+        await async_setup_entry(hass, entry, lambda entities: added.extend(entities))
+
+        unique_ids = {entity.unique_id for entity in added}
+        assert "test_dev_notifications" not in unique_ids
+        assert len(added) == 3
+
+
+class TestGenericSensorValues:
+    """FermaxSensor.native_value and extra_state_attributes across keys."""
+
+    def _make(self, mock_coordinator, key):
+        from custom_components.fermax_blue.sensor import FermaxSensor
+
+        return FermaxSensor(mock_coordinator, key)
+
+    def test_wifi_signal_value_and_missing_data(self, mock_coordinator):
+        mock_coordinator.data = {"wireless_signal": 3}
+        assert self._make(mock_coordinator, "wifi_signal").native_value == 3
+        mock_coordinator.data = None
+        assert self._make(mock_coordinator, "wifi_signal").native_value is None
+
+    def test_device_status_value_and_missing_data(self, mock_coordinator):
+        mock_coordinator.data = {"status": "ACTIVATED"}
+        assert self._make(mock_coordinator, "device_status").native_value == "ACTIVATED"
+        mock_coordinator.data = None
+        assert self._make(mock_coordinator, "device_status").native_value is None
+
+    def test_last_opening_and_last_call_are_none_without_records(self, mock_coordinator):
+        mock_coordinator.last_opening = None
+        mock_coordinator.last_call = None
+        assert self._make(mock_coordinator, "last_opening").native_value is None
+        assert self._make(mock_coordinator, "last_call").native_value is None
+
+    def test_non_attribute_sensor_has_no_extra_attributes(self, mock_coordinator):
+        assert self._make(mock_coordinator, "wifi_signal").extra_state_attributes is None
+
+    def test_extra_attributes_none_when_records_absent(self, mock_coordinator):
+        mock_coordinator.last_opening = None
+        mock_coordinator.last_call = None
+        assert self._make(mock_coordinator, "last_opening").extra_state_attributes is None
+        assert self._make(mock_coordinator, "last_call").extra_state_attributes is None
+
+    @pytest.mark.asyncio
+    async def test_setup_creates_the_four_sensors(self, mock_coordinator):
+        from custom_components.fermax_blue.sensor import async_setup_entry
+
+        hass, entry = _setup_hass(mock_coordinator)
+        added = []
+        await async_setup_entry(hass, entry, lambda entities: added.extend(entities))
+
+        assert sorted(entity.unique_id for entity in added) == [
+            "test_dev_device_status",
+            "test_dev_last_call",
+            "test_dev_last_opening",
+            "test_dev_wifi_signal",
+        ]
+
+
+class TestCallModeSelect:
+    """The call-mode select is a purely local, always-available control."""
+
+    def _make(self, mock_coordinator):
+        from custom_components.fermax_blue.select import FermaxCallModeSelect
+
+        select = FermaxCallModeSelect(mock_coordinator)
+        select.async_write_ha_state = MagicMock()
+        return select
+
+    def test_current_option_and_availability(self, mock_coordinator):
+        mock_coordinator.call_mode = "notify_only"
+        select = self._make(mock_coordinator)
+        assert select.current_option == "notify_only"
+        assert select.available is True
+
+    @pytest.mark.asyncio
+    async def test_select_option_updates_the_coordinator(self, mock_coordinator):
+        select = self._make(mock_coordinator)
+
+        await select.async_select_option("record")
+
+        assert mock_coordinator.call_mode == "record"
+        select.async_write_ha_state.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_setup_creates_one_select_per_coordinator(self, mock_coordinator):
+        from custom_components.fermax_blue.select import async_setup_entry
+
+        hass, entry = _setup_hass(mock_coordinator)
+        added = []
+        await async_setup_entry(hass, entry, lambda entities: added.extend(entities))
+
+        assert [entity.unique_id for entity in added] == ["test_dev_call_mode"]
+
+
+class TestStreamDurationNumber:
+    """The stream-duration number is a purely local, always-available control."""
+
+    def _make(self, mock_coordinator):
+        from custom_components.fermax_blue.number import FermaxStreamDurationNumber
+
+        number = FermaxStreamDurationNumber(mock_coordinator)
+        number.async_write_ha_state = MagicMock()
+        return number
+
+    def test_native_value_and_availability(self, mock_coordinator):
+        mock_coordinator.stream_duration = 30
+        number = self._make(mock_coordinator)
+        assert number.native_value == 30
+        assert number.available is True
+
+    @pytest.mark.asyncio
+    async def test_set_native_value_coerces_to_int(self, mock_coordinator):
+        number = self._make(mock_coordinator)
+
+        await number.async_set_native_value(45.0)
+
+        assert mock_coordinator.stream_duration == 45
+        number.async_write_ha_state.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_setup_creates_one_number_per_coordinator(self, mock_coordinator):
+        from custom_components.fermax_blue.number import async_setup_entry
+
+        hass, entry = _setup_hass(mock_coordinator)
+        added = []
+        await async_setup_entry(hass, entry, lambda entities: added.extend(entities))
+
+        assert [entity.unique_id for entity in added] == ["test_dev_stream_duration"]
+
+
+class TestCameraBehavior:
+    """Image serving, availability and the MJPEG stream loop."""
+
+    def _make(self, mock_coordinator):
+        from custom_components.fermax_blue.camera import FermaxCamera
+
+        return FermaxCamera(mock_coordinator)
+
+    def test_available_when_last_photo_exists(self, mock_coordinator):
+        mock_coordinator.last_photo = b"JPEG"
+        mock_coordinator.stream_session = None
+        assert self._make(mock_coordinator).available is True
+
+    def test_available_when_live_frame_exists(self, mock_coordinator):
+        mock_coordinator.last_photo = None
+        mock_coordinator.stream_session = MagicMock(latest_frame=b"FRAME")
+        assert self._make(mock_coordinator).available is True
+
+    def test_availability_falls_back_to_connection_state(self, mock_coordinator):
+        mock_coordinator.last_photo = None
+        mock_coordinator.stream_session = None
+        mock_coordinator.data = {"connection_state": "Connected"}
+        assert self._make(mock_coordinator).available is True
+        mock_coordinator.data = {"connection_state": "Disconnected"}
+        assert self._make(mock_coordinator).available is False
+
+    @pytest.mark.asyncio
+    async def test_camera_image_prefers_live_frame(self, mock_coordinator):
+        mock_coordinator.last_photo = b"PHOTO"
+        mock_coordinator.stream_session = MagicMock(latest_frame=b"LIVE")
+        assert await self._make(mock_coordinator).async_camera_image() == b"LIVE"
+
+    @pytest.mark.asyncio
+    async def test_camera_image_falls_back_to_last_photo(self, mock_coordinator):
+        mock_coordinator.last_photo = b"PHOTO"
+        mock_coordinator.stream_session = None
+        assert await self._make(mock_coordinator).async_camera_image() == b"PHOTO"
+
+    def test_is_streaming_and_is_on(self, mock_coordinator):
+        mock_coordinator.stream_session = MagicMock(is_active=True)
+        camera = self._make(mock_coordinator)
+        assert camera.is_streaming is True
+        assert camera.is_on is True
+
+        mock_coordinator.stream_session = None
+        mock_coordinator.last_photo = b"PHOTO"
+        assert camera.is_streaming is False
+        assert camera.is_on is True
+
+        mock_coordinator.last_photo = None
+        assert camera.is_on is False
+
+    def test_doorbell_ring_writes_state(self, mock_coordinator):
+        camera = self._make(mock_coordinator)
+        camera.async_write_ha_state = MagicMock()
+
+        camera._on_doorbell_ring()
+
+        camera.async_write_ha_state.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_turn_off_stops_the_stream(self, mock_coordinator):
+        mock_coordinator.stop_stream = AsyncMock()
+        await self._make(mock_coordinator).async_turn_off()
+        mock_coordinator.stop_stream.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_turn_on_logs_the_started_session(self, mock_coordinator):
+        result = MagicMock(description="Auto on is starting")
+        mock_coordinator.start_camera_preview = AsyncMock(return_value=result)
+        camera = self._make(mock_coordinator)
+
+        with patch(
+            "custom_components.fermax_blue.camera.streaming_deps_available",
+            return_value=True,
+        ):
+            await camera.async_turn_on()
+
+        mock_coordinator.start_camera_preview.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_mjpeg_stream_writes_live_frame_then_stops(self, mock_coordinator):
+        from custom_components.fermax_blue import camera as camera_module
+
+        mock_coordinator.stream_session = MagicMock(latest_frame=b"LIVEJPEG", is_active=True)
+        mock_coordinator.last_photo = None
+        camera = self._make(mock_coordinator)
+
+        response = MagicMock()
+        response.prepare = AsyncMock()
+        response.write = AsyncMock()
+
+        async def _stop(_delay):
+            raise __import__("asyncio").CancelledError
+
+        with (
+            patch.object(camera_module.web, "StreamResponse", return_value=response),
+            patch.object(camera_module.asyncio, "sleep", side_effect=_stop),
+        ):
+            await camera.handle_async_mjpeg_stream(MagicMock())
+
+        response.prepare.assert_awaited_once()
+        written = b"".join(call.args[0] for call in response.write.await_args_list)
+        assert b"LIVEJPEG" in written
+
+    @pytest.mark.asyncio
+    async def test_mjpeg_stream_serves_last_photo_without_live_stream(self, mock_coordinator):
+        from custom_components.fermax_blue import camera as camera_module
+
+        mock_coordinator.stream_session = None
+        mock_coordinator.last_photo = b"PHOTOJPEG"
+        camera = self._make(mock_coordinator)
+
+        response = MagicMock()
+        response.prepare = AsyncMock()
+        response.write = AsyncMock()
+
+        async def _stop(_delay):
+            raise __import__("asyncio").CancelledError
+
+        with (
+            patch.object(camera_module.web, "StreamResponse", return_value=response),
+            patch.object(camera_module.asyncio, "sleep", side_effect=_stop),
+        ):
+            await camera.handle_async_mjpeg_stream(MagicMock())
+
+        written = b"".join(call.args[0] for call in response.write.await_args_list)
+        assert b"PHOTOJPEG" in written
+
+    @pytest.mark.asyncio
+    async def test_added_to_hass_subscribes_to_each_door_ring(self, mock_coordinator):
+        from custom_components.fermax_blue import camera as camera_module
+
+        mock_coordinator.last_photo = b"PHOTO"
+        camera = self._make(mock_coordinator)
+        camera.hass = MagicMock()
+        camera.async_on_remove = MagicMock()
+        camera.async_write_ha_state = MagicMock()
+
+        with (
+            patch(
+                "homeassistant.helpers.update_coordinator.CoordinatorEntity.async_added_to_hass",
+                new_callable=AsyncMock,
+            ),
+            patch.object(
+                camera_module, "async_dispatcher_connect", return_value="unsub"
+            ) as connect,
+        ):
+            await camera.async_added_to_hass()
+
+        # One subscription per access door, and state written because a photo exists.
+        assert connect.call_count == len(mock_coordinator.pairing.access_doors)
+        camera.async_on_remove.assert_called_with("unsub")
+        camera.async_write_ha_state.assert_called_once()
+
+
+class TestSensorAliases:
+    """Backward-compatible sensor alias classes still construct the right key."""
+
+    def test_aliases_map_to_expected_unique_ids(self, mock_coordinator):
+        from custom_components.fermax_blue.sensor import (
+            FermaxDeviceStatusSensor,
+            FermaxWifiSignalSensor,
+        )
+
+        assert FermaxWifiSignalSensor(mock_coordinator).unique_id == "test_dev_wifi_signal"
+        assert FermaxDeviceStatusSensor(mock_coordinator).unique_id == "test_dev_device_status"
