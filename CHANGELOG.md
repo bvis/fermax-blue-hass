@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.19.1] - 2026-08-20
+
+### Fixed
+- **Declared minimum Home Assistant version corrected to 2025.12** (#63) — the integration's video stack (`aiortc>=1.15.0`) needs `av>=14`, but Home Assistant Core pins `av==13.1.0` up to 2025.11, so on those versions the dependencies cannot resolve and adding the integration fails with a 500 error. `hacs.json` declared 2025.2.0 as the minimum, letting HACS install the integration on cores where it cannot work; it now declares 2025.12.0 (the first release shipping `av==16.0.1`), so HACS reports the incompatibility upfront instead. No runtime changes.
+
 ## [0.19.0] - 2026-08-07
 
 ### Added
