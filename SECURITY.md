@@ -52,9 +52,9 @@ arbitrary host or downgrade the transport to plaintext. The payload also
 carries a short-lived device JWT used to authenticate the media session; it is
 held in memory for that session only.
 
-### FCM push depends on a reverse-engineered client
+### FCM push depends on an unofficial client
 
-Push notifications use `firebase-messaging`, an unofficial reverse-engineered
+Push notifications use `firebase-messaging`, an unofficial community-maintained
 FCM client, not a Google-supported library. Push carries doorbell rings and the
 stream-setup payload, so if the listener is down those features stop working
 while polling-based entities continue. Treat push delivery as best-effort.

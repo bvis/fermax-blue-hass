@@ -49,8 +49,8 @@ def fake_apk(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
-def fake_decompiled(tmp_path: Path) -> Path:
-    """Create a minimal decompiled directory with Java source."""
+def fake_sources(tmp_path: Path) -> Path:
+    """Create a minimal app sources directory with Java source."""
     src = tmp_path / "sources" / "com" / "fermax" / "blue"
     src.mkdir(parents=True)
 
@@ -104,8 +104,8 @@ def _encrypt_oauth_test_value(value: str) -> str:
 
 
 @pytest.fixture
-def fake_oauth_decompiled(tmp_path: Path) -> Path:
-    """Create decompiled source with OAuth arrays and an unrelated tracing Basic header."""
+def fake_oauth_sources(tmp_path: Path) -> Path:
+    """Create app sources with OAuth arrays and an unrelated tracing Basic header."""
     utils = tmp_path / "sources" / "com" / "fermax" / "blue" / "app" / "core" / "utils"
     remoteconfig = (
         tmp_path / "sources" / "com" / "fermax" / "blue" / "app" / "data" / "remoteconfig"
@@ -154,8 +154,8 @@ public final class Urls {{
 
 
 @pytest.fixture
-def fake_buildconfig_decompiled(tmp_path: Path) -> Path:
-    """Decompiled source in the 4.3.4 layout: plaintext OAuth constants in BuildConfig."""
+def fake_buildconfig_sources(tmp_path: Path) -> Path:
+    """App sources in the 4.3.4 layout: plaintext OAuth constants in BuildConfig."""
     app = tmp_path / "sources" / "com" / "fermax" / "blue" / "app"
     remoteconfig = (
         tmp_path / "sources" / "com" / "fermax" / "blue" / "app" / "data" / "remoteconfig"
@@ -229,34 +229,32 @@ class TestExtractFromApk:
         assert creds["fermax_auth_basic"].startswith("Basic ")
 
 
-class TestExtractFromDecompiled:
-    """Test credential extraction from decompiled directories."""
+class TestExtractFromSources:
+    """Test credential extraction from app sources directories."""
 
-    def test_extracts_urls(self, script_module, fake_decompiled):
-        strings = script_module._search_decompiled_dir(str(fake_decompiled))
+    def test_extracts_urls(self, script_module, fake_sources):
+        strings = script_module._search_sources_dir(str(fake_sources))
         creds = script_module._find_credentials(strings)
         assert "oauth" in creds["fermax_auth_url"]
         assert creds["fermax_base_url"] == "https://pro-duoxme.fermax.io"
 
-    def test_extracts_auth_basic(self, script_module, fake_decompiled):
-        strings = script_module._search_decompiled_dir(str(fake_decompiled))
+    def test_extracts_auth_basic(self, script_module, fake_sources):
+        strings = script_module._search_sources_dir(str(fake_sources))
         creds = script_module._find_credentials(strings)
         assert creds["fermax_auth_basic"].startswith("Basic ")
 
-    def test_extracts_package_name(self, script_module, fake_decompiled):
-        strings = script_module._search_decompiled_dir(str(fake_decompiled))
+    def test_extracts_package_name(self, script_module, fake_sources):
+        strings = script_module._search_sources_dir(str(fake_sources))
         creds = script_module._find_credentials(strings)
         assert creds["firebase_package_name"] == "com.fermax.blue.app"
 
-    def test_ignores_monitoring_basic_headers(self, script_module, fake_oauth_decompiled):
-        strings = script_module._search_decompiled_dir(str(fake_oauth_decompiled))
+    def test_ignores_monitoring_basic_headers(self, script_module, fake_oauth_sources):
+        strings = script_module._search_sources_dir(str(fake_oauth_sources))
         creds = script_module._find_credentials(strings)
         assert creds["fermax_auth_basic"] == ""
 
-    def test_generates_oauth_basic_from_oauth_utils_urls(
-        self, script_module, fake_oauth_decompiled
-    ):
-        candidates = script_module._extract_oauth_candidates_from_source(str(fake_oauth_decompiled))
+    def test_generates_oauth_basic_from_oauth_utils_urls(self, script_module, fake_oauth_sources):
+        candidates = script_module._extract_oauth_candidates_from_source(str(fake_oauth_sources))
         selected = script_module._select_oauth_candidate(candidates)
 
         expected_payload = f"{quote_plus('prod client/id')}:{quote_plus('prod secret:with/slash')}"
@@ -271,11 +269,9 @@ class TestExtractFromDecompiled:
 class TestBuildConfigOAuth:
     """OAuth credentials stored in plain text in BuildConfig (APK 4.3.4+)."""
 
-    def test_generates_oauth_basic_from_build_config(
-        self, script_module, fake_buildconfig_decompiled
-    ):
+    def test_generates_oauth_basic_from_build_config(self, script_module, fake_buildconfig_sources):
         candidates = script_module._extract_oauth_candidates_from_source(
-            str(fake_buildconfig_decompiled)
+            str(fake_buildconfig_sources)
         )
         selected = script_module._select_oauth_candidate(candidates)
 
@@ -286,27 +282,27 @@ class TestBuildConfigOAuth:
         assert selected.auth_basic == expected_basic
         assert selected.source == "BuildConfig.java"
 
-    def test_urls_still_come_from_urls_source(self, script_module, fake_buildconfig_decompiled):
+    def test_urls_still_come_from_urls_source(self, script_module, fake_buildconfig_sources):
         selected = script_module._select_oauth_candidate(
-            script_module._extract_oauth_candidates_from_source(str(fake_buildconfig_decompiled))
+            script_module._extract_oauth_candidates_from_source(str(fake_buildconfig_sources))
         )
 
         assert selected.auth_url == "https://oauth-pro-duoxme.fermax.io/oauth/token"
         assert selected.base_url == "https://pro-duoxme.fermax.io"
 
     def test_tracing_basic_auth_is_never_used_as_oauth(
-        self, script_module, fake_buildconfig_decompiled
+        self, script_module, fake_buildconfig_sources
     ):
         """The telemetry header sits next to the OAuth constants — it must not win."""
         tracing_basic = "Basic " + "C" * 60
 
         selected = script_module._select_oauth_candidate(
-            script_module._extract_oauth_candidates_from_source(str(fake_buildconfig_decompiled))
+            script_module._extract_oauth_candidates_from_source(str(fake_buildconfig_sources))
         )
         assert selected.auth_basic != tracing_basic
 
         # ...and the generic literal scan must not surface it either
-        strings = script_module._search_decompiled_dir(str(fake_buildconfig_decompiled))
+        strings = script_module._search_sources_dir(str(fake_buildconfig_sources))
         creds = script_module._find_credentials(strings)
         assert creds["fermax_auth_basic"] == ""
 
@@ -322,11 +318,9 @@ class TestBuildConfigOAuth:
 
         assert script_module._extract_oauth_candidates_from_source(str(tmp_path)) == []
 
-    def test_encrypted_layout_wins_when_both_are_present(
-        self, script_module, fake_oauth_decompiled
-    ):
+    def test_encrypted_layout_wins_when_both_are_present(self, script_module, fake_oauth_sources):
         """A 4.3.0-style APK keeps using the proven encrypted path."""
-        app = fake_oauth_decompiled / "sources" / "com" / "fermax" / "blue" / "app"
+        app = fake_oauth_sources / "sources" / "com" / "fermax" / "blue" / "app"
         (app / "BuildConfig.java").write_text(
             "public final class BuildConfig {\n"
             '    public static final String OAUTH_CLIENT_ID = "decoy";\n'
@@ -335,7 +329,7 @@ class TestBuildConfigOAuth:
         )
 
         selected = script_module._select_oauth_candidate(
-            script_module._extract_oauth_candidates_from_source(str(fake_oauth_decompiled))
+            script_module._extract_oauth_candidates_from_source(str(fake_oauth_sources))
         )
 
         expected_payload = f"{quote_plus('prod client/id')}:{quote_plus('prod secret:with/slash')}"
@@ -488,9 +482,9 @@ class TestUrlsFileSelection:
     """Several modules can ship a Urls.java; only one carries the OAuth methods."""
 
     def test_picks_the_urls_file_carrying_the_oauth_methods(
-        self, script_module, fake_oauth_decompiled, monkeypatch
+        self, script_module, fake_oauth_sources, monkeypatch
     ):
-        decoy = fake_oauth_decompiled / "sources" / "androidx" / "webkit"
+        decoy = fake_oauth_sources / "sources" / "androidx" / "webkit"
         decoy.mkdir(parents=True)
         (decoy / "Urls.java").write_text(
             "public final class Urls {\n"
@@ -509,7 +503,7 @@ class TestUrlsFileSelection:
         monkeypatch.setattr(Path, "rglob", decoy_first)
 
         selected = script_module._select_oauth_candidate(
-            script_module._extract_oauth_candidates_from_source(str(fake_oauth_decompiled))
+            script_module._extract_oauth_candidates_from_source(str(fake_oauth_sources))
         )
 
         expected_payload = f"{quote_plus('prod client/id')}:{quote_plus('prod secret:with/slash')}"
@@ -520,10 +514,10 @@ class TestUrlsFileSelection:
         assert selected.auth_url == "https://oauth-pro-duoxme.fermax.io/oauth/token"
 
     def test_falls_back_to_the_only_urls_file_when_none_declares_the_methods(
-        self, script_module, fake_decompiled
+        self, script_module, fake_sources
     ):
         """URLs still come from Urls.java even on layouts without the OAuth methods."""
-        content = script_module._read_urls_source(fake_decompiled)
+        content = script_module._read_urls_source(fake_sources)
 
         assert "oauth-pro-duoxme.fermax.io" in content
 
@@ -555,8 +549,8 @@ class TestOAuthDiagnostics:
         assert any("0 with clientId()/clientSecret()" in line for line in lines)
         assert any("AES key: not found" in line for line in lines)
 
-    def test_reports_a_healthy_encrypted_layout(self, script_module, fake_oauth_decompiled):
-        lines = script_module._oauth_source_diagnostics(str(fake_oauth_decompiled))
+    def test_reports_a_healthy_encrypted_layout(self, script_module, fake_oauth_sources):
+        lines = script_module._oauth_source_diagnostics(str(fake_oauth_sources))
 
         assert any("1 with clientId()/clientSecret()" in line for line in lines)
         assert any("AES key: found" in line for line in lines)
@@ -583,12 +577,12 @@ class TestUnverifiedAuthBasic:
         assert "IGNORED" in out
 
     def test_source_backed_header_is_saved(
-        self, script_module, fake_oauth_decompiled, monkeypatch, capsys
+        self, script_module, fake_oauth_sources, monkeypatch, capsys
     ):
-        out_dir = fake_oauth_decompiled / "out"
+        out_dir = fake_oauth_sources / "out"
         out_dir.mkdir()
         monkeypatch.chdir(out_dir)
-        monkeypatch.setattr(sys, "argv", ["extract_credentials.py", str(fake_oauth_decompiled)])
+        monkeypatch.setattr(sys, "argv", ["extract_credentials.py", str(fake_oauth_sources)])
 
         script_module.main()
 
