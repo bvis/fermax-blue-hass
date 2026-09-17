@@ -767,7 +767,13 @@ def main() -> None:
     # Pattern-match all collected strings
     print("  Pattern matching credentials...")
     creds = _find_credentials(all_strings)
-    auth_basic_source = "generic string scan" if creds["fermax_auth_basic"] else ""
+
+    # A Basic literal found by the generic scan is not a credential: recent APKs
+    # carry the telemetry header, which the login endpoint rejects with
+    # invalid_client. Set it aside and only publish a source-backed header.
+    unverified_auth_basic = creds["fermax_auth_basic"]
+    creds["fermax_auth_basic"] = ""
+    auth_basic_source = ""
 
     # Merge google-services results (higher priority)
     for k, v in gs_creds.items():
@@ -819,23 +825,24 @@ def main() -> None:
         display = _display_credential_value(key, value)
         print(f"  {status:7s} {key}: {display}")
 
-    # Warn about auth_basic source — the APK may contain non-OAuth Basic headers.
+    # Report where the header came from — or why a literal was not trusted.
     if creds["fermax_auth_basic"]:
         print()
-        if auth_basic_source and not auth_basic_source.startswith("generic"):
-            print(f"  NOTE: fermax_auth_basic was generated from {auth_basic_source}.")
-            print("  Keep credentials.json private and never publish the generated")
-            print("  Basic header or Firebase values.")
-        else:
-            print("  WARNING: fermax_auth_basic came from a generic string scan.")
-            print("  APKs may contain unrelated Basic headers for tracing/monitoring")
-            print("  (for example TraceManagerOtelImpl / monitoring/v1/traces, or the")
-            print("  TRACING_BASIC_AUTH constant in BuildConfig).")
-            print("  If authentication fails with 'invalid_client', decompile with")
-            print("  JADX and run this script against the output directory: it reads")
-            print("  OAuthUtils.java + Urls.clientId()/clientSecret() (APK <= 4.3.0)")
-            print("  or the OAUTH_CLIENT_ID/OAUTH_CLIENT_SECRET constants in")
-            print("  BuildConfig.java (APK 4.3.4+).")
+        print(f"  NOTE: fermax_auth_basic was generated from {auth_basic_source}.")
+        print("  Keep credentials.json private and never publish the generated")
+        print("  Basic header or Firebase values.")
+    elif unverified_auth_basic:
+        print()
+        print("  IGNORED: a Basic header was found by the generic string scan, but")
+        print("  it was not read from the OAuth sources, so it is not reported as a")
+        print("  credential and was not saved. APKs carry unrelated Basic headers for")
+        print("  tracing/monitoring (TraceManagerOtelImpl, /monitoring/v1/traces, the")
+        print("  TRACING_BASIC_AUTH constant), and the login endpoint answers")
+        print("  'invalid_client' for those. Decompile with JADX and run this script")
+        print("  against the output directory: it reads OAuthUtils.java +")
+        print("  Urls.clientId()/clientSecret() (APK <= 4.3.0) or the")
+        print("  OAUTH_CLIENT_ID/OAUTH_CLIENT_SECRET constants in BuildConfig.java")
+        print("  (APK 4.3.4+).")
 
     if found < total:
         missing = [k for k, v in creds.items() if not v]

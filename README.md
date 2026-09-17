@@ -101,7 +101,9 @@ The Firebase credentials can be extracted automatically from the official Fermax
    make extract-credentials APK=/path/to/fermax-blue.apk
    ```
    Or directly: `python scripts/extract_credentials.py /path/to/fermax-blue.apk`
-3. The script extracts Firebase credentials from `resources.arsc` and API URLs from the binary. It also attempts to generate the OAuth `Basic` header from `OAuthUtils.java` and `Urls.java` if a JADX output directory is found alongside the APK.
+3. The script extracts Firebase credentials from `resources.arsc` and API URLs from the binary. The OAuth `Basic` header is only generated from decompiled sources — `OAuthUtils.java` + `Urls.java`, or `BuildConfig.java` — so it needs a JADX output directory, either as the target itself or sitting alongside the APK.
+
+   Run against a bare `.apk` and `fermax_auth_basic` is reported as missing. That is deliberate: `Basic` literals do exist in the binary, but they belong to telemetry, and the login endpoint answers `invalid_client` for them. The script names the one it found and explains why it did not keep it, rather than saving a header that cannot work.
 
 The script reliably finds: `firebase_api_key`, `firebase_sender_id`, `firebase_app_id`, `firebase_project_id`, `firebase_package_name`, `fermax_auth_url`, and `fermax_base_url`.
 

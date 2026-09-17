@@ -560,3 +560,41 @@ class TestOAuthDiagnostics:
 
         assert any("1 with clientId()/clientSecret()" in line for line in lines)
         assert any("AES key: found" in line for line in lines)
+
+
+class TestUnverifiedAuthBasic:
+    """A Basic literal found by the generic scan is not an OAuth credential."""
+
+    def test_generic_scan_header_is_reported_but_not_saved(
+        self, script_module, fake_apk, tmp_path, monkeypatch, capsys
+    ):
+        out_dir = tmp_path / "out"
+        out_dir.mkdir()
+        monkeypatch.chdir(out_dir)
+        monkeypatch.setattr(sys, "argv", ["extract_credentials.py", str(fake_apk)])
+
+        script_module.main()
+
+        out = capsys.readouterr().out
+        saved = json.loads((out_dir / "credentials.json").read_text())
+
+        assert saved["fermax_auth_basic"] == ""
+        assert "MISSING fermax_auth_basic" in out
+        assert "IGNORED" in out
+
+    def test_source_backed_header_is_saved(
+        self, script_module, fake_oauth_decompiled, monkeypatch, capsys
+    ):
+        out_dir = fake_oauth_decompiled / "out"
+        out_dir.mkdir()
+        monkeypatch.chdir(out_dir)
+        monkeypatch.setattr(sys, "argv", ["extract_credentials.py", str(fake_oauth_decompiled)])
+
+        script_module.main()
+
+        out = capsys.readouterr().out
+        saved = json.loads((out_dir / "credentials.json").read_text())
+
+        assert saved["fermax_auth_basic"].startswith("Basic ")
+        assert "IGNORED" not in out
+        assert "OAuthUtils.java + Urls.java" in out
