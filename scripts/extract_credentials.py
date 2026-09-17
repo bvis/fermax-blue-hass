@@ -40,6 +40,10 @@ TRACING_CONSTANT_RE = re.compile(
 BUILD_CONFIG_CLIENT_ID_RE = re.compile(r'\bOAUTH_CLIENT_ID\s*=\s*"([^"]+)"')
 BUILD_CONFIG_CLIENT_SECRET_RE = re.compile(r'\bOAUTH_CLIENT_SECRET\s*=\s*"([^"]+)"')
 
+# Up to APK 4.3.0 the credentials come from these two Urls.java accessors.
+CLIENT_ID_METHOD_RE = re.compile(r"\bclientId\s*\(")
+CLIENT_SECRET_METHOD_RE = re.compile(r"\bclientSecret\s*\(")
+
 
 @dataclass(frozen=True)
 class OAuthCredentialCandidate:
@@ -180,27 +184,49 @@ def _parse_java_byte_list(byte_list_str: str) -> bytes:
     return bytes(_parse_java_byte_token(t) for t in byte_list_str.split(","))
 
 
+def _read_java_source(java_file: Path) -> str:
+    """Read a decompiled Java file, treating an unreadable one as empty."""
+    try:
+        return java_file.read_text(errors="ignore")
+    except OSError:
+        return ""
+
+
+def _declares_oauth_methods(content: str) -> bool:
+    """Whether a Urls.java source carries the OAuth accessors we decrypt."""
+    return bool(CLIENT_ID_METHOD_RE.search(content) and CLIENT_SECRET_METHOD_RE.search(content))
+
+
 def _find_oauth_aes_key(root: Path) -> bytes | None:
     """Find the AES key used by OAuthUtils.decrypt()."""
     for java_file in root.rglob("OAuthUtils.java"):
-        try:
-            content = java_file.read_text(errors="ignore")
-        except OSError:
-            continue
-        m = re.search(r"SecretKeySpec\(new byte\[]\s*\{([^}]+)\}", content)
+        m = re.search(r"SecretKeySpec\(new byte\[]\s*\{([^}]+)\}", _read_java_source(java_file))
         if m:
             return _parse_java_byte_list(m.group(1))
     return None
 
 
 def _read_urls_source(root: Path) -> str:
-    """Read the decompiled Urls.java source if present."""
+    """Read the decompiled Urls.java source if present.
+
+    Library modules ship their own Urls.java, and the directory walk order is
+    filesystem-dependent, so the file carrying the OAuth accessors wins over
+    whatever happens to be found first. Failing that, a file that at least
+    holds URLs is preferred, so the environment endpoints are still picked up.
+    """
+    with_urls = ""
+    first = ""
     for java_file in root.rglob("Urls.java"):
-        try:
-            return java_file.read_text(errors="ignore")
-        except OSError:
-            return ""
-    return ""
+        content = _read_java_source(java_file)
+        if not content:
+            continue
+        if _declares_oauth_methods(content):
+            return content
+        if not with_urls and "http" in content:
+            with_urls = content
+        if not first:
+            first = content
+    return with_urls or first
 
 
 def _parse_byte_arrays_from_method(content: str, method_name: str) -> list[bytes]:
@@ -363,10 +389,7 @@ def _find_build_config_oauth(root: Path) -> tuple[str, str] | None:
     TRACING_BASIC_AUTH constant is deliberately never read.
     """
     for java_file in root.rglob("BuildConfig.java"):
-        try:
-            content = java_file.read_text(errors="ignore")
-        except OSError:
-            continue
+        content = _read_java_source(java_file)
         client_id = BUILD_CONFIG_CLIENT_ID_RE.search(content)
         client_secret = BUILD_CONFIG_CLIENT_SECRET_RE.search(content)
         if client_id and client_secret:
@@ -439,6 +462,50 @@ def _extract_oauth_candidates_from_source(dir_path: str) -> list[OAuthCredential
             source="BuildConfig.java",
         )
     ]
+
+
+def _oauth_source_diagnostics(dir_path: str) -> list[str]:
+    """Describe what the OAuth scan saw, so a failed extraction is actionable."""
+    root = Path(dir_path)
+
+    urls_files = list(root.rglob("Urls.java"))
+    with_methods = sum(
+        1 for java_file in urls_files if _declares_oauth_methods(_read_java_source(java_file))
+    )
+    oauth_utils = list(root.rglob("OAuthUtils.java"))
+    build_configs = list(root.rglob("BuildConfig.java"))
+    with_constants = 0
+    for java_file in build_configs:
+        content = _read_java_source(java_file)
+        if BUILD_CONFIG_CLIENT_ID_RE.search(content) and BUILD_CONFIG_CLIENT_SECRET_RE.search(
+            content
+        ):
+            with_constants += 1
+
+    lines = []
+    if urls_files:
+        lines.append(
+            f"Urls.java: {len(urls_files)} found, {with_methods} with clientId()/clientSecret()"
+        )
+    else:
+        lines.append("Urls.java: none found")
+
+    if oauth_utils:
+        lines.append(f"OAuthUtils.java: {len(oauth_utils)} found")
+    else:
+        lines.append("OAuthUtils.java: none found")
+
+    lines.append(f"AES key: {'found' if _find_oauth_aes_key(root) else 'not found'}")
+
+    if build_configs:
+        lines.append(
+            f"BuildConfig.java: {len(build_configs)} found, "
+            f"{with_constants} with OAUTH_CLIENT_ID/OAUTH_CLIENT_SECRET"
+        )
+    else:
+        lines.append("BuildConfig.java: none found")
+
+    return lines
 
 
 def _extract_oauth_from_source(dir_path: str) -> str:
@@ -737,6 +804,8 @@ def main() -> None:
                 print(f"    Found {len(oauth_candidates)} OAuth environments: {labels}")
         else:
             print("    Not found or decryption failed")
+            for line in _oauth_source_diagnostics(decompiled_dir):
+                print(f"      {line}")
 
     # Report
     print()
