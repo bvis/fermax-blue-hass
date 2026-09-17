@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+- **Credential extraction picks the right `Urls.java`** (#71) — a decompiled APK can contain several files named `Urls.java` (library modules ship their own), and `scripts/extract_credentials.py` read whichever one the directory walk happened to yield first. When that was not the Fermax one, the OAuth accessors were missing, the encrypted layout produced no candidate, and the run ended with `fermax_auth_basic` empty even though the credentials were right there. The script now selects the file that declares `clientId()` / `clientSecret()`, and falls back to one carrying URLs so the environment endpoints are still detected.
+- **A failed OAuth extraction now says what it found** — instead of a bare `Not found or decryption failed`, the script reports how many `Urls.java` files exist and how many declare the OAuth accessors, whether `OAuthUtils.java` and its AES key were found, and whether any `BuildConfig.java` carries `OAUTH_CLIENT_ID` / `OAUTH_CLIENT_SECRET`. This distinguishes a new app layout from the much more common case of running the script against the `.apk` instead of the JADX output directory.
+
 ## [0.19.1] - 2026-08-20
 
 ### Fixed

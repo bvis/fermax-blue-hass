@@ -122,6 +122,8 @@ The OAuth `client_id` and `client_secret` are combined into the `Basic` auth hea
 
 The encrypted layout is preferred when both are present. The production values should match the production URLs `oauth-pro-duoxme.fermax.io` and `pro-duoxme.fermax.io`.
 
+Several modules in a decompiled APK can ship a file named `Urls.java`; the script reads the one that actually declares `clientId()` / `clientSecret()` rather than whichever the directory walk finds first. If it still cannot generate the header, it reports what the scan saw — how many `Urls.java` files exist and how many declare those accessors, whether `OAuthUtils.java` and its AES key were found, and whether any `BuildConfig.java` carries the OAuth constants. That tells you whether the app changed layout again or the sources were simply never scanned (running against the `.apk` instead of the JADX output directory).
+
 Do not use unrelated `Basic` headers from tracing or observability code. In particular, `TraceManagerOtelImpl.java`, `/monitoring/v1/traces` and the **`BuildConfig.TRACING_BASIC_AUTH`** constant refer to telemetry, not OAuth login, and those headers will cause OAuth `invalid_client` errors. `TRACING_BASIC_AUTH` is especially easy to confuse because it sits in the same `BuildConfig.java` as the OAuth constants; the script skips values assigned to telemetry-named constants for exactly this reason.
 
 Never publish `credentials.json`, generated `Basic` headers, Firebase keys, access tokens, refresh tokens, usernames, or passwords.

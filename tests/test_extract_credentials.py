@@ -482,3 +482,81 @@ class TestPatternMatching:
     def test_empty_input(self, script_module):
         creds = script_module._find_credentials([])
         assert all(v == "" for v in creds.values())
+
+
+class TestUrlsFileSelection:
+    """Several modules can ship a Urls.java; only one carries the OAuth methods."""
+
+    def test_picks_the_urls_file_carrying_the_oauth_methods(
+        self, script_module, fake_oauth_decompiled, monkeypatch
+    ):
+        decoy = fake_oauth_decompiled / "sources" / "androidx" / "webkit"
+        decoy.mkdir(parents=True)
+        (decoy / "Urls.java").write_text(
+            "public final class Urls {\n"
+            '    public static final String DOCS = "https://developer.android.com";\n'
+            "}\n"
+        )
+
+        # Walk order is filesystem-dependent: force the decoy to be found first so
+        # the test fails on any implementation that just takes the first match.
+        original_rglob = Path.rglob
+
+        def decoy_first(self: Path, pattern: str, *args, **kwargs):
+            matches = original_rglob(self, pattern, *args, **kwargs)
+            return iter(sorted(matches, key=lambda match: "remoteconfig" in match.parts))
+
+        monkeypatch.setattr(Path, "rglob", decoy_first)
+
+        selected = script_module._select_oauth_candidate(
+            script_module._extract_oauth_candidates_from_source(str(fake_oauth_decompiled))
+        )
+
+        expected_payload = f"{quote_plus('prod client/id')}:{quote_plus('prod secret:with/slash')}"
+        assert selected is not None
+        assert (
+            selected.auth_basic == "Basic " + base64.b64encode(expected_payload.encode()).decode()
+        )
+        assert selected.auth_url == "https://oauth-pro-duoxme.fermax.io/oauth/token"
+
+    def test_falls_back_to_the_only_urls_file_when_none_declares_the_methods(
+        self, script_module, fake_decompiled
+    ):
+        """URLs still come from Urls.java even on layouts without the OAuth methods."""
+        content = script_module._read_urls_source(fake_decompiled)
+
+        assert "oauth-pro-duoxme.fermax.io" in content
+
+
+class TestOAuthDiagnostics:
+    """A failed extraction must say what was found, not just that it failed."""
+
+    def test_reports_a_missing_oauth_utils(self, script_module, tmp_path):
+        src = tmp_path / "sources" / "com" / "fermax" / "blue"
+        src.mkdir(parents=True)
+        (src / "Urls.java").write_text(
+            'public final class Urls {\n    String url = "https://pro-duoxme.fermax.io";\n}\n'
+        )
+
+        lines = script_module._oauth_source_diagnostics(str(tmp_path))
+
+        assert any("Urls.java: 1 found" in line for line in lines)
+        assert any("OAuthUtils.java: none found" in line for line in lines)
+        assert any("BuildConfig.java: none" in line for line in lines)
+
+    def test_reports_urls_without_the_oauth_methods(self, script_module, tmp_path):
+        src = tmp_path / "sources" / "com" / "fermax" / "blue"
+        src.mkdir(parents=True)
+        (src / "Urls.java").write_text("public final class Urls {\n}\n")
+        (src / "OAuthUtils.java").write_text("public final class OAuthUtils {\n}\n")
+
+        lines = script_module._oauth_source_diagnostics(str(tmp_path))
+
+        assert any("0 with clientId()/clientSecret()" in line for line in lines)
+        assert any("AES key: not found" in line for line in lines)
+
+    def test_reports_a_healthy_encrypted_layout(self, script_module, fake_oauth_decompiled):
+        lines = script_module._oauth_source_diagnostics(str(fake_oauth_decompiled))
+
+        assert any("1 with clientId()/clientSecret()" in line for line in lines)
+        assert any("AES key: found" in line for line in lines)
