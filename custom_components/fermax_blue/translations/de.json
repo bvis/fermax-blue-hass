@@ -154,5 +154,37 @@
         "name": "Vorschau beim Klingeln"
       }
     }
+  },
+  "exceptions": {
+    "no_active_stream": {
+      "message": "Starte zuerst die Kameravorschau: Die Türsprechanlage akzeptiert diese Aktion nur während einer laufenden Sitzung."
+    },
+    "open_door_failed": {
+      "message": "Die Türsprechanlage hat {door} nicht geöffnet. Prüfe die Verbindung und versuche es erneut."
+    },
+    "camera_preview_failed": {
+      "message": "Die Türsprechanlage hat die Kameravorschau nicht gestartet."
+    },
+    "video_source_failed": {
+      "message": "Die Türsprechanlage hat den Kamerawechsel abgelehnt."
+    },
+    "f1_failed": {
+      "message": "Die Türsprechanlage hat den F1-Befehl nicht angenommen."
+    },
+    "call_guard_failed": {
+      "message": "Die Türsprechanlage hat den Pförtner nicht angerufen."
+    },
+    "streaming_unavailable": {
+      "message": "Live-Video benötigt die optionalen Streaming-Abhängigkeiten. Starte Home Assistant neu, damit sie installiert werden."
+    },
+    "send_audio_no_input": {
+      "message": "Gib eine Audiodatei oder eine Nachricht an."
+    },
+    "send_audio_invalid_path": {
+      "message": "Die Datei {path} liegt außerhalb der erlaubten Medienordner."
+    },
+    "send_audio_tts_failed": {
+      "message": "Die Sprachnachricht konnte nicht erzeugt werden."
+    }
   }
 }

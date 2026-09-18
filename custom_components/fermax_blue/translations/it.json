@@ -154,5 +154,37 @@
         "name": "Anteprima alla chiamata"
       }
     }
+  },
+  "exceptions": {
+    "no_active_stream": {
+      "message": "Avvia prima l'anteprima della telecamera: il videocitofono accetta questa azione solo durante una sessione attiva."
+    },
+    "open_door_failed": {
+      "message": "Il videocitofono non ha aperto {door}. Verifica che sia online e riprova."
+    },
+    "camera_preview_failed": {
+      "message": "Il videocitofono non ha avviato l'anteprima della telecamera."
+    },
+    "video_source_failed": {
+      "message": "Il videocitofono ha rifiutato il cambio di telecamera."
+    },
+    "f1_failed": {
+      "message": "Il videocitofono non ha accettato il comando F1."
+    },
+    "call_guard_failed": {
+      "message": "Il videocitofono non ha chiamato il portiere."
+    },
+    "streaming_unavailable": {
+      "message": "Il video in diretta richiede le dipendenze di streaming opzionali. Riavvia Home Assistant per installarle."
+    },
+    "send_audio_no_input": {
+      "message": "Indica un file audio o un messaggio da riprodurre."
+    },
+    "send_audio_invalid_path": {
+      "message": "Il file {path} è fuori dalle cartelle multimediali consentite."
+    },
+    "send_audio_tts_failed": {
+      "message": "Non è stato possibile generare il messaggio vocale."
+    }
   }
 }
