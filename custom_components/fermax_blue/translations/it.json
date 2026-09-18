@@ -133,6 +133,9 @@
       "f1": {
         "name": "F1 ausiliario"
       },
+      "video_source": {
+        "name": "Cambia telecamera"
+      },
       "call_guard": {
         "name": "Chiama portiere"
       }

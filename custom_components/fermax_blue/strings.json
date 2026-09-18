@@ -133,6 +133,9 @@
       "f1": {
         "name": "F1 auxiliary"
       },
+      "video_source": {
+        "name": "Switch camera"
+      },
       "call_guard": {
         "name": "Call guard"
       }

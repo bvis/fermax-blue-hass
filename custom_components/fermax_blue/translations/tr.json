@@ -133,6 +133,9 @@
       "f1": {
         "name": "F1 yardımcı"
       },
+      "video_source": {
+        "name": "Kamerayı değiştir"
+      },
       "call_guard": {
         "name": "Kapıcıyı ara"
       }

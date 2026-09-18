@@ -430,6 +430,21 @@ class FermaxBlueApi:
         except httpx.HTTPStatusError:
             return False
 
+    @staticmethod
+    def _incall_payload(
+        device_id: str,
+        room_id: str | None,
+        fcm_token: str | None,
+        call_as: str | None,
+    ) -> dict[str, str | None]:
+        """Build the session context every in-call action is addressed with."""
+        return {
+            "deviceId": device_id,
+            "roomId": room_id,
+            "appTokenId": fcm_token,
+            "unitId": call_as,
+        }
+
     async def open_door_incall(
         self,
         device_id: str,
@@ -441,16 +456,46 @@ class FermaxBlueApi:
         try:
             await self._api_post(
                 "/deviceaction/api/v1/device/incall/opendoor",
-                json={
-                    "deviceId": device_id,
-                    "roomId": room_id,
-                    "appTokenId": fcm_token,
-                    "unitId": call_as,
-                },
+                json=self._incall_payload(device_id, room_id, fcm_token, call_as),
             )
             return True
         except httpx.HTTPStatusError:
             return False
+
+    async def press_f1_incall(
+        self,
+        device_id: str,
+        room_id: str | None = None,
+        fcm_token: str | None = None,
+        call_as: str | None = None,
+    ) -> bool:
+        """Press F1 during an active call/stream session."""
+        try:
+            await self._api_post(
+                "/deviceaction/api/v1/device/incall/f1",
+                json=self._incall_payload(device_id, room_id, fcm_token, call_as),
+            )
+            return True
+        except httpx.HTTPStatusError:
+            return False
+
+    async def change_video_source_incall(
+        self,
+        device_id: str,
+        room_id: str | None = None,
+        fcm_token: str | None = None,
+        call_as: str | None = None,
+    ) -> DivertResponse | None:
+        """Switch to the next video source during an active call/stream session."""
+        try:
+            response = await self._api_post(
+                "/deviceaction/api/v1/device/incall/changevideosource",
+                json=self._incall_payload(device_id, room_id, fcm_token, call_as),
+            )
+        except httpx.HTTPStatusError:
+            return None
+
+        return self._parse_divert_response(response.json())
 
     async def get_call_log(self, fcm_token: str) -> list[CallLogEntry]:
         """Get call log entries."""
@@ -548,7 +593,11 @@ class FermaxBlueApi:
         except httpx.HTTPStatusError:
             return None
 
-        data = response.json()
+        return self._parse_divert_response(response.json())
+
+    @staticmethod
+    def _parse_divert_response(data: dict) -> DivertResponse:
+        """Build a DivertResponse from a divert-style payload."""
         return DivertResponse(
             reason=data.get("reason", ""),
             divert_service=data.get("divertService", ""),

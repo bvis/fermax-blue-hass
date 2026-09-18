@@ -133,6 +133,9 @@
       "f1": {
         "name": "F1 pomocniczy"
       },
+      "video_source": {
+        "name": "Przełącz kamerę"
+      },
       "call_guard": {
         "name": "Zadzwoń do portiera"
       }

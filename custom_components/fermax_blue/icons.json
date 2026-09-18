@@ -71,6 +71,9 @@
       "f1": {
         "default": "mdi:gesture-tap-button"
       },
+      "video_source": {
+        "default": "mdi:camera-switch"
+      },
       "call_guard": {
         "default": "mdi:shield-account"
       }

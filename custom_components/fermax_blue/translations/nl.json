@@ -133,6 +133,9 @@
       "f1": {
         "name": "F1 hulpknop"
       },
+      "video_source": {
+        "name": "Camera wisselen"
+      },
       "call_guard": {
         "name": "Portier bellen"
       }

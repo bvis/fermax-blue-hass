@@ -105,6 +105,7 @@ def coordinator(mock_hass, mock_api, pairing):
         coord.hass = mock_hass
         coord.device_info = None
         coord.notification_listener = None
+        coord._stream_session = None
         coord._last_photo = None
         coord._last_photo_id = None
         coord._doorbell_ringing = False
@@ -417,6 +418,81 @@ class TestOpenDoorFallback:
         with patch("custom_components.fermax_blue.coordinator.async_dispatcher_send"):
             assert await coordinator.open_door() is True
         mock_api.open_door_incall.assert_not_called()
+
+
+class TestInCallActionRouting:
+    """F1 and video source switching follow the stream, like door opening does."""
+
+    def _active_session(self, coordinator):
+        session = MagicMock()
+        session.is_active = True
+        session._room_id = "room1"
+        coordinator._stream_session = session
+
+    @pytest.mark.asyncio
+    async def test_f1_uses_the_incall_endpoint_during_a_stream(self, coordinator, mock_api):
+        self._active_session(coordinator)
+        mock_api.press_f1_incall = AsyncMock(return_value=True)
+
+        await coordinator.press_f1()
+
+        mock_api.press_f1_incall.assert_awaited_once()
+        assert mock_api.press_f1_incall.await_args.kwargs["room_id"] == "room1"
+        mock_api.press_f1.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_f1_falls_back_when_the_incall_call_fails(self, coordinator, mock_api):
+        self._active_session(coordinator)
+        mock_api.press_f1_incall = AsyncMock(return_value=False)
+
+        await coordinator.press_f1()
+
+        mock_api.press_f1_incall.assert_awaited_once()
+        mock_api.press_f1.assert_awaited_once_with("dev1")
+
+    @pytest.mark.asyncio
+    async def test_f1_uses_the_standard_endpoint_without_a_stream(self, coordinator, mock_api):
+        coordinator._stream_session = None
+        mock_api.press_f1_incall = AsyncMock(return_value=True)
+
+        await coordinator.press_f1()
+
+        mock_api.press_f1_incall.assert_not_called()
+        mock_api.press_f1.assert_awaited_once_with("dev1")
+
+    @pytest.mark.asyncio
+    async def test_video_source_uses_the_incall_endpoint_during_a_stream(
+        self, full_coordinator, mock_api
+    ):
+        self._active_session(full_coordinator)
+        divert = DivertResponse(
+            reason="", divert_service="blueStream", code=1, description="", directed_to=""
+        )
+        mock_api.change_video_source_incall = AsyncMock(return_value=divert)
+
+        assert await full_coordinator.change_video_source() is divert
+
+        mock_api.change_video_source_incall.assert_awaited_once()
+        mock_api.change_video_source.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_video_source_falls_back_when_the_incall_call_fails(
+        self, full_coordinator, mock_api
+    ):
+        self._active_session(full_coordinator)
+        listener = MagicMock()
+        listener.fcm_token = "tok"
+        full_coordinator.notification_listener = listener
+        divert = DivertResponse(
+            reason="", divert_service="blueStream", code=1, description="", directed_to=""
+        )
+        mock_api.change_video_source_incall = AsyncMock(return_value=None)
+        mock_api.change_video_source = AsyncMock(return_value=divert)
+
+        assert await full_coordinator.change_video_source() is divert
+
+        mock_api.change_video_source_incall.assert_awaited_once()
+        mock_api.change_video_source.assert_awaited_once()
 
 
 class TestCoordinatorScanInterval:

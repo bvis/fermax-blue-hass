@@ -259,6 +259,36 @@ class TestF1Button:
         mock_coordinator.press_f1.assert_called_once()
 
 
+class TestVideoSourceButton:
+    """Test the video source switch button."""
+
+    def test_video_source_unique_id(self, mock_coordinator):
+        from custom_components.fermax_blue.button import FermaxVideoSourceButton
+
+        button = FermaxVideoSourceButton(mock_coordinator)
+        assert button.unique_id == "test_dev_video_source"
+
+    @pytest.mark.asyncio
+    async def test_video_source_press(self, mock_coordinator):
+        from custom_components.fermax_blue.button import FermaxVideoSourceButton
+
+        mock_coordinator.change_video_source = AsyncMock(return_value=MagicMock(description="ok"))
+        button = FermaxVideoSourceButton(mock_coordinator)
+
+        await button.async_press()
+        mock_coordinator.change_video_source.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_video_source_press_failure_is_logged(self, mock_coordinator):
+        from custom_components.fermax_blue.button import FermaxVideoSourceButton
+
+        mock_coordinator.change_video_source = AsyncMock(return_value=None)
+        button = FermaxVideoSourceButton(mock_coordinator)
+
+        await button.async_press()
+        mock_coordinator.change_video_source.assert_called_once()
+
+
 class TestCallGuardButton:
     """Test Call Guard button."""
 
@@ -783,7 +813,7 @@ class TestCameraPreviewButton:
         mock_coordinator.start_camera_preview.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_setup_entry_creates_a_button_per_door_plus_the_fixed_three(
+    async def test_setup_entry_creates_a_button_per_door_plus_the_fixed_four(
         self, mock_coordinator
     ):
         from custom_components.fermax_blue.button import async_setup_entry
@@ -803,6 +833,7 @@ class TestCameraPreviewButton:
             "test_dev_call_guard",
             "test_dev_camera_preview",
             "test_dev_f1",
+            "test_dev_video_source",
         ]
 
 

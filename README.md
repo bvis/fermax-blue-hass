@@ -19,6 +19,7 @@ This integration simulates a Fermax Blue mobile app client, connecting to the Fe
 - **Door opening** — Open your building's door remotely (lock entity + button)
 - **On-demand camera** — Triggers the intercom camera without a doorbell ring via auto-on
 - **F1 auxiliary button** — Trigger the intercom's F1 function
+- **Switch camera** — Step through the cameras of multi-camera installations, during a live stream or outside one
 - **Call guard** — Call the building's guard/janitor
 - **Do Not Disturb** — Toggle DND mode per device (useful for night automations)
 - **Photo caller control** — Enable/disable automatic visitor photo capture
@@ -195,6 +196,7 @@ For each paired intercom device, the integration creates:
 | `button.<name>_<door>_open` | Button | One-press door opening |
 | `button.<name>_camera_preview` | Button | Start camera preview / live stream |
 | `button.<name>_f1` | Button | F1 auxiliary function |
+| `button.<name>_video_source` | Button | Switch the intercom to the next camera |
 | `button.<name>_call_guard` | Button | Call the building's guard/janitor |
 | `sensor.<name>_wifi_signal` | Sensor | WiFi signal strength (0-4 bars) |
 | `sensor.<name>_status` | Sensor | Device activation status |
@@ -407,8 +409,8 @@ Features available in the Fermax Blue mobile app that are not yet implemented:
 | Feature | Complexity | Description |
 |---------|-----------|-------------|
 | ~~**Two-way audio**~~ | ~~High~~ | ✅ Implemented — Send audio via `fermax_blue.send_audio` service (file or TTS), auto-response on doorbell configurable in options |
-| **Switch camera during call** | Low | Switch between cameras on multi-camera intercoms (`/device/incall/changevideosource`) |
-| **F1 during active call** | Low | Trigger the F1 auxiliary function while a stream is active (`/device/incall/f1`) |
+| ~~**Switch camera during call**~~ | ~~Low~~ | ✅ Implemented — `button.<name>_video_source`, addressed to the active session while a stream is up |
+| ~~**F1 during active call**~~ | ~~Low~~ | ✅ Implemented — the F1 button follows the stream automatically |
 | **Guest management** | Medium | Add, remove, and authorize guest users for the intercom via the API |
 | **Delete call history** | Low | Clear call log entries (`DELETE /callmanager/api/v1/callregistry/participants`) |
 | **Delete opening history** | Low | Clear door opening records (`DELETE /rexistro/api/v1/opendoorregistry`) |

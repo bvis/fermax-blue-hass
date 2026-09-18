@@ -133,6 +133,9 @@
       "f1": {
         "name": "F1 Hilfstaste"
       },
+      "video_source": {
+        "name": "Kamera wechseln"
+      },
       "call_guard": {
         "name": "Pförtner rufen"
       }
