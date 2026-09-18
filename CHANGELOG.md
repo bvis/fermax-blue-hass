@@ -3,9 +3,9 @@
 ## [Unreleased]
 
 ### Fixed
-- **Credential extraction picks the right `Urls.java`** (#71) — a decompiled APK can contain several files named `Urls.java` (library modules ship their own), and `scripts/extract_credentials.py` read whichever one the directory walk happened to yield first. When that was not the Fermax one, the OAuth accessors were missing, the encrypted layout produced no candidate, and the run ended with `fermax_auth_basic` empty even though the credentials were right there. The script now selects the file that declares `clientId()` / `clientSecret()`, and falls back to one carrying URLs so the environment endpoints are still detected.
-- **An unverified `Basic` literal is no longer reported as a credential** (#71) — run against a bare `.apk`, the script fell back to a generic string scan, found some `Basic` literal in the binary and reported `8/8 credentials found` / `All credentials found`, writing it to `credentials.json` behind a warning that was easy to miss. Verified against app 4.4.0: that header is not the OAuth client, and the login endpoint answers `401 invalid_client` for it while the one read from `BuildConfig.java` is accepted. The scan result is now named and explained but never counted as found nor saved, so the run reports `fermax_auth_basic` as missing and points at the JADX route.
-- **A failed OAuth extraction now says what it found** — instead of a bare `Not found or decryption failed`, the script reports how many `Urls.java` files exist and how many declare the OAuth accessors, whether `OAuthUtils.java` and its AES key were found, and whether any `BuildConfig.java` carries `OAUTH_CLIENT_ID` / `OAUTH_CLIENT_SECRET`. This distinguishes a new app layout from the much more common case of running the script against the `.apk` instead of the JADX output directory.
+- **Credential extraction picks the right `Urls.java`** (#71) — the app sources can contain several files named `Urls.java` (library modules ship their own), and `scripts/extract_credentials.py` read whichever one the directory walk happened to yield first. When that was not the Fermax one, the OAuth accessors were missing, the encrypted layout produced no candidate, and the run ended with `fermax_auth_basic` empty even though the credentials were right there. The script now selects the file that declares `clientId()` / `clientSecret()`, and falls back to one carrying URLs so the environment endpoints are still detected.
+- **An unverified `Basic` literal is no longer reported as a credential** (#71) — run against a bare `.apk`, the script fell back to a generic string scan, found some `Basic` literal in the binary and reported `8/8 credentials found` / `All credentials found`, writing it to `credentials.json` behind a warning that was easy to miss. Verified against app 4.4.0: that header is not the OAuth client, and the login endpoint answers `401 invalid_client` for it while the one read from `BuildConfig.java` is accepted. The scan result is now named and explained but never counted as found nor saved, so the run reports `fermax_auth_basic` as missing and points at the sources route.
+- **A failed OAuth extraction now says what it found** — instead of a bare `Not found or decryption failed`, the script reports how many `Urls.java` files exist and how many declare the OAuth accessors, whether `OAuthUtils.java` and its key were found, and whether any `BuildConfig.java` carries `OAUTH_CLIENT_ID` / `OAUTH_CLIENT_SECRET`. This distinguishes a new app layout from the much more common case of running the script against the app package instead of the sources directory.
 
 ## [0.19.1] - 2026-08-20
 
@@ -16,7 +16,7 @@
 
 ### Added
 - **Still previews are stamped with a SNAPSHOT badge** (#51) — after a stream ends, and when a doorbell ring fetches the visitor photo, the camera keeps showing a static frame; that preview now carries a `SNAPSHOT HH:MM:SS` badge so it is not mistaken for live video. Only the preview is stamped: the copies saved to `/media` and the frame persisted for restarts stay clean, so a preview restored after a Home Assistant restart never shows a stale timestamp from a previous session. Contributed by @RazorMeister.
-- **Credential extraction supports APK 4.3.4+** (#52) — newer app builds store the OAuth credentials as plaintext `BuildConfig` constants instead of the encrypted byte arrays of 4.3.0, so `scripts/extract_credentials.py` fell through to a generic scan that could pick up the telemetry `TRACING_BASIC_AUTH` header instead (the failure mode behind #33). The script now reads the `BuildConfig` constants directly and skips `Basic` literals assigned to tracing/monitoring constants.
+- **Credential extraction supports app 4.3.4+** (#52) — newer app builds store the OAuth credentials as plaintext `BuildConfig` constants instead of the encrypted constants of 4.3.0, so `scripts/extract_credentials.py` fell through to a generic scan that could pick up the telemetry `TRACING_BASIC_AUTH` header instead (the failure mode behind #33). The script now reads the `BuildConfig` constants directly and skips `Basic` literals assigned to tracing/monitoring constants.
 
 ### Fixed
 - **LIVE badge no longer shows a placeholder box** (#51) — the recording indicator dot (`●`) has no glyph in the only font available inside the Home Assistant container, so the live overlay rendered a tofu box (`□`). The dot is now drawn as a shape, and the badge background is sized to its text instead of a fixed width. Contributed by @RazorMeister.
@@ -146,7 +146,7 @@
 - **CI workflow permissions** — added `permissions: contents: read` to GitHub Actions workflow
 
 ### Fixed (scripts)
-- `extract_credentials.py` — regex end-anchor fix captures PRO environment arrays after `NoWhenBranch` throw; local Byte variable resolution replaces hardcoded heuristics; Android `strings.xml` parsing for JADX-decompiled directories; `base_url` derivation from `auth_url`
+- `extract_credentials.py` — regex end-anchor fix captures PRO environment arrays after `NoWhenBranch` throw; local Byte variable resolution replaces hardcoded heuristics; Android `strings.xml` parsing for app sources directories; `base_url` derivation from `auth_url`
 
 ## [0.15.0] - 2026-04-09
 
@@ -196,7 +196,7 @@
 - Removed all obfuscated/hardcoded credential constants from `const.py`
 
 ### Added
-- `scripts/extract_credentials.py` — extracts Firebase credentials from the APK and attempts AES decryption of OAuth credentials from decompiled source
+- `scripts/extract_credentials.py` — extracts Firebase credentials from the app package and reads the OAuth credentials from the app sources
 - `credentials.example.json` template for reference
 - `make extract-credentials APK=<path>` Makefile target
 - Comprehensive documentation on how to obtain credentials, including community sources for the OAuth client

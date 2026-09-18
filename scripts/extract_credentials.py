@@ -3,7 +3,7 @@
 
 Usage:
     python scripts/extract_credentials.py /path/to/fermax-blue.apk
-    python scripts/extract_credentials.py /path/to/decompiled-dir/
+    python scripts/extract_credentials.py /path/to/app-sources-dir/
     python scripts/extract_credentials.py --client-id <ID> --client-secret <SECRET>
 
 Extracts:
@@ -102,8 +102,8 @@ def _extract_strings_from_dex(apk_path: str) -> list[str]:
     return strings
 
 
-def _search_decompiled_dir(dir_path: str) -> list[str]:
-    """Collect relevant strings from a decompiled source directory."""
+def _search_sources_dir(dir_path: str) -> list[str]:
+    """Collect relevant strings from an app sources directory."""
     strings: list[str] = []
     root = Path(dir_path)
 
@@ -185,7 +185,7 @@ def _parse_java_byte_list(byte_list_str: str) -> bytes:
 
 
 def _read_java_source(java_file: Path) -> str:
-    """Read a decompiled Java file, treating an unreadable one as empty."""
+    """Read a Java source file, treating an unreadable one as empty."""
     try:
         return java_file.read_text(errors="ignore")
     except OSError:
@@ -207,7 +207,7 @@ def _find_oauth_aes_key(root: Path) -> bytes | None:
 
 
 def _read_urls_source(root: Path) -> str:
-    """Read the decompiled Urls.java source if present.
+    """Read the Urls.java source if present.
 
     Library modules ship their own Urls.java, and the directory walk order is
     filesystem-dependent, so the file carrying the OAuth accessors wins over
@@ -435,7 +435,7 @@ def _encrypted_oauth_candidates(
 
 
 def _extract_oauth_candidates_from_source(dir_path: str) -> list[OAuthCredentialCandidate]:
-    """Build OAuth Basic candidates from decompiled source.
+    """Build OAuth Basic candidates from the app sources.
 
     Prefers the encrypted OAuthUtils + Urls.java layout (APK <= 4.3.0) and
     falls back to the plaintext BuildConfig constants introduced in 4.3.4.
@@ -509,7 +509,7 @@ def _oauth_source_diagnostics(dir_path: str) -> list[str]:
 
 
 def _extract_oauth_from_source(dir_path: str) -> str:
-    """Return the best generated OAuth Basic header from decompiled source."""
+    """Return the best generated OAuth Basic header from the app sources."""
     candidate = _select_oauth_candidate(_extract_oauth_candidates_from_source(dir_path))
     return candidate.auth_basic if candidate else ""
 
@@ -610,7 +610,7 @@ def _find_credentials(strings: list[str]) -> dict[str, str]:
 def _search_android_strings_xml(path: str) -> dict[str, str]:
     """Extract Firebase credentials from Android res/values/strings.xml.
 
-    JADX places compiled Android resources under resources/res/values/.
+    Extracted Android resources live under resources/res/values/.
     The Firebase SDK embeds its config there (google_app_id, project_id,
     gcm_defaultSenderId, google_api_key) as named string resources.
     """
@@ -712,11 +712,11 @@ def main() -> None:
         sys.exit(0)
 
     if not args:
-        print(f"Usage: {sys.argv[0]} <path-to-fermax-blue.apk-or-decompiled-dir>")
+        print(f"Usage: {sys.argv[0]} <path-to-fermax-blue.apk-or-sources-dir>")
         print(f"   or: {sys.argv[0]} --client-id <ID> --client-secret <SECRET>")
         print()
         print("Extracts API and Firebase credentials from the Fermax Blue APK.")
-        print("Accepts either an .apk file or a decompiled directory (JADX/apktool).")
+        print("Accepts either an .apk file or an app sources directory.")
         print("With --client-id/--client-secret it only builds the Basic auth header")
         print("from OAuth values you already have.")
         print("Output: credentials.json")
@@ -743,9 +743,9 @@ def main() -> None:
         print(f"    Found {len(dex_strings)} strings")
 
     elif target_path.is_dir():
-        # Decompiled directory
-        print("  Scanning decompiled source files...")
-        all_strings.extend(_search_decompiled_dir(target))
+        # App sources directory
+        print("  Scanning app source files...")
+        all_strings.extend(_search_sources_dir(target))
         print(f"    Found {len(all_strings)} string literals")
 
     else:
@@ -758,7 +758,7 @@ def main() -> None:
     if gs_creds:
         print(f"    Found {sum(1 for v in gs_creds.values() if v)} Firebase values")
 
-    # Try Android strings.xml (present in JADX-decompiled directories)
+    # Try Android strings.xml (present in app sources directories)
     print("  Looking for Android strings.xml resources...")
     xml_creds = _search_android_strings_xml(target)
     if xml_creds:
@@ -786,16 +786,16 @@ def main() -> None:
             creds[k] = v
 
     # Try to decrypt OAuth credentials from OAuthUtils.java (AES-encrypted)
-    decompiled_dir = target if target_path.is_dir() else None
-    if not decompiled_dir and target_path.is_file():
-        # Check for a pre-existing decompiled dir next to the APK
+    sources_dir = target if target_path.is_dir() else None
+    if not sources_dir and target_path.is_file():
+        # Check for a pre-existing sources dir next to the app package
         possible = Path(target).with_suffix("")
         if possible.is_dir() and (possible / "sources").is_dir():
-            decompiled_dir = str(possible)
+            sources_dir = str(possible)
 
-    if decompiled_dir:
+    if sources_dir:
         print("  Reading OAuth credentials from source...")
-        oauth_candidates = _extract_oauth_candidates_from_source(decompiled_dir)
+        oauth_candidates = _extract_oauth_candidates_from_source(sources_dir)
         oauth_candidate = _select_oauth_candidate(oauth_candidates)
         if oauth_candidate:
             creds["fermax_auth_basic"] = oauth_candidate.auth_basic
@@ -810,7 +810,7 @@ def main() -> None:
                 print(f"    Found {len(oauth_candidates)} OAuth environments: {labels}")
         else:
             print("    Not found or decryption failed")
-            for line in _oauth_source_diagnostics(decompiled_dir):
+            for line in _oauth_source_diagnostics(sources_dir):
                 print(f"      {line}")
 
     # Report
@@ -838,7 +838,7 @@ def main() -> None:
         print("  credential and was not saved. APKs carry unrelated Basic headers for")
         print("  tracing/monitoring (TraceManagerOtelImpl, /monitoring/v1/traces, the")
         print("  TRACING_BASIC_AUTH constant), and the login endpoint answers")
-        print("  'invalid_client' for those. Decompile with JADX and run this script")
+        print("  'invalid_client' for those. Extract the app sources and run this script")
         print("  against the output directory: it reads OAuthUtils.java +")
         print("  Urls.clientId()/clientSecret() (APK <= 4.3.0) or the")
         print("  OAUTH_CLIENT_ID/OAUTH_CLIENT_SECRET constants in BuildConfig.java")
@@ -848,7 +848,7 @@ def main() -> None:
         missing = [k for k, v in creds.items() if not v]
         print()
         print(f"Missing: {', '.join(missing)}")
-        print("Try decompiling with JADX and running against the output directory.")
+        print("Try running the script against the app sources directory instead.")
         print("See README.md for manual extraction instructions.")
 
     # Write output
