@@ -413,13 +413,16 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
 
         # Start video stream based on call mode:
         # - Autoon (camera preview button): always start stream
+        # - ChangeVideoSource (switch camera): the panel tears the current room
+        #   down and announces a new one, so the stream has to follow it or the
+        #   camera goes idle right after switching
         # - Call (doorbell): depends on call_mode setting; with the ring
         #   preview option a receive-only stream starts even in notify mode,
         #   showing the current visitor without answering the call
         room_id = data.get("RoomId")
         attend = notification_type == "Call" and self._call_mode != CALL_MODE_NOTIFY
         should_stream = room_id and (
-            notification_type == "Autoon"
+            notification_type in ("Autoon", "ChangeVideoSource")
             or attend
             or (notification_type == "Call" and self._ring_preview)
         )

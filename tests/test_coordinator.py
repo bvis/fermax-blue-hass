@@ -994,6 +994,28 @@ class TestHandleNotification:
         dispatch.assert_not_called()  # no doorbell ring signal for auto-on
         mock_api.ack_notification.assert_called_once_with("auto1", is_call=False)
 
+    def test_change_video_source_push_follows_the_new_room(self, full_coordinator, mock_api):
+        """Switching camera hands us a new room; the stream has to follow it."""
+        _close_coro_tasks(full_coordinator)
+        full_coordinator._start_stream = MagicMock()
+
+        dispatch, _ = self._fire(
+            full_coordinator,
+            {
+                "FermaxNotificationType": "ChangeVideoSource",
+                "RoomId": "room_switched",
+                "SocketUrl": "https://signaling-pro-duoxme.fermax.io",
+                "FermaxToken": "ftok",
+            },
+            persistent_id="cvs1",
+        )
+
+        assert full_coordinator._start_stream.call_args.args[0] == "room_switched"
+        assert full_coordinator._start_stream.call_args.kwargs["receive_only"] is False
+        assert full_coordinator.doorbell_ringing is False
+        dispatch.assert_not_called()  # switching camera is not a doorbell ring
+        mock_api.ack_notification.assert_called_once_with("cvs1", is_call=False)
+
     def test_auto_respond_mode_schedules_response(self, full_coordinator):
         _close_coro_tasks(full_coordinator)
         full_coordinator.call_mode = CALL_MODE_AUTO_RESPOND
