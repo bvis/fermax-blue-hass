@@ -154,5 +154,37 @@
         "name": "Podgląd przy dzwonku"
       }
     }
+  },
+  "exceptions": {
+    "no_active_stream": {
+      "message": "Najpierw uruchom podgląd kamery: domofon przyjmuje tę akcję tylko podczas trwającej sesji."
+    },
+    "open_door_failed": {
+      "message": "Domofon nie otworzył {door}. Sprawdź połączenie i spróbuj ponownie."
+    },
+    "camera_preview_failed": {
+      "message": "Domofon nie uruchomił podglądu kamery."
+    },
+    "video_source_failed": {
+      "message": "Domofon odrzucił zmianę kamery."
+    },
+    "f1_failed": {
+      "message": "Domofon nie przyjął polecenia F1."
+    },
+    "call_guard_failed": {
+      "message": "Domofon nie wykonał połączenia z portierem."
+    },
+    "streaming_unavailable": {
+      "message": "Wideo na żywo wymaga opcjonalnych zależności streamingu. Uruchom ponownie Home Assistant, aby je zainstalować."
+    },
+    "send_audio_no_input": {
+      "message": "Podaj plik audio albo wiadomość do odczytania."
+    },
+    "send_audio_invalid_path": {
+      "message": "Plik {path} znajduje się poza dozwolonymi folderami multimediów."
+    },
+    "send_audio_tts_failed": {
+      "message": "Nie udało się wygenerować wiadomości głosowej."
+    }
   }
 }

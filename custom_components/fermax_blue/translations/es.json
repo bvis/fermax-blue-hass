@@ -154,5 +154,37 @@
         "name": "Vista previa al llamar"
       }
     }
+  },
+  "exceptions": {
+    "no_active_stream": {
+      "message": "Inicia primero la vista de cámara: el videoportero solo acepta esta acción mientras hay una sesión en directo."
+    },
+    "open_door_failed": {
+      "message": "El videoportero no abrió {door}. Comprueba que está conectado e inténtalo de nuevo."
+    },
+    "camera_preview_failed": {
+      "message": "El videoportero no inició la vista de cámara."
+    },
+    "video_source_failed": {
+      "message": "El videoportero rechazó el cambio de cámara."
+    },
+    "f1_failed": {
+      "message": "El videoportero no aceptó el comando F1."
+    },
+    "call_guard_failed": {
+      "message": "El videoportero no realizó la llamada al portero."
+    },
+    "streaming_unavailable": {
+      "message": "El vídeo en directo necesita las dependencias opcionales de streaming. Reinicia Home Assistant para que las instale."
+    },
+    "send_audio_no_input": {
+      "message": "Indica un archivo de audio o un mensaje para reproducir."
+    },
+    "send_audio_invalid_path": {
+      "message": "El archivo {path} está fuera de las carpetas multimedia permitidas."
+    },
+    "send_audio_tts_failed": {
+      "message": "No se pudo generar el mensaje de voz."
+    }
   }
 }

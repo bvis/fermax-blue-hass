@@ -154,5 +154,37 @@
         "name": "Zil önizlemesi"
       }
     }
+  },
+  "exceptions": {
+    "no_active_stream": {
+      "message": "Önce kamera önizlemesini başlat: interkom bu işlemi yalnızca canlı oturum sırasında kabul eder."
+    },
+    "open_door_failed": {
+      "message": "İnterkom {door} kapısını açmadı. Bağlı olduğunu doğrulayıp tekrar dene."
+    },
+    "camera_preview_failed": {
+      "message": "İnterkom kamera önizlemesini başlatmadı."
+    },
+    "video_source_failed": {
+      "message": "İnterkom kamera değişikliğini reddetti."
+    },
+    "f1_failed": {
+      "message": "İnterkom F1 komutunu kabul etmedi."
+    },
+    "call_guard_failed": {
+      "message": "İnterkom kapıcıyı aramadı."
+    },
+    "streaming_unavailable": {
+      "message": "Canlı video, isteğe bağlı yayın bağımlılıklarını gerektirir. Kurulmaları için Home Assistant'ı yeniden başlat."
+    },
+    "send_audio_no_input": {
+      "message": "Bir ses dosyası veya seslendirilecek bir mesaj belirt."
+    },
+    "send_audio_invalid_path": {
+      "message": "{path} dosyası izin verilen medya klasörlerinin dışında."
+    },
+    "send_audio_tts_failed": {
+      "message": "Sesli mesaj oluşturulamadı."
+    }
   }
 }

@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Changed
+- **Failed actions now reach the user instead of only the log** — every button, the lock, the camera's live view and the `fermax_blue.send_audio` service used to swallow failures behind an `ERROR` line nobody sees: the press looked successful and nothing happened. They now raise, with messages translated into the ten supported languages. Preconditions the user can fix (switching camera or sending audio with no live session, `send_audio` without a file or message, a path outside the allowed media folders) raise `ServiceValidationError`; failures coming from the intercom or the API raise `HomeAssistantError`. Automations calling these actions now fail loudly instead of silently doing nothing — add `continue_on_error: true` to keep the previous behaviour.
+
 ### Added
 - **Switch camera button, and in-call routing for it and F1** (#74) — installations whose panel exposes more than one camera can now step through them from Home Assistant with the new `button.<name>_video_source`. The underlying call existed since the first release but no entity ever reached it. Both this action and the existing F1 button now follow the stream: while a live session is up they are addressed to that session (`/device/incall/changevideosource`, `/device/incall/f1`), exactly like door opening already did, and fall back to the standard endpoint if the in-call attempt fails. Translated into the ten supported languages.
 

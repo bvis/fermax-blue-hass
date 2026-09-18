@@ -9,6 +9,7 @@ from aiohttp import web
 from homeassistant.components.camera import Camera
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
@@ -145,18 +146,16 @@ class FermaxCamera(FermaxBlueEntity, Camera):
     async def async_turn_on(self) -> None:
         """Start live camera stream via auto-on + mediasoup."""
         if not streaming_deps_available():
-            _LOGGER.warning(
-                "Live video is unavailable for %s: optional streaming "
-                "dependencies (pymediasoup/aiortc) are not installed",
-                self.entity_id,
+            raise HomeAssistantError(
+                translation_domain=DOMAIN, translation_key="streaming_unavailable"
             )
-            return
 
         result = await self.coordinator.start_camera_preview()
-        if result:
-            _LOGGER.info("Camera auto-on started: %s", result.description)
-        else:
-            _LOGGER.error("Failed to start camera auto-on")
+        if not result:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN, translation_key="camera_preview_failed"
+            )
+        _LOGGER.info("Camera auto-on started: %s", result.description)
 
     async def async_turn_off(self) -> None:
         """Stop live camera stream."""
