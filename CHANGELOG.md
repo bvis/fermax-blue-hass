@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.20.0-beta.1] - 2026-09-18
 
 ### Added
 - **Switch camera button, and in-call routing for it and F1** (#74) — installations whose panel exposes more than one camera can now step through them from Home Assistant with the new `button.<name>_video_source`. The underlying call existed since the first release but no entity ever reached it. Both this action and the existing F1 button now follow the stream: while a live session is up they are addressed to that session (`/device/incall/changevideosource`, `/device/incall/f1`), exactly like door opening already did, and fall back to the standard endpoint if the in-call attempt fails. Translated into the ten supported languages.
