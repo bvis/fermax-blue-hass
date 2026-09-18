@@ -337,6 +337,66 @@ class TestDoorControl:
         assert result is False
 
 
+class TestInCallActions:
+    """F1 and video source switching while a call/stream is up."""
+
+    @pytest.mark.asyncio
+    async def test_press_f1_incall_sends_the_session_context(self, authenticated_api):
+        resp = _mock_response(200, text="ok")
+        with patch("httpx.AsyncClient.post", return_value=resp) as mock_post:
+            result = await authenticated_api.press_f1_incall(
+                "dev1", room_id="room_123", fcm_token="tok", call_as="dev1"
+            )
+
+        assert result is True
+        url = mock_post.call_args.args[0]
+        body = mock_post.call_args.kwargs.get("json", {})
+        assert url.endswith("/deviceaction/api/v1/device/incall/f1")
+        assert body == {
+            "deviceId": "dev1",
+            "roomId": "room_123",
+            "appTokenId": "tok",
+            "unitId": "dev1",
+        }
+
+    @pytest.mark.asyncio
+    async def test_press_f1_incall_failure(self, authenticated_api):
+        resp = _mock_response(500, text="error")
+        with patch("httpx.AsyncClient.post", return_value=resp):
+            assert await authenticated_api.press_f1_incall("dev1") is False
+
+    @pytest.mark.asyncio
+    async def test_change_video_source_incall_returns_divert(self, authenticated_api):
+        resp = _mock_response(
+            200,
+            json={
+                "reason": "source_changed",
+                "divertService": "blueStream",
+                "code": 1.0,
+                "description": "Video source changed",
+                "directedTo": "fcm_token_123",
+            },
+        )
+        with patch("httpx.AsyncClient.post", return_value=resp) as mock_post:
+            result = await authenticated_api.change_video_source_incall(
+                "dev1", room_id="room_123", fcm_token="tok", call_as="dev1"
+            )
+
+        url = mock_post.call_args.args[0]
+        body = mock_post.call_args.kwargs.get("json", {})
+        assert url.endswith("/deviceaction/api/v1/device/incall/changevideosource")
+        assert body["roomId"] == "room_123"
+        assert result is not None
+        assert result.divert_service == "blueStream"
+        assert result.directed_to == "fcm_token_123"
+
+    @pytest.mark.asyncio
+    async def test_change_video_source_incall_failure(self, authenticated_api):
+        resp = _mock_response(500, text="error")
+        with patch("httpx.AsyncClient.post", return_value=resp):
+            assert await authenticated_api.change_video_source_incall("dev1") is None
+
+
 class TestAutoOn:
     """Test camera preview (auto-on)."""
 

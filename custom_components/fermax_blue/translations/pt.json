@@ -133,6 +133,9 @@
       "f1": {
         "name": "F1 auxiliar"
       },
+      "video_source": {
+        "name": "Mudar câmera"
+      },
       "call_guard": {
         "name": "Chamar porteiro"
       }

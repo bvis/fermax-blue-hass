@@ -30,6 +30,7 @@ async def async_setup_entry(
             entities.append(FermaxOpenDoorButton(coordinator, door_name, door.title))
         entities.append(FermaxCameraPreviewButton(coordinator))
         entities.append(FermaxF1Button(coordinator))
+        entities.append(FermaxVideoSourceButton(coordinator))
         entities.append(FermaxCallGuardButton(coordinator))
 
     async_add_entities(entities)
@@ -90,6 +91,24 @@ class FermaxF1Button(FermaxBlueEntity, ButtonEntity):
     async def async_press(self) -> None:
         """Press F1."""
         await self.coordinator.press_f1()
+
+
+class FermaxVideoSourceButton(FermaxBlueEntity, ButtonEntity):
+    """Button to switch the intercom to the next video source."""
+
+    _attr_translation_key = "video_source"
+
+    def __init__(self, coordinator: FermaxBlueCoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{self._device_id}_video_source"
+
+    async def async_press(self) -> None:
+        """Switch to the next video source."""
+        result = await self.coordinator.change_video_source()
+        if result:
+            _LOGGER.info("Video source changed: %s", result.description)
+        else:
+            _LOGGER.error("Failed to change video source")
 
 
 class FermaxCallGuardButton(FermaxBlueEntity, ButtonEntity):

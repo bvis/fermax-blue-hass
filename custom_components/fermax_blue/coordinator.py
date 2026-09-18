@@ -565,8 +565,37 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
 
         return result
 
+    def _incall_context(self) -> dict[str, str | None] | None:
+        """Session context for in-call actions, or None when no stream is up."""
+        if not self._stream_session or not self._stream_session.is_active:
+            return None
+
+        return {
+            "room_id": self._stream_session._room_id,
+            "fcm_token": (
+                self.notification_listener.fcm_token if self.notification_listener else None
+            ),
+            "call_as": self.pairing.device_id,
+        }
+
     async def change_video_source(self) -> DivertResponse | None:
-        """Request a video source change on the intercom."""
+        """Switch the intercom to the next video source.
+
+        Mirrors open_door: while a stream is up the intercom only accepts the
+        action addressed to that session, so the in-call endpoint is tried first
+        and the standard one is the fallback.
+        """
+        context = self._incall_context()
+        if context:
+            result = await self.api.change_video_source_incall(
+                device_id=self.pairing.device_id, **context
+            )
+            if result:
+                return result
+            _LOGGER.warning(
+                "In-call video source change failed, falling back to the standard endpoint"
+            )
+
         if not self.notification_listener or not self.notification_listener.fcm_token:
             return None
 
@@ -587,7 +616,13 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         self._dnd_enabled = enabled
 
     async def press_f1(self) -> None:
-        """Press F1 auxiliary button."""
+        """Press the F1 auxiliary button, following the stream when one is up."""
+        context = self._incall_context()
+        if context:
+            if await self.api.press_f1_incall(device_id=self.pairing.device_id, **context):
+                return
+            _LOGGER.warning("In-call F1 failed, falling back to the standard endpoint")
+
         await self.api.press_f1(self.pairing.device_id)
 
     async def call_guard(self) -> None:
