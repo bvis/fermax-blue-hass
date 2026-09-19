@@ -154,5 +154,37 @@
         "name": "Ring preview"
       }
     }
+  },
+  "exceptions": {
+    "no_active_stream": {
+      "message": "Start the camera preview first: the intercom only accepts this action while a live session is running."
+    },
+    "open_door_failed": {
+      "message": "The intercom did not open {door}. Check that it is online and try again."
+    },
+    "camera_preview_failed": {
+      "message": "The intercom did not start the camera preview."
+    },
+    "video_source_failed": {
+      "message": "The intercom rejected the camera change."
+    },
+    "f1_failed": {
+      "message": "The intercom did not accept the F1 command."
+    },
+    "call_guard_failed": {
+      "message": "The intercom did not place the call to the guard."
+    },
+    "streaming_unavailable": {
+      "message": "Live video needs the optional streaming dependencies. Restart Home Assistant so it installs them."
+    },
+    "send_audio_no_input": {
+      "message": "Provide either an audio file or a message to speak."
+    },
+    "send_audio_invalid_path": {
+      "message": "The file {path} is outside the allowed media folders."
+    },
+    "send_audio_tts_failed": {
+      "message": "The spoken message could not be generated."
+    }
   }
 }

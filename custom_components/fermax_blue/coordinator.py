@@ -568,9 +568,14 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
 
         return result
 
+    @property
+    def has_active_stream(self) -> bool:
+        """Whether a live video session is up right now."""
+        return bool(self._stream_session and self._stream_session.is_active)
+
     def _incall_context(self) -> dict[str, str | None] | None:
         """Session context for in-call actions, or None when no stream is up."""
-        if not self._stream_session or not self._stream_session.is_active:
+        if not self.has_active_stream or not self._stream_session:
             return None
 
         return {

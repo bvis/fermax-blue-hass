@@ -154,5 +154,37 @@
         "name": "Voorbeeld bij aanbellen"
       }
     }
+  },
+  "exceptions": {
+    "no_active_stream": {
+      "message": "Start eerst het camerabeeld: de intercom accepteert deze actie alleen tijdens een actieve sessie."
+    },
+    "open_door_failed": {
+      "message": "De intercom heeft {door} niet geopend. Controleer de verbinding en probeer het opnieuw."
+    },
+    "camera_preview_failed": {
+      "message": "De intercom heeft het camerabeeld niet gestart."
+    },
+    "video_source_failed": {
+      "message": "De intercom heeft het wisselen van camera geweigerd."
+    },
+    "f1_failed": {
+      "message": "De intercom heeft de F1-opdracht niet geaccepteerd."
+    },
+    "call_guard_failed": {
+      "message": "De intercom heeft de portier niet gebeld."
+    },
+    "streaming_unavailable": {
+      "message": "Live video vereist de optionele streamingafhankelijkheden. Herstart Home Assistant zodat die worden geïnstalleerd."
+    },
+    "send_audio_no_input": {
+      "message": "Geef een audiobestand of een bericht op."
+    },
+    "send_audio_invalid_path": {
+      "message": "Het bestand {path} staat buiten de toegestane mediamappen."
+    },
+    "send_audio_tts_failed": {
+      "message": "Het gesproken bericht kon niet worden gegenereerd."
+    }
   }
 }

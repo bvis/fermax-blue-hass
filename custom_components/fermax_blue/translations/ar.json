@@ -154,5 +154,37 @@
         "name": "معاينة الرنين"
       }
     }
+  },
+  "exceptions": {
+    "no_active_stream": {
+      "message": "ابدأ معاينة الكاميرا أولاً: لا يقبل الإنتركم هذا الإجراء إلا أثناء جلسة مباشرة."
+    },
+    "open_door_failed": {
+      "message": "لم يفتح الإنتركم {door}. تأكد من اتصاله وأعد المحاولة."
+    },
+    "camera_preview_failed": {
+      "message": "لم يبدأ الإنتركم معاينة الكاميرا."
+    },
+    "video_source_failed": {
+      "message": "رفض الإنتركم تبديل الكاميرا."
+    },
+    "f1_failed": {
+      "message": "لم يقبل الإنتركم أمر F1."
+    },
+    "call_guard_failed": {
+      "message": "لم يجرِ الإنتركم الاتصال بالحارس."
+    },
+    "streaming_unavailable": {
+      "message": "يتطلب الفيديو المباشر تبعيات البث الاختيارية. أعد تشغيل Home Assistant لتثبيتها."
+    },
+    "send_audio_no_input": {
+      "message": "حدّد ملف صوت أو رسالة لنطقها."
+    },
+    "send_audio_invalid_path": {
+      "message": "الملف {path} خارج مجلدات الوسائط المسموح بها."
+    },
+    "send_audio_tts_failed": {
+      "message": "تعذّر إنشاء الرسالة الصوتية."
+    }
   }
 }
