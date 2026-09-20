@@ -154,5 +154,37 @@
         "name": "Aperçu à la sonnerie"
       }
     }
+  },
+  "exceptions": {
+    "no_active_stream": {
+      "message": "Lancez d'abord l'aperçu caméra : l'interphone n'accepte cette action que pendant une session en direct."
+    },
+    "open_door_failed": {
+      "message": "L'interphone n'a pas ouvert {door}. Vérifiez qu'il est connecté et réessayez."
+    },
+    "camera_preview_failed": {
+      "message": "L'interphone n'a pas démarré l'aperçu caméra."
+    },
+    "video_source_failed": {
+      "message": "L'interphone a refusé le changement de caméra."
+    },
+    "f1_failed": {
+      "message": "L'interphone n'a pas accepté la commande F1."
+    },
+    "call_guard_failed": {
+      "message": "L'interphone n'a pas appelé le gardien."
+    },
+    "streaming_unavailable": {
+      "message": "La vidéo en direct nécessite les dépendances de streaming optionnelles. Redémarrez Home Assistant pour qu'il les installe."
+    },
+    "send_audio_no_input": {
+      "message": "Indiquez un fichier audio ou un message à énoncer."
+    },
+    "send_audio_invalid_path": {
+      "message": "Le fichier {path} est en dehors des dossiers multimédias autorisés."
+    },
+    "send_audio_tts_failed": {
+      "message": "Le message vocal n'a pas pu être généré."
+    }
   }
 }

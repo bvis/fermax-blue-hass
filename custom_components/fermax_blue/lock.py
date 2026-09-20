@@ -8,6 +8,7 @@ from typing import Any
 from homeassistant.components.lock import LockEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_call_later
 
@@ -49,6 +50,7 @@ class FermaxDoorLock(FermaxBlueEntity, LockEntity):
     ) -> None:
         super().__init__(coordinator)
         self._door_name = door_name
+        self._door_title = door_title or door_name
         self._attr_unique_id = f"{self._device_id}_{door_name}_lock"
         self._attr_name = door_title or door_name
         self._is_locked = True
@@ -62,6 +64,13 @@ class FermaxDoorLock(FermaxBlueEntity, LockEntity):
     async def async_unlock(self, **kwargs: Any) -> None:
         """Unlock (open) the door."""
         success = await self.coordinator.open_door(self._door_name)
+        if not success:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="open_door_failed",
+                translation_placeholders={"door": self._door_title},
+            )
+
         if success:
             self._is_locked = False
             self.async_write_ha_state()
@@ -77,8 +86,6 @@ class FermaxDoorLock(FermaxBlueEntity, LockEntity):
                 self._auto_lock_unsub = None
 
             self._auto_lock_unsub = async_call_later(self.hass, AUTO_LOCK_SECONDS, _auto_lock)
-        else:
-            _LOGGER.error("Failed to open door %s", self._door_name)
 
     async def async_lock(self, **kwargs: Any) -> None:
         """Lock the door (no-op, doors auto-lock)."""

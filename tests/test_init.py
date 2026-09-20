@@ -11,7 +11,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, EVENT_HOMEASSISTANT_STOP
-from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.exceptions import (
+    ConfigEntryNotReady,
+    HomeAssistantError,
+    ServiceValidationError,
+)
 
 from custom_components.fermax_blue import (
     _async_options_updated,
@@ -36,6 +40,7 @@ from custom_components.fermax_blue.const import (
     FCM_WATCHDOG_INTERVAL,
     PLATFORMS,
     RECORDINGS_DIR,
+    WEBRTC_TOKENS,
 )
 
 MODULE = "custom_components.fermax_blue"
@@ -96,6 +101,7 @@ def _make_coordinator():
     coordinator.ensure_notifications_running = AsyncMock()
     coordinator.api = AsyncMock()
     coordinator.stream_session = None
+    coordinator.has_active_stream = False
     coordinator.update_interval = timedelta(minutes=DEFAULT_SCAN_INTERVAL)
     return coordinator
 
@@ -133,6 +139,7 @@ def _activate_stream(coordinator):
     session.is_active = True
     session.send_audio = AsyncMock()
     coordinator.stream_session = session
+    coordinator.has_active_stream = True
     return session
 
 
@@ -309,7 +316,8 @@ class TestSendAudioService:
         handler = await _registered_service_handler(mock_hass, entry, mock_api, coordinator)
         session = _activate_stream(coordinator)
 
-        await handler(_service_call(audio_file="/etc/passwd"))
+        with pytest.raises(ServiceValidationError):
+            await handler(_service_call(audio_file="/etc/passwd"))
 
         session.send_audio.assert_not_awaited()
 
@@ -319,7 +327,8 @@ class TestSendAudioService:
         session = _activate_stream(coordinator)
 
         # An embedded null byte makes Path.resolve() raise ValueError
-        await handler(_service_call(audio_file="bad\x00path.mp3"))
+        with pytest.raises(ServiceValidationError):
+            await handler(_service_call(audio_file="bad\x00path.mp3"))
 
         session.send_audio.assert_not_awaited()
 
@@ -328,7 +337,8 @@ class TestSendAudioService:
         handler = await _registered_service_handler(mock_hass, entry, mock_api, coordinator)
         session = _activate_stream(coordinator)
 
-        await handler(_service_call())
+        with pytest.raises(ServiceValidationError):
+            await handler(_service_call())
 
         session.send_audio.assert_not_awaited()
 
@@ -337,8 +347,12 @@ class TestSendAudioService:
         handler = await _registered_service_handler(mock_hass, entry, mock_api, coordinator)
         session = _activate_stream(coordinator)
         session.is_active = False
+        coordinator.has_active_stream = False
 
-        with patch(f"{MODULE}._generate_tts_audio", AsyncMock()) as generate:
+        with (
+            patch(f"{MODULE}._generate_tts_audio", AsyncMock()) as generate,
+            pytest.raises(ServiceValidationError),
+        ):
             await handler(_service_call(message="anyone home?"))
 
         session.send_audio.assert_not_awaited()
@@ -365,7 +379,10 @@ class TestSendAudioService:
         handler = await _registered_service_handler(mock_hass, entry, mock_api, coordinator)
         session = _activate_stream(coordinator)
 
-        with patch(f"{MODULE}._generate_tts_audio", AsyncMock(return_value=None)):
+        with (
+            patch(f"{MODULE}._generate_tts_audio", AsyncMock(return_value=None)),
+            pytest.raises(HomeAssistantError),
+        ):
             await handler(_service_call(message="hello"))
 
         session.send_audio.assert_not_awaited()
@@ -584,3 +601,40 @@ class TestUnloadEntry:
         mock_hass.data = {DOMAIN: {}}
 
         assert await async_unload_entry(mock_hass, entry) is True
+
+
+class TestWebRtcEndpoint:
+    """One signaling view for the integration, one token per intercom."""
+
+    async def test_view_registered_once_with_tokens(self, mock_hass, entry, mock_api):
+        first = _make_coordinator()
+        first.webrtc_token = "tok-a"
+        await _run_setup(mock_hass, entry, mock_api, [first])
+
+        second_entry = MagicMock()
+        second_entry.entry_id = "entry-2"
+        second_entry.data = entry.data
+        second_entry.options = {}
+        second_entry.async_on_unload = MagicMock()
+        second_entry.add_update_listener = MagicMock(return_value=MagicMock())
+        second = _make_coordinator()
+        second.webrtc_token = "tok-b"
+        await _run_setup(mock_hass, second_entry, mock_api, [second])
+
+        mock_hass.http.register_view.assert_called_once()
+        view = mock_hass.http.register_view.call_args.args[0]
+        assert view._coordinators is mock_hass.data[DOMAIN][WEBRTC_TOKENS]
+        assert mock_hass.data[DOMAIN][WEBRTC_TOKENS] == {"tok-a": first, "tok-b": second}
+
+    async def test_unload_forgets_tokens(self, mock_hass, entry):
+        coordinator = _make_coordinator()
+        coordinator.webrtc_token = "tok-a"
+        other = _make_coordinator()
+        mock_hass.data[DOMAIN] = {
+            entry.entry_id: [coordinator],
+            WEBRTC_TOKENS: {"tok-a": coordinator, "tok-z": other},
+        }
+
+        assert await async_unload_entry(mock_hass, entry) is True
+
+        assert mock_hass.data[DOMAIN][WEBRTC_TOKENS] == {"tok-z": other}

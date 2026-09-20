@@ -4,6 +4,7 @@ from datetime import UTC
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 
 from custom_components.fermax_blue.api import (
     AccessDoor,
@@ -17,6 +18,7 @@ from custom_components.fermax_blue.coordinator import FermaxBlueCoordinator
 def mock_coordinator():
     """Return a mock coordinator."""
     coordinator = MagicMock(spec=FermaxBlueCoordinator)
+    coordinator.mjpeg_clients = 0
     coordinator.pairing = Pairing(
         device_id="test_dev",
         tag="Test Home",
@@ -259,6 +261,70 @@ class TestF1Button:
         mock_coordinator.press_f1.assert_called_once()
 
 
+class TestActionFailuresSurfaceToTheUser:
+    """Every failed action raises instead of leaving an error only in the log."""
+
+    @pytest.mark.asyncio
+    async def test_open_door_button_raises_on_failure(self, mock_coordinator):
+        from custom_components.fermax_blue.button import FermaxOpenDoorButton
+
+        mock_coordinator.open_door = AsyncMock(return_value=False)
+        button = FermaxOpenDoorButton(mock_coordinator, "GENERAL", "Portal")
+
+        with pytest.raises(HomeAssistantError):
+            await button.async_press()
+
+    @pytest.mark.asyncio
+    async def test_camera_preview_button_raises_on_failure(self, mock_coordinator):
+        from custom_components.fermax_blue.button import FermaxCameraPreviewButton
+
+        mock_coordinator.start_camera_preview = AsyncMock(return_value=None)
+        button = FermaxCameraPreviewButton(mock_coordinator)
+
+        with pytest.raises(HomeAssistantError):
+            await button.async_press()
+
+    @pytest.mark.asyncio
+    async def test_f1_button_turns_an_api_error_into_a_user_message(self, mock_coordinator):
+        import httpx
+
+        from custom_components.fermax_blue.button import FermaxF1Button
+
+        mock_coordinator.press_f1 = AsyncMock(
+            side_effect=httpx.HTTPStatusError("boom", request=MagicMock(), response=MagicMock())
+        )
+        button = FermaxF1Button(mock_coordinator)
+
+        with pytest.raises(HomeAssistantError):
+            await button.async_press()
+
+    @pytest.mark.asyncio
+    async def test_call_guard_button_turns_an_api_error_into_a_user_message(self, mock_coordinator):
+        import httpx
+
+        from custom_components.fermax_blue.button import FermaxCallGuardButton
+
+        mock_coordinator.call_guard = AsyncMock(side_effect=httpx.ConnectTimeout("timeout"))
+        button = FermaxCallGuardButton(mock_coordinator)
+
+        with pytest.raises(HomeAssistantError):
+            await button.async_press()
+
+    @pytest.mark.asyncio
+    async def test_lock_raises_when_the_door_does_not_open(self, mock_coordinator):
+        from custom_components.fermax_blue.lock import FermaxDoorLock
+
+        mock_coordinator.open_door = AsyncMock(return_value=False)
+        lock = FermaxDoorLock(mock_coordinator, "GENERAL", "Portal")
+        lock.hass = MagicMock()
+        lock.async_write_ha_state = MagicMock()
+
+        with pytest.raises(HomeAssistantError):
+            await lock.async_unlock()
+
+        assert lock.is_locked is True
+
+
 class TestVideoSourceButton:
     """Test the video source switch button."""
 
@@ -272,6 +338,7 @@ class TestVideoSourceButton:
     async def test_video_source_press(self, mock_coordinator):
         from custom_components.fermax_blue.button import FermaxVideoSourceButton
 
+        mock_coordinator.has_active_stream = True
         mock_coordinator.change_video_source = AsyncMock(return_value=MagicMock(description="ok"))
         button = FermaxVideoSourceButton(mock_coordinator)
 
@@ -279,14 +346,29 @@ class TestVideoSourceButton:
         mock_coordinator.change_video_source.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_video_source_press_failure_is_logged(self, mock_coordinator):
+    async def test_video_source_press_failure_raises(self, mock_coordinator):
         from custom_components.fermax_blue.button import FermaxVideoSourceButton
 
+        mock_coordinator.has_active_stream = True
         mock_coordinator.change_video_source = AsyncMock(return_value=None)
         button = FermaxVideoSourceButton(mock_coordinator)
 
-        await button.async_press()
+        with pytest.raises(HomeAssistantError):
+            await button.async_press()
         mock_coordinator.change_video_source.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_video_source_without_stream_is_a_validation_error(self, mock_coordinator):
+        """Pressing with no session up is user error, not a device failure."""
+        from custom_components.fermax_blue.button import FermaxVideoSourceButton
+
+        mock_coordinator.has_active_stream = False
+        mock_coordinator.change_video_source = AsyncMock()
+        button = FermaxVideoSourceButton(mock_coordinator)
+
+        with pytest.raises(ServiceValidationError):
+            await button.async_press()
+        mock_coordinator.change_video_source.assert_not_called()
 
 
 class TestCallGuardButton:
@@ -541,25 +623,31 @@ class TestCameraStreamingDepsGuard:
         return FermaxCamera(mock_coordinator)
 
     @pytest.mark.asyncio
-    async def test_turn_on_skipped_without_deps(self, mock_coordinator):
+    async def test_turn_on_without_deps_raises(self, mock_coordinator):
         camera = self._make_camera(mock_coordinator)
 
-        with patch(
-            "custom_components.fermax_blue.camera.streaming_deps_available",
-            return_value=False,
+        with (
+            patch(
+                "custom_components.fermax_blue.camera.streaming_deps_available",
+                return_value=False,
+            ),
+            pytest.raises(HomeAssistantError),
         ):
             await camera.async_turn_on()
 
         mock_coordinator.start_camera_preview.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_turn_on_starts_preview_with_deps(self, mock_coordinator):
+    async def test_turn_on_raises_when_the_preview_does_not_start(self, mock_coordinator):
         camera = self._make_camera(mock_coordinator)
         mock_coordinator.start_camera_preview = AsyncMock(return_value=None)
 
-        with patch(
-            "custom_components.fermax_blue.camera.streaming_deps_available",
-            return_value=True,
+        with (
+            patch(
+                "custom_components.fermax_blue.camera.streaming_deps_available",
+                return_value=True,
+            ),
+            pytest.raises(HomeAssistantError),
         ):
             await camera.async_turn_on()
 
@@ -610,7 +698,10 @@ class TestDoorLock:
         lock.hass = MagicMock()
         lock.async_write_ha_state = MagicMock()
 
-        with patch("custom_components.fermax_blue.lock.async_call_later") as call_later:
+        with (
+            patch("custom_components.fermax_blue.lock.async_call_later") as call_later,
+            pytest.raises(HomeAssistantError),
+        ):
             await lock.async_unlock()
 
         assert lock.is_locked is True
@@ -771,12 +862,13 @@ class TestOpenDoorButton:
         mock_coordinator.open_door.assert_awaited_once_with("GENERAL")
 
     @pytest.mark.asyncio
-    async def test_failed_press_does_not_raise(self, mock_coordinator):
-        """A failed open is logged, not raised — HA would mark the entity broken."""
+    async def test_failed_press_reaches_the_user(self, mock_coordinator):
+        """A failed open must surface in the UI, not only in the log."""
         mock_coordinator.open_door = AsyncMock(return_value=False)
         button = self._make_button(mock_coordinator)
 
-        await button.async_press()
+        with pytest.raises(HomeAssistantError):
+            await button.async_press()
 
         mock_coordinator.open_door.assert_awaited_once()
 
@@ -804,11 +896,12 @@ class TestCameraPreviewButton:
         mock_coordinator.start_camera_preview.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_press_handles_refused_preview(self, mock_coordinator):
+    async def test_press_reports_a_refused_preview(self, mock_coordinator):
         mock_coordinator.start_camera_preview = AsyncMock(return_value=None)
         button = self._make_button(mock_coordinator)
 
-        await button.async_press()
+        with pytest.raises(HomeAssistantError):
+            await button.async_press()
 
         mock_coordinator.start_camera_preview.assert_awaited_once()
 
@@ -1406,3 +1499,43 @@ class TestSensorAliases:
 
         assert FermaxWifiSignalSensor(mock_coordinator).unique_id == "test_dev_wifi_signal"
         assert FermaxDeviceStatusSensor(mock_coordinator).unique_id == "test_dev_device_status"
+
+
+class TestCameraWebRtc:
+    """The camera advertises a go2rtc stream so HA can play it over WebRTC."""
+
+    def _make_camera(self, mock_coordinator):
+        from types import SimpleNamespace
+
+        from custom_components.fermax_blue.camera import FermaxCamera
+
+        mock_coordinator.webrtc_token = "tok123"
+        camera = FermaxCamera(mock_coordinator)
+        camera.hass = MagicMock()
+        camera.hass.config.api = SimpleNamespace(use_ssl=False, port=8123)
+        return camera
+
+    def test_stream_feature_advertised(self, mock_coordinator):
+        from homeassistant.components.camera import CameraEntityFeature
+
+        camera = self._make_camera(mock_coordinator)
+        assert camera.supported_features & CameraEntityFeature.STREAM
+
+    @pytest.mark.asyncio
+    async def test_stream_source_points_at_bridge(self, mock_coordinator):
+        camera = self._make_camera(mock_coordinator)
+        with patch(
+            "custom_components.fermax_blue.camera.streaming_deps_available", return_value=True
+        ):
+            assert (
+                await camera.stream_source()
+                == "webrtc:ws://127.0.0.1:8123/api/fermax_blue/webrtc/tok123"
+            )
+
+    @pytest.mark.asyncio
+    async def test_stream_source_absent_without_deps(self, mock_coordinator):
+        camera = self._make_camera(mock_coordinator)
+        with patch(
+            "custom_components.fermax_blue.camera.streaming_deps_available", return_value=False
+        ):
+            assert await camera.stream_source() is None

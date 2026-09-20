@@ -154,5 +154,37 @@
         "name": "Pré-visualização ao tocar"
       }
     }
+  },
+  "exceptions": {
+    "no_active_stream": {
+      "message": "Inicia primeiro a pré-visualização da câmera: o videoporteiro só aceita esta ação durante uma sessão em direto."
+    },
+    "open_door_failed": {
+      "message": "O videoporteiro não abriu {door}. Verifica se está ligado e tenta novamente."
+    },
+    "camera_preview_failed": {
+      "message": "O videoporteiro não iniciou a pré-visualização da câmera."
+    },
+    "video_source_failed": {
+      "message": "O videoporteiro recusou a mudança de câmera."
+    },
+    "f1_failed": {
+      "message": "O videoporteiro não aceitou o comando F1."
+    },
+    "call_guard_failed": {
+      "message": "O videoporteiro não efetuou a chamada ao porteiro."
+    },
+    "streaming_unavailable": {
+      "message": "O vídeo em direto necessita das dependências opcionais de streaming. Reinicia o Home Assistant para as instalar."
+    },
+    "send_audio_no_input": {
+      "message": "Indica um ficheiro de áudio ou uma mensagem para reproduzir."
+    },
+    "send_audio_invalid_path": {
+      "message": "O ficheiro {path} está fora das pastas multimédia permitidas."
+    },
+    "send_audio_tts_failed": {
+      "message": "Não foi possível gerar a mensagem de voz."
+    }
   }
 }

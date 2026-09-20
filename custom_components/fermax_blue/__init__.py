@@ -13,7 +13,11 @@ import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, EVENT_HOMEASSISTANT_STOP
 from homeassistant.core import Event, HomeAssistant, ServiceCall
-from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.exceptions import (
+    ConfigEntryNotReady,
+    HomeAssistantError,
+    ServiceValidationError,
+)
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.httpx_client import create_async_httpx_client
 
@@ -35,8 +39,10 @@ from .const import (
     FCM_WATCHDOG_INTERVAL,
     PLATFORMS,
     RECORDINGS_DIR,
+    WEBRTC_TOKENS,
 )
 from .coordinator import FermaxBlueCoordinator
+from .webrtc_bridge import FermaxWebRtcView
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -130,6 +136,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: FermaxBlueConfigEntry) -
     entry.runtime_data = coordinators
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinators
 
+    # go2rtc signaling endpoint: one view for all entries, one token per intercom
+    tokens: dict[str, FermaxBlueCoordinator] | None = hass.data[DOMAIN].get(WEBRTC_TOKENS)
+    if tokens is None:
+        tokens = hass.data[DOMAIN][WEBRTC_TOKENS] = {}
+        hass.http.register_view(FermaxWebRtcView(tokens))
+    for coordinator in coordinators:
+        tokens[coordinator.webrtc_token] = coordinator
+
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     # Register send_audio service
@@ -140,8 +154,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: FermaxBlueConfigEntry) -
         language = call.data.get("language", "es")
 
         if not audio_file and not message:
-            _LOGGER.error("send_audio: either audio_file or message is required")
-            return
+            raise ServiceValidationError(
+                translation_domain=DOMAIN, translation_key="send_audio_no_input"
+            )
 
         # Validate audio_file path against HA media directories
         if audio_file:
@@ -161,29 +176,31 @@ async def async_setup_entry(hass: HomeAssistant, entry: FermaxBlueConfigEntry) -
                     return False
 
             if not await asyncio.to_thread(_validate_path):
-                _LOGGER.error(
-                    "send_audio: path %s is outside allowed media directories or invalid",
-                    audio_file,
+                raise ServiceValidationError(
+                    translation_domain=DOMAIN,
+                    translation_key="send_audio_invalid_path",
+                    translation_placeholders={"path": str(audio_file)},
                 )
-                return
 
         # Find the coordinator with an active stream
         active_coordinator = None
         for coord in coordinators:
-            if coord.stream_session and coord.stream_session.is_active:
+            if coord.has_active_stream:
                 active_coordinator = coord
                 break
 
         if not active_coordinator or not active_coordinator.stream_session:
-            _LOGGER.error("send_audio: no active video stream")
-            return
+            raise ServiceValidationError(
+                translation_domain=DOMAIN, translation_key="no_active_stream"
+            )
 
         # If message provided, generate TTS audio file
         if message and not audio_file:
             audio_file = await _generate_tts_audio(hass, message, language)
             if not audio_file:
-                _LOGGER.error("send_audio: failed to generate TTS audio")
-                return
+                raise HomeAssistantError(
+                    translation_domain=DOMAIN, translation_key="send_audio_tts_failed"
+                )
 
         tts_generated = bool(message and not call.data.get("audio_file"))
         if audio_file:
@@ -339,7 +356,9 @@ async def _generate_tts_audio(hass: HomeAssistant, message: str, language: str) 
 async def async_unload_entry(hass: HomeAssistant, entry: FermaxBlueConfigEntry) -> bool:
     """Unload a config entry."""
     coordinators = hass.data[DOMAIN].get(entry.entry_id, [])
+    tokens = hass.data[DOMAIN].get(WEBRTC_TOKENS, {})
     for coordinator in coordinators:
+        tokens.pop(coordinator.webrtc_token, None)
         await coordinator.stop_notifications()
         await coordinator.api.close()
 
