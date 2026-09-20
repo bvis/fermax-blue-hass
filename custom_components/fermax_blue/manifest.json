@@ -3,7 +3,7 @@
   "name": "Fermax Blue",
   "codeowners": ["@bvis"],
   "config_flow": true,
-  "dependencies": ["media_source"],
+  "dependencies": ["http", "media_source"],
   "documentation": "https://github.com/bvis/fermax-blue-hass",
   "iot_class": "cloud_push",
   "issue_tracker": "https://github.com/bvis/fermax-blue-hass/issues",
