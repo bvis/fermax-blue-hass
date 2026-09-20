@@ -21,6 +21,7 @@ from custom_components.fermax_blue.const import (
     CALL_MODE_AUTO_RESPOND,
     CALL_MODE_NOTIFY,
     CALL_MODE_RECORD,
+    DEFAULT_CONVERSATION_TIMEOUT,
     DEFAULT_STREAM_DURATION,
     RECORDINGS_DIR,
     SIGNAL_CALL_ENDED,
@@ -33,6 +34,7 @@ from custom_components.fermax_blue.coordinator import (
     DEFAULT_PREVIEW_TIMEOUT,
     FermaxBlueCoordinator,
     _is_trusted_signaling_url,
+    _positive_int,
 )
 from custom_components.fermax_blue.streaming import DEFAULT_SIGNALING_URL
 
@@ -265,6 +267,7 @@ class TestRingPreview:
                 "SocketUrl": "https://signaling-pro-duoxme.fermax.io",
                 "FermaxToken": "ftok",
                 "PreviewTimeout": "29",
+                "ConversationTimeout": "90",
             }
         }
         with (
@@ -289,6 +292,7 @@ class TestRingPreview:
             "ftok",
             receive_only=True,
             preview_timeout="29",
+            conversation_timeout="90",
         )
 
     def test_no_stream_in_notify_mode_by_default(self, coordinator):
@@ -889,6 +893,7 @@ class TestHandleNotification:
             "SocketUrl": "https://signaling-pro-duoxme.fermax.io",
             "FermaxToken": "ftok",
             "PreviewTimeout": "29",
+            "ConversationTimeout": "90",
         }
         data.update(overrides)
         return data
@@ -1326,3 +1331,132 @@ class TestAutoRespond:
             await full_coordinator._auto_respond()
 
         assert sleep.await_count == 20  # polled the whole window, then bailed
+
+
+class TestPositiveInt:
+    """Push payload timeouts are strings; anything unusable falls back."""
+
+    @pytest.mark.parametrize(
+        ("value", "expected"),
+        [("29", 29), (45, 45), ("0", 5), ("-3", 5), (None, 5), ("garbage", 5)],
+    )
+    def test_parse(self, value, expected):
+        assert _positive_int(value, 5) == expected
+
+
+class TestPickup:
+    """Answering a call from a WebRTC viewer re-arms the stop timer to the call length."""
+
+    def _live(self, coordinator, picked_up=False, pickup_ok=True):
+        session = MagicMock()
+        session.is_active = True
+        session.picked_up = picked_up
+        session.pickup = AsyncMock(return_value=pickup_ok)
+        coordinator._stream_session = session
+        coordinator._stream_stop_unsub = None
+        coordinator._stream_duration = 30
+        coordinator._conversation_timeout = 90
+        return session
+
+    async def test_no_session(self, coordinator):
+        coordinator._stream_session = None
+        assert await coordinator.pickup() is False
+
+    async def test_inactive_session(self, coordinator):
+        session = self._live(coordinator)
+        session.is_active = False
+        assert await coordinator.pickup() is False
+        session.pickup.assert_not_awaited()
+
+    async def test_already_answered(self, coordinator):
+        session = self._live(coordinator, picked_up=True)
+        assert await coordinator.pickup() is True
+        session.pickup.assert_not_awaited()
+
+    async def test_session_refuses(self, coordinator):
+        self._live(coordinator, pickup_ok=False)
+        with patch("custom_components.fermax_blue.coordinator.async_call_later") as call_later:
+            assert await coordinator.pickup() is False
+        call_later.assert_not_called()
+
+    async def test_answer_extends_stop_timer_to_conversation_timeout(self, coordinator):
+        self._live(coordinator)
+        previous = MagicMock()
+        coordinator._stream_stop_unsub = previous
+        with patch(
+            "custom_components.fermax_blue.coordinator.async_call_later",
+            return_value=MagicMock(),
+        ) as call_later:
+            assert await coordinator.pickup() is True
+        previous.assert_called_once()
+        assert call_later.call_args.args[1] == 90
+
+    async def test_longer_stream_duration_wins(self, coordinator):
+        self._live(coordinator)
+        coordinator._stream_duration = 120
+        with patch(
+            "custom_components.fermax_blue.coordinator.async_call_later",
+            return_value=MagicMock(),
+        ) as call_later:
+            await coordinator.pickup()
+        assert call_later.call_args.args[1] == 120
+
+
+class TestEnsureStream:
+    """A viewer opening the camera wakes the intercom when nothing is live."""
+
+    async def test_returns_live_session(self, coordinator):
+        session = MagicMock(is_active=True)
+        coordinator._stream_session = session
+        coordinator.start_camera_preview = AsyncMock()
+
+        assert await coordinator.ensure_stream() is session
+        coordinator.start_camera_preview.assert_not_awaited()
+
+    async def test_preview_failure_returns_none(self, coordinator):
+        coordinator.start_camera_preview = AsyncMock(return_value=None)
+        assert await coordinator.ensure_stream() is None
+
+    async def test_waits_for_session_after_preview(self, coordinator):
+        session = MagicMock(is_active=True)
+
+        async def _arrive(*_args):
+            coordinator._stream_session = session
+
+        coordinator.start_camera_preview = AsyncMock(return_value=MagicMock())
+        with patch("custom_components.fermax_blue.coordinator.asyncio.sleep", side_effect=_arrive):
+            assert await coordinator.ensure_stream() is session
+
+    async def test_pending_preview_is_not_requested_twice(self, coordinator):
+        coordinator._camera_active = True
+        coordinator.start_camera_preview = AsyncMock()
+        with patch("custom_components.fermax_blue.coordinator.WEBRTC_START_TIMEOUT", 0):
+            assert await coordinator.ensure_stream() is None
+        coordinator.start_camera_preview.assert_not_awaited()
+
+    async def test_timeout_returns_none(self, coordinator):
+        coordinator.start_camera_preview = AsyncMock(return_value=MagicMock())
+        with patch("custom_components.fermax_blue.coordinator.WEBRTC_START_TIMEOUT", 0):
+            assert await coordinator.ensure_stream() is None
+
+
+class TestConversationTimeoutFromPush:
+    """The call push's ConversationTimeout is remembered for the answered-call timer."""
+
+    async def test_stored_before_any_other_work(self, coordinator):
+        coordinator._stream_session = None
+        with patch(
+            "custom_components.fermax_blue.coordinator.streaming_deps_available",
+            return_value=False,
+        ):
+            await coordinator._start_stream("r", DEFAULT_SIGNALING_URL, conversation_timeout="45")
+        assert coordinator._conversation_timeout == 45
+
+    async def test_unusable_value_falls_back(self, coordinator):
+        coordinator._stream_session = None
+        with patch(
+            "custom_components.fermax_blue.coordinator.streaming_deps_available",
+            return_value=False,
+        ):
+            await coordinator._start_stream("r", DEFAULT_SIGNALING_URL, conversation_timeout="x")
+        assert coordinator._conversation_timeout == DEFAULT_CONVERSATION_TIMEOUT

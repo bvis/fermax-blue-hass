@@ -18,6 +18,7 @@ from custom_components.fermax_blue.coordinator import FermaxBlueCoordinator
 def mock_coordinator():
     """Return a mock coordinator."""
     coordinator = MagicMock(spec=FermaxBlueCoordinator)
+    coordinator.mjpeg_clients = 0
     coordinator.pairing = Pairing(
         device_id="test_dev",
         tag="Test Home",
@@ -1498,3 +1499,43 @@ class TestSensorAliases:
 
         assert FermaxWifiSignalSensor(mock_coordinator).unique_id == "test_dev_wifi_signal"
         assert FermaxDeviceStatusSensor(mock_coordinator).unique_id == "test_dev_device_status"
+
+
+class TestCameraWebRtc:
+    """The camera advertises a go2rtc stream so HA can play it over WebRTC."""
+
+    def _make_camera(self, mock_coordinator):
+        from types import SimpleNamespace
+
+        from custom_components.fermax_blue.camera import FermaxCamera
+
+        mock_coordinator.webrtc_token = "tok123"
+        camera = FermaxCamera(mock_coordinator)
+        camera.hass = MagicMock()
+        camera.hass.config.api = SimpleNamespace(use_ssl=False, port=8123)
+        return camera
+
+    def test_stream_feature_advertised(self, mock_coordinator):
+        from homeassistant.components.camera import CameraEntityFeature
+
+        camera = self._make_camera(mock_coordinator)
+        assert camera.supported_features & CameraEntityFeature.STREAM
+
+    @pytest.mark.asyncio
+    async def test_stream_source_points_at_bridge(self, mock_coordinator):
+        camera = self._make_camera(mock_coordinator)
+        with patch(
+            "custom_components.fermax_blue.camera.streaming_deps_available", return_value=True
+        ):
+            assert (
+                await camera.stream_source()
+                == "webrtc:ws://127.0.0.1:8123/api/fermax_blue/webrtc/tok123"
+            )
+
+    @pytest.mark.asyncio
+    async def test_stream_source_absent_without_deps(self, mock_coordinator):
+        camera = self._make_camera(mock_coordinator)
+        with patch(
+            "custom_components.fermax_blue.camera.streaming_deps_available", return_value=False
+        ):
+            assert await camera.stream_source() is None

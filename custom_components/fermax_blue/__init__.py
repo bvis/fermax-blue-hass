@@ -39,8 +39,10 @@ from .const import (
     FCM_WATCHDOG_INTERVAL,
     PLATFORMS,
     RECORDINGS_DIR,
+    WEBRTC_TOKENS,
 )
 from .coordinator import FermaxBlueCoordinator
+from .webrtc_bridge import FermaxWebRtcView
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -133,6 +135,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: FermaxBlueConfigEntry) -
 
     entry.runtime_data = coordinators
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinators
+
+    # go2rtc signaling endpoint: one view for all entries, one token per intercom
+    tokens: dict[str, FermaxBlueCoordinator] | None = hass.data[DOMAIN].get(WEBRTC_TOKENS)
+    if tokens is None:
+        tokens = hass.data[DOMAIN][WEBRTC_TOKENS] = {}
+        hass.http.register_view(FermaxWebRtcView(tokens))
+    for coordinator in coordinators:
+        tokens[coordinator.webrtc_token] = coordinator
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
@@ -346,7 +356,9 @@ async def _generate_tts_audio(hass: HomeAssistant, message: str, language: str) 
 async def async_unload_entry(hass: HomeAssistant, entry: FermaxBlueConfigEntry) -> bool:
     """Unload a config entry."""
     coordinators = hass.data[DOMAIN].get(entry.entry_id, [])
+    tokens = hass.data[DOMAIN].get(WEBRTC_TOKENS, {})
     for coordinator in coordinators:
+        tokens.pop(coordinator.webrtc_token, None)
         await coordinator.stop_notifications()
         await coordinator.api.close()
 

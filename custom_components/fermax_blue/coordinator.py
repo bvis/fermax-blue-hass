@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import secrets
 import time
 from collections import deque
 from dataclasses import replace
@@ -30,6 +31,7 @@ from .api import (
 from .const import (
     CALL_MODE_AUTO_RESPOND,
     CALL_MODE_NOTIFY,
+    DEFAULT_CONVERSATION_TIMEOUT,
     DEFAULT_STREAM_DURATION,
     DOMAIN,
     RECORDINGS_DIR,
@@ -37,6 +39,7 @@ from .const import (
     SIGNAL_CAMERA_ON,
     SIGNAL_DOOR_OPENED,
     SIGNAL_DOORBELL_RING,
+    WEBRTC_START_TIMEOUT,
 )
 from .notification import FermaxNotificationListener, _redact_notification
 from .streaming import DEFAULT_SIGNALING_URL, FermaxStreamSession, streaming_deps_available
@@ -52,6 +55,15 @@ DEFAULT_PREVIEW_TIMEOUT = 29
 # reload/restart, causing phantom doorbell rings. Ignore them briefly.
 NOTIFICATION_GRACE_PERIOD = 10
 ALLOWED_SIGNALING_DOMAIN = ".fermax.io"
+
+
+def _positive_int(value: str | int | None, default: int) -> int:
+    """Parse a push payload timeout, falling back to the default when unusable."""
+    try:
+        parsed = int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return default
+    return parsed if parsed > 0 else default
 
 
 def _is_trusted_signaling_url(url: str) -> bool:
@@ -105,6 +117,11 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         self._call_mode = CALL_MODE_NOTIFY
         self._stream_duration = DEFAULT_STREAM_DURATION
         self._stream_stop_unsub: CALLBACK_TYPE | None = None
+        self._conversation_timeout = DEFAULT_CONVERSATION_TIMEOUT
+        # Gates the go2rtc signaling endpoint for this intercom (see webrtc_bridge)
+        self.webrtc_token = secrets.token_urlsafe(16)
+        # MJPEG viewers currently connected: the session decodes every frame for them
+        self.mjpeg_clients = 0
         self._firebase_config = firebase_config or {}
         self._processed_notifications: deque[str] = deque(maxlen=100)
         self._notification_start_time: float | None = None
@@ -443,6 +460,7 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
                     fermax_token,
                     receive_only=receive_only,
                     preview_timeout=data.get("PreviewTimeout"),
+                    conversation_timeout=data.get("ConversationTimeout"),
                 )
             )
             if (
@@ -650,8 +668,12 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         fermax_token: str = "",
         receive_only: bool = False,
         preview_timeout: str | int | None = None,
+        conversation_timeout: str | int | None = None,
     ) -> None:
         """Start a video stream session for the given room."""
+        self._conversation_timeout = _positive_int(
+            conversation_timeout, DEFAULT_CONVERSATION_TIMEOUT
+        )
         if not streaming_deps_available():
             _LOGGER.warning(
                 "Ignoring stream request for room %s: optional live-video "
@@ -693,6 +715,7 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
             on_end=_on_stream_end,
             media_root=media_root,
             receive_only=receive_only,
+            full_decode=lambda: self.mjpeg_clients > 0,
         )
 
         success = await self._stream_session.start()
@@ -708,24 +731,58 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
             # entities reporting a live stream after teardown.
             stop_after = self._stream_duration
             if receive_only:
-                try:
-                    timeout = int(preview_timeout)  # type: ignore[arg-type]
-                except (TypeError, ValueError):
-                    timeout = DEFAULT_PREVIEW_TIMEOUT
-                if timeout <= 0:
-                    timeout = DEFAULT_PREVIEW_TIMEOUT
-                stop_after = min(stop_after, timeout)
-
-            @callback
-            def _auto_stop_stream(_now: Any) -> None:
-                _LOGGER.info("Stream auto-stop after %ds", stop_after)
-                self._stream_stop_unsub = None
-                self.hass.async_create_task(self.stop_stream())
-
-            self._stream_stop_unsub = async_call_later(self.hass, stop_after, _auto_stop_stream)
+                stop_after = min(
+                    stop_after, _positive_int(preview_timeout, DEFAULT_PREVIEW_TIMEOUT)
+                )
+            self._schedule_stream_stop(stop_after)
         else:
             _LOGGER.warning("Failed to start video stream for room %s", room_id)
             self._stream_session = None
+
+    @callback
+    def _schedule_stream_stop(self, seconds: int) -> None:
+        """(Re)arm the local auto-stop timer of the current stream."""
+        if self._stream_stop_unsub:
+            self._stream_stop_unsub()
+
+        @callback
+        def _auto_stop_stream(_now: Any) -> None:
+            _LOGGER.info("Stream auto-stop after %ds", seconds)
+            self._stream_stop_unsub = None
+            self.hass.async_create_task(self.stop_stream())
+
+        self._stream_stop_unsub = async_call_later(self.hass, seconds, _auto_stop_stream)
+
+    async def pickup(self) -> bool:
+        """Answer the current call (a viewer opened the microphone).
+
+        The server bounds an answered call by ConversationTimeout, so the local
+        timer follows it instead of the preview clamp.
+        """
+        session = self._stream_session
+        if not session or not session.is_active:
+            return False
+        if session.picked_up:
+            return True
+        if not await session.pickup():
+            return False
+        self._schedule_stream_stop(max(self._stream_duration, self._conversation_timeout))
+        return True
+
+    async def ensure_stream(self) -> FermaxStreamSession | None:
+        """Return the live session, waking the intercom when a viewer opens the camera."""
+        if self.has_active_stream:
+            return self._stream_session
+        # _camera_active is set by a preview request whose push has not landed yet
+        if not self._camera_active and not await self.start_camera_preview():
+            return None
+        deadline = time.monotonic() + WEBRTC_START_TIMEOUT
+        while time.monotonic() < deadline:
+            await asyncio.sleep(0.1)
+            if self.has_active_stream:
+                return self._stream_session
+        _LOGGER.warning("Intercom did not start a stream within %ss", WEBRTC_START_TIMEOUT)
+        return None
 
     async def _auto_respond(self) -> None:
         """Send auto-response audio after stream starts."""

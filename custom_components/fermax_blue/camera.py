@@ -6,7 +6,7 @@ import asyncio
 import logging
 
 from aiohttp import web
-from homeassistant.components.camera import Camera
+from homeassistant.components.camera import Camera, CameraEntityFeature
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
@@ -17,6 +17,7 @@ from .const import DOMAIN, SIGNAL_DOORBELL_RING
 from .coordinator import FermaxBlueCoordinator
 from .entity import FermaxBlueEntity
 from .streaming import streaming_deps_available
+from .webrtc_bridge import webrtc_stream_source
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -39,13 +40,16 @@ async def async_setup_entry(
 class FermaxCamera(FermaxBlueEntity, Camera):
     """Camera entity with live video streaming and visitor photo capture.
 
-    Supports two modes:
+    Supports three modes:
     - Still image: shows the last captured visitor photo (from doorbell ring)
     - Live stream: connects to the intercom camera via mediasoup and serves
       MJPEG frames in real-time (triggered by turn_on / camera preview button)
+    - WebRTC: the same session published through go2rtc, with the panel audio
+      and a return channel for the viewer microphone (see webrtc_bridge)
     """
 
     _attr_translation_key = "visitor"
+    _attr_supported_features = CameraEntityFeature.STREAM
 
     def __init__(self, coordinator: FermaxBlueCoordinator) -> None:
         FermaxBlueEntity.__init__(self, coordinator)
@@ -84,6 +88,12 @@ class FermaxCamera(FermaxBlueEntity, Camera):
             return True
         return super().available
 
+    async def stream_source(self) -> str | None:
+        """Return the go2rtc source for this intercom's WebRTC bridge."""
+        if not streaming_deps_available():
+            return None
+        return webrtc_stream_source(self.hass, self.coordinator.webrtc_token)
+
     async def async_camera_image(
         self,
         width: int | None = None,  # noqa: V107
@@ -111,6 +121,8 @@ class FermaxCamera(FermaxBlueEntity, Camera):
         )
         await response.prepare(request)
 
+        # While someone watches the MJPEG, the session decodes every frame
+        self.coordinator.mjpeg_clients += 1
         try:
             while True:
                 stream = self.coordinator.stream_session
@@ -140,6 +152,8 @@ class FermaxCamera(FermaxBlueEntity, Camera):
                     await asyncio.sleep(2)  # Refresh preview every 2s
         except (ConnectionResetError, ConnectionError, asyncio.CancelledError):
             pass
+        finally:
+            self.coordinator.mjpeg_clients -= 1
 
         return response
 
