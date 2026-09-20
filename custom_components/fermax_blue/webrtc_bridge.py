@@ -22,6 +22,7 @@ import asyncio
 import contextlib
 import io
 import logging
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from aiohttp import web
@@ -135,8 +136,8 @@ def _placeholder_frame(jpeg: bytes | None) -> Any:
     return frame
 
 
-def _create_switchable_video_track(placeholder_jpeg: bytes | None) -> Any:
-    """A video track showing a still until a live source is attached."""
+def _create_switchable_video_track(placeholder_jpeg: Callable[[], bytes | None]) -> Any:
+    """A video track showing a still (the latest snapshot) whenever no live source is attached."""
     from fractions import Fraction
 
     from aiortc import MediaStreamTrack
@@ -147,7 +148,8 @@ def _create_switchable_video_track(placeholder_jpeg: bytes | None) -> Any:
         def __init__(self) -> None:
             super().__init__()
             self._source: Any = None
-            self._placeholder = _placeholder_frame(placeholder_jpeg)
+            self._placeholder_jpeg: bytes | None = None
+            self._placeholder: Any = None
             self._n = 0
             # (source pts, our pts) at the first live packet: the live timeline
             # continues where the placeholder left off
@@ -170,6 +172,10 @@ def _create_switchable_video_track(placeholder_jpeg: bytes | None) -> Any:
                         item.pts = self._origin[1] + item.pts - self._origin[0]
                     return item
             await asyncio.sleep(1 / PLACEHOLDER_FPS)
+            jpeg = placeholder_jpeg()
+            if self._placeholder is None or jpeg is not self._placeholder_jpeg:
+                self._placeholder_jpeg = jpeg
+                self._placeholder = _placeholder_frame(jpeg)
             frame = self._placeholder
             frame.pts = self._n
             frame.time_base = Fraction(1, PLACEHOLDER_FPS)
@@ -252,7 +258,9 @@ class WebRtcPeer:
                     await pc.setRemoteDescription(
                         RTCSessionDescription(sdp=data["value"], type="offer")
                     )
-                    self._video = _create_switchable_video_track(self._coordinator.last_photo)
+                    self._video = _create_switchable_video_track(
+                        lambda: self._coordinator.last_photo
+                    )
                     self._audio = _create_switchable_audio_track()
                     pc.addTrack(self._video)
                     pc.addTrack(self._audio)
@@ -293,7 +301,12 @@ class WebRtcPeer:
         while not self._closed:
             await asyncio.sleep(SESSION_POLL_SECONDS)
             if not session.is_active:
-                await self.close()
+                # The call ends on its own, as in the app. The viewer keeps the
+                # last snapshot; closing the peer instead would make go2rtc
+                # redial and wake the intercom again for as long as the card
+                # stays open.
+                self._session = None
+                return
 
     async def _pump_microphone(self, track: Any) -> None:
         """The first microphone packet marks a viewer who wants to talk."""

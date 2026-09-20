@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+- **A WebRTC viewer no longer keeps the intercom awake** — when the session ends (the configured stream duration, or the 90 s conversation once answered) the card now keeps the last snapshot instead of hanging up, which made go2rtc redial and wake the intercom again for as long as the card stayed open. The call ends on its own, like in the app; close and reopen the card, or press the camera preview button, to watch again.
+
 ## [0.20.0-beta.1] - 2026-09-20
 
 ### Added
