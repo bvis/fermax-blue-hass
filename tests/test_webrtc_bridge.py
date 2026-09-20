@@ -72,6 +72,16 @@ def _text(payload):
     return SimpleNamespace(type=web.WSMsgType.TEXT, json=lambda: payload)
 
 
+def _jpeg_bytes(size=(8, 8)):
+    import io
+
+    from PIL import Image
+
+    buf = io.BytesIO()
+    Image.new("RGB", size, (200, 30, 30)).save(buf, format="JPEG")
+    return buf.getvalue()
+
+
 def _session(video=True, active=True, encoded=True):
     session = MagicMock()
     session.subscribe_encoded_video = MagicMock(
@@ -154,7 +164,7 @@ class TestPlaceholderVideo:
                 return "live-frame"
 
         with patch.object(webrtc_bridge, "PLACEHOLDER_FPS", 1000):
-            track = webrtc_bridge._create_switchable_video_track(None)
+            track = webrtc_bridge._create_switchable_video_track(lambda: None)
             first = await track.recv()
             first_pts = first.pts
             second = await track.recv()
@@ -170,7 +180,7 @@ class TestPlaceholderVideo:
                 raise MediaStreamError
 
         with patch.object(webrtc_bridge, "PLACEHOLDER_FPS", 1000):
-            track = webrtc_bridge._create_switchable_video_track(None)
+            track = webrtc_bridge._create_switchable_video_track(lambda: None)
             track.set_source(Dead())
             frame = await track.recv()
             assert frame.width == webrtc_bridge.PLACEHOLDER_SIZE[0]
@@ -290,12 +300,20 @@ class TestSessionAttachment:
         assert peer._closed is True
         assert "Could not start the intercom" in caplog.text
 
-    async def test_session_end_closes_peer(self):
+    async def test_session_end_keeps_the_peer_on_the_last_snapshot(self):
         session = _session(active=False)
-        peer, _ = await self._attached(session)
+        peer, coordinator = await self._attached(session)
         await asyncio.sleep(0)
         await asyncio.sleep(0)
-        assert peer._closed is True
+        assert peer._closed is False  # no hang-up: go2rtc would redial and wake the intercom
+        assert peer._session is None
+        # the still tracks whatever the coordinator holds as the latest snapshot
+        coordinator.last_photo = _jpeg_bytes()
+        with patch.object(webrtc_bridge.asyncio, "sleep", AsyncMock()):
+            peer._video.set_source(None)
+            frame = await peer._video.recv()
+        assert frame.width == 8  # dimensions of the test snapshot, not the black default
+        await peer.close()
 
 
 class TestMicrophone:
@@ -495,7 +513,7 @@ class TestPacketPassThrough:
             _create_switchable_video_track,
         )
 
-        track = _create_switchable_video_track(None)
+        track = _create_switchable_video_track(lambda: None)
         with patch.object(webrtc_bridge.asyncio, "sleep", AsyncMock()):
             for _ in range(3):
                 await track.recv()  # placeholder pts 0, 1, 2 at 1/PLACEHOLDER_FPS

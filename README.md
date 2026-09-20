@@ -221,6 +221,7 @@ When the `ring_preview` switch is on, a doorbell ring starts a view-only video s
 The camera advertises a WebRTC stream served through Home Assistant's bundled go2rtc. Any card that plays a camera stream — the standard picture-entity card with `camera_view: live`, the picture-glance card, the more-info dialog, the companion apps — shows the live video **with the intercom's audio**.
 
 - **Opening the card wakes the intercom.** While the intercom is idle, the card shows the last snapshot and the integration requests a preview, exactly like pressing `button.<name>_camera_preview`; the live picture arrives a few seconds later (up to half a minute on a cold panel). If a session is already running (a ring preview, a recording), the viewer joins it.
+- **The session ends on its own**, after the configured stream duration (or the 90 s conversation once you have talked), exactly like in the app. The card then keeps the last snapshot; close and reopen it, or press the camera preview button, to watch again.
 - **Talking back needs a card that captures the microphone.** Home Assistant's own cards play video and audio only for now. The [WebRTC card](https://github.com/AlexxIT/WebRTC) does capture it:
 
   ```yaml
