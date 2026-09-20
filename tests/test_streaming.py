@@ -7,9 +7,10 @@ import json
 import wave
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import numpy as np
+import pytest
 from aiortc.mediastreams import MediaStreamError
 from PIL import Image
 
@@ -632,14 +633,52 @@ class TestSwitchableAudioTrack:
         assert not first.to_ndarray().any()
 
     async def test_uses_source_when_set(self):
+        import av
+        import numpy as np
+
+        class PanelAudio:
+            """8 kHz mono, like the decoded PCMA the intercom sends."""
+
+            async def recv(self):
+                frame = av.AudioFrame(format="s16", layout="mono", samples=160)
+                frame.planes[0].update(np.full(160, 12000, dtype=np.int16).tobytes())
+                frame.sample_rate = 8000
+                return frame
+
+        track = _create_switchable_audio_track()
+        track.set_source(PanelAudio())
+
+        first = await track.recv()
+        second = await track.recv()
+
+        # Normalised to the producer format on a continuous timeline
+        assert first.sample_rate == 48000
+        assert first.layout.name == "mono"
+        assert first.samples == 960
+        assert first.to_ndarray().any()
+        assert second.pts == first.pts + 960
+
+    async def test_source_format_change_is_absorbed(self):
+        import av
+
+        frames = [
+            av.AudioFrame(format="s16", layout="stereo", samples=960),
+            av.AudioFrame(format="s16", layout="mono", samples=160),
+        ]
+        frames[0].sample_rate = 48000
+        frames[1].sample_rate = 8000
+
         class Source:
             async def recv(self):
-                return "frame-from-source"
+                return frames.pop(0)
 
         track = _create_switchable_audio_track()
         track.set_source(Source())
 
-        assert await track.recv() == "frame-from-source"
+        out = [await track.recv(), await track.recv()]
+
+        assert all(f.sample_rate == 48000 and f.layout.name == "mono" for f in out)
+        assert all(f.samples == 960 for f in out)
 
     async def test_failing_source_falls_back_to_silence(self):
         class BrokenSource:
@@ -883,12 +922,20 @@ class TestEndUpStopsSession:
         session._signaling.disconnect.assert_awaited()
 
 
+class PassthroughRelay:
+    """Stand-in for aiortc's MediaRelay: hands the source track straight back."""
+
+    def subscribe(self, track, **_kwargs):
+        return track
+
+
 class TestGrabFrames:
     """RTP frame → JPEG conversion loop."""
 
     def _session(self):
         session = _bare_session()
         session._active = True
+        session._relay = PassthroughRelay()
         session._recording_frames = []
         return session
 
@@ -955,6 +1002,7 @@ class TestGrabAudio:
     def _session(self):
         session = _bare_session()
         session._active = True
+        session._relay = PassthroughRelay()
         session._recording_audio_frames = []
         return session
 
@@ -1222,3 +1270,446 @@ class TestPymediasoupChannelsPatch:
             assert patched.codecs[2].channels is None  # video untouched
         finally:
             AiortcHandler.getNativeRtpCapabilities = saved
+
+
+class TestSwitchableTrackLiveSource:
+    """A live source (viewer microphone) that goes quiet is kept, not dropped."""
+
+    async def test_quiet_source_yields_silence_and_stays_attached(self):
+        class QuietSource:
+            async def recv(self):
+                await asyncio.sleep(10)
+
+        track = _create_switchable_audio_track()
+        source = QuietSource()
+        track.set_source(source)
+
+        with patch("custom_components.fermax_blue.streaming.SOURCE_TIMEOUT", 0.01):
+            frame = await track.recv()
+
+        assert frame.samples == 960
+        assert not frame.to_ndarray().any()
+        assert track._source is source
+
+
+class TestOnDemandPickup:
+    """A receive-only session can be answered later, like the app's preview → pickup."""
+
+    async def test_pickup_after_receive_only_start(self, tmp_path):
+        session, send_transport, patches = _mocked_session(tmp_path, receive_only=True)
+        session._signaling._send_hangup = False
+        with contextlib.ExitStack() as stack:
+            for p in patches:
+                stack.enter_context(p)
+            assert await session.start() is True
+        assert session.picked_up is False
+        assert session._signaling._send_hangup is False
+
+        assert await session.pickup() is True
+
+        send_transport.produce.assert_awaited_once()
+        assert session.picked_up is True
+        assert session._signaling._send_hangup is True
+        # Idempotent: answering twice publishes nothing new
+        assert await session.pickup() is True
+        send_transport.produce.assert_awaited_once()
+        await session.stop()
+
+    async def test_pickup_without_transport_fails(self):
+        session = _bare_session()
+        assert await session.pickup() is False
+
+    async def test_pickup_produce_error_fails(self):
+        session = _bare_session()
+        session._signaling = MagicMock()
+        session._send_transport = MagicMock(produce=AsyncMock(side_effect=RuntimeError("no")))
+
+        assert await session.pickup() is False
+        assert session.picked_up is False
+
+    async def test_pickup_starts_audio_recorder_when_consumer_exists(self):
+        session = _bare_session()
+        session._active = True
+        session._relay = PassthroughRelay()
+        session._signaling = MagicMock()
+        session._audio_consumer = SimpleNamespace(track=ScriptedTrack([]))
+        session._send_transport = MagicMock(produce=AsyncMock(return_value=MagicMock()))
+
+        assert await session.pickup() is True
+        assert session._audio_task is not None
+        await session._audio_task
+
+    async def test_receive_only_start_uses_pickup_path(self, tmp_path):
+        session, _send_transport, patches = _mocked_session(tmp_path, receive_only=False)
+        with contextlib.ExitStack() as stack:
+            for p in patches:
+                stack.enter_context(p)
+            assert await session.start() is True
+
+        assert session.picked_up is True
+        assert session.subscribe_video() is not None
+        await session.stop()
+
+
+class TestViewerSubscriptions:
+    """Relay proxies for WebRTC viewers: video now, panel audio once answered."""
+
+    def test_video_unavailable_before_start(self):
+        assert _bare_session().subscribe_video() is None
+
+    def test_audio_sink_waits_for_panel_audio(self):
+        session = _bare_session()
+        session._relay = PassthroughRelay()
+
+        sink = _create_switchable_audio_track()
+        session.attach_audio_sink(sink)
+        assert sink._source is None
+
+        session._audio_consumer = SimpleNamespace(track="panel-audio")
+        session._attach_audio_sinks()
+        assert sink._source == "panel-audio"
+
+    def test_audio_sink_attached_immediately_when_available(self):
+        session = _bare_session()
+        session._relay = PassthroughRelay()
+        session._audio_consumer = SimpleNamespace(track="panel-audio")
+
+        sink = _create_switchable_audio_track()
+        session.attach_audio_sink(sink)
+        assert sink._source == "panel-audio"
+
+    def test_stopped_sink_is_left_alone(self):
+        session = _bare_session()
+        session._relay = PassthroughRelay()
+        sink = _create_switchable_audio_track()
+        session.attach_audio_sink(sink)
+        sink.stop()
+
+        session._audio_consumer = SimpleNamespace(track="panel-audio")
+        session._attach_audio_sinks()
+        assert sink._source is None
+
+    def test_set_audio_source_requires_pickup(self):
+        session = _bare_session()
+        session.set_audio_source("mic")  # no producer yet: ignored
+        session._switchable_track = _create_switchable_audio_track()
+        session.set_audio_source("mic")
+        assert session._switchable_track._source == "mic"
+
+
+class TestSwitchableTrackGapFilling:
+    """Holes in a live source are padded with silence to keep real-time pacing."""
+
+    @staticmethod
+    def _frame(pts, samples=160, rate=8000, value=5000):
+        import av
+        import numpy as np
+
+        frame = av.AudioFrame(format="s16", layout="mono", samples=samples)
+        frame.planes[0].update(np.full(samples, value, dtype=np.int16).tobytes())
+        frame.sample_rate = rate
+        frame.pts = pts
+        return frame
+
+    async def _drain(self, track, n):
+        return [await track.recv() for _ in range(n)]
+
+    async def test_missing_source_frames_become_silence(self):
+        # 20 ms frames at 8 kHz; the second one arrives 60 ms late (two lost)
+        frames = [self._frame(0), self._frame(480), self._frame(640), self._frame(800)]
+
+        class Source:
+            async def recv(self):
+                return frames.pop(0)
+
+        track = _create_switchable_audio_track()
+        track.set_source(Source())
+
+        out = await self._drain(track, 5)
+
+        # The resampler releases a frame one input late, so the first audio
+        # lands after the 60 ms of padding; nothing is squeezed together
+        assert [bool(f.to_ndarray().any()) for f in out] == [False, False, False, True, True]
+        assert [f.pts for f in out] == [0, 960, 1920, 2880, 3840]
+
+    async def test_huge_hole_reanchors_instead_of_bursting(self):
+        # The source jumps 10 s ahead after its first frame
+        frames = [self._frame(0), self._frame(80000), self._frame(80160), self._frame(80320)]
+
+        class Source:
+            async def recv(self):
+                return frames.pop(0)
+
+        track = _create_switchable_audio_track()
+        track.set_source(Source())
+
+        out = await self._drain(track, 3)
+
+        assert all(f.to_ndarray().any() for f in out)
+        assert not track._pending
+
+    async def test_frames_without_timing_are_passed_through(self):
+        import av
+
+        frame = av.AudioFrame(format="s16", layout="mono", samples=960)
+        frame.sample_rate = 48000
+        frame.pts = None
+
+        class Source:
+            async def recv(self):
+                return frame
+
+        track = _create_switchable_audio_track()
+        track.set_source(Source())
+
+        out = await self._drain(track, 3)
+        assert [f.pts for f in out] == [0, 960, 1920]
+
+    async def test_new_source_starts_a_fresh_anchor(self):
+        first = [self._frame(8000 * 5)]
+        second = [self._frame(0)]
+
+        class Source:
+            def __init__(self, frames):
+                self.frames = frames
+
+            async def recv(self):
+                return self.frames.pop(0)
+
+        track = _create_switchable_audio_track()
+        track.set_source(Source(first))
+        await track.recv()
+        track.set_source(Source(second))
+
+        frame = await track.recv()
+        assert frame.to_ndarray().any()
+        assert not track._pending
+
+
+class TestUdpBuffers:
+    """Media sockets get a receive buffer large enough to ride out loop stalls."""
+
+    def test_sets_rcvbuf_once_per_socket(self):
+        import socket
+
+        from custom_components.fermax_blue.streaming import UDP_RCVBUF, _tune_udp_sockets
+
+        sock = MagicMock()
+        protocol = MagicMock()
+        protocol.transport.get_extra_info = MagicMock(return_value=sock)
+        connection = MagicMock(_protocols=[protocol, protocol])
+        transceiver = MagicMock()
+        transceiver.receiver.transport.transport._connection = connection
+        transport = MagicMock()
+        transport._handler._pc.getTransceivers = MagicMock(return_value=[transceiver, transceiver])
+
+        _tune_udp_sockets(transport)
+
+        sock.setsockopt.assert_called_once_with(socket.SOL_SOCKET, socket.SO_RCVBUF, UDP_RCVBUF)
+
+    def test_missing_socket_and_broken_internals_are_ignored(self):
+        from custom_components.fermax_blue.streaming import _tune_udp_sockets
+
+        protocol = MagicMock()
+        protocol.transport.get_extra_info = MagicMock(return_value=None)
+        transceiver = MagicMock()
+        transceiver.receiver.transport.transport._connection = MagicMock(_protocols=[protocol])
+        transport = MagicMock()
+        transport._handler._pc.getTransceivers = MagicMock(return_value=[transceiver])
+        _tune_udp_sockets(transport)  # no socket: nothing to do, no error
+
+        _tune_udp_sockets(object())  # no _handler at all: swallowed
+
+    async def test_applied_to_the_video_transport_on_start(self, tmp_path):
+        session, _send_transport, patches = _mocked_session(tmp_path, receive_only=True)
+        with (
+            contextlib.ExitStack() as stack,
+            patch("custom_components.fermax_blue.streaming._tune_udp_sockets") as enlarge,
+        ):
+            for p in patches:
+                stack.enter_context(p)
+            assert await session.start() is True
+        enlarge.assert_called_once_with(session._recv_transport)
+        await session.stop()
+
+
+class TestDrainOnWakeup:
+    """A media socket is read until empty on every loop wake-up, not once."""
+
+    @staticmethod
+    def _transport(recvfrom_results):
+        transport = MagicMock(_conn_lost=False, max_size=4096)
+        transport._sock.fileno.return_value = 7
+        transport._sock.recvfrom.side_effect = recvfrom_results
+        return transport
+
+    @staticmethod
+    def _registered_reader(transport):
+        from custom_components.fermax_blue.streaming import _drain_on_wakeup
+
+        _drain_on_wakeup(transport)
+        transport._loop._remove_reader.assert_called_once_with(7)
+        fd, reader = transport._loop._add_reader.call_args.args
+        assert fd == 7
+        return reader
+
+    def test_reads_every_waiting_datagram(self):
+        transport = self._transport([(b"a", "p1"), (b"b", "p2"), BlockingIOError()])
+        self._registered_reader(transport)()
+        assert transport._protocol.datagram_received.call_args_list == [
+            call(b"a", "p1"),
+            call(b"b", "p2"),
+        ]
+
+    def test_stops_at_the_cap_and_on_errors(self):
+        from custom_components.fermax_blue import streaming
+
+        transport = self._transport([(b"a", "p")] * 10)
+        with patch.object(streaming, "DATAGRAMS_PER_WAKEUP", 3):
+            self._registered_reader(transport)()
+        assert transport._protocol.datagram_received.call_count == 3
+
+        error = OSError("boom")
+        transport = self._transport([(b"a", "p"), error])
+        self._registered_reader(transport)()
+        transport._protocol.error_received.assert_called_once_with(error)
+
+        transport = self._transport([(b"a", "p")])
+        reader = self._registered_reader(transport)
+        transport._conn_lost = True
+        reader()
+        transport._protocol.datagram_received.assert_not_called()
+
+
+class TestEncodedVideo:
+    """The panel's H264 access units reach a viewer without re-encoding."""
+
+    IDR = b"\x00\x00\x00\x01\x65\xaa"
+    P = b"\x00\x00\x00\x01\x41\xbb"
+    SPS = b"\x00\x00\x00\x01\x67\x01"
+    PPS = b"\x00\x00\x00\x01\x68\x02"
+
+    def test_nal_types(self):
+        from custom_components.fermax_blue.streaming import _nal_types
+
+        assert _nal_types(self.SPS + self.PPS + self.IDR) == [7, 8, 5]
+        assert _nal_types(b"\x00\x00\x01\x41") == [1]
+        assert _nal_types(b"garbage") == []
+
+    async def test_starts_at_a_keyframe_and_prepends_parameter_sets(self):
+        from fractions import Fraction
+
+        from custom_components.fermax_blue.streaming import _create_encoded_video_track
+
+        session = MagicMock()
+        track = _create_encoded_video_track(session)
+        session.add_encoded_sink.assert_called_once_with(track)
+
+        track.push(self.SPS + self.PPS, 0)  # parameter sets alone
+        track.push(self.P, 3000)  # not a keyframe: dropped
+        track.push(self.IDR, 6000)  # keyframe without its own parameter sets
+        track.push(self.P, 9000)
+
+        first = await track.recv()
+        assert bytes(first) == self.SPS + self.PPS + self.IDR
+        assert first.pts == 6000
+        assert first.time_base == Fraction(1, 90000)
+        second = await track.recv()
+        assert bytes(second) == self.P
+        assert second.pts == 9000
+
+    async def test_keyframe_with_parameter_sets_is_passed_as_is(self):
+        from custom_components.fermax_blue.streaming import _create_encoded_video_track
+
+        track = _create_encoded_video_track(MagicMock())
+        track.push(self.SPS + self.PPS + self.IDR, 100)
+        assert bytes(await track.recv()) == self.SPS + self.PPS + self.IDR
+
+    async def test_end_and_stop_raise_media_stream_error(self):
+        from custom_components.fermax_blue.streaming import _create_encoded_video_track
+
+        track = _create_encoded_video_track(MagicMock())
+        track.end()
+        with pytest.raises(MediaStreamError):
+            await track.recv()
+
+        track = _create_encoded_video_track(MagicMock())
+        track.stop()
+        with pytest.raises(MediaStreamError):
+            await track.recv()
+
+    def test_tap_forwards_assembled_frames(self):
+        import queue
+
+        from custom_components.fermax_blue.streaming import _tap_encoded_video
+
+        decoder_queue = queue.Queue()
+        track = object()
+        receiver = MagicMock(track=track)
+        receiver._RTCRtpReceiver__decoder_queue = decoder_queue
+        other = MagicMock()
+        other.receiver.track = object()
+        transport = MagicMock()
+        transport._handler._pc.getTransceivers = MagicMock(
+            return_value=[other, MagicMock(receiver=receiver)]
+        )
+        forward = MagicMock()
+
+        assert _tap_encoded_video(transport, track, forward) is True
+        encoded = SimpleNamespace(data=b"au", timestamp=90)
+        decoder_queue.put(("codec", encoded))
+        decoder_queue.put(None)
+
+        forward.assert_called_once_with(b"au", 90)
+        assert decoder_queue.get_nowait() == ("codec", encoded)  # the decoder still sees it
+        assert decoder_queue.get_nowait() is None
+
+    def test_tap_failure_is_reported(self):
+        from custom_components.fermax_blue.streaming import _tap_encoded_video
+
+        transport = MagicMock()
+        transport._handler._pc.getTransceivers = MagicMock(return_value=[])
+        assert _tap_encoded_video(transport, object(), MagicMock()) is False
+
+    async def test_session_subscription_and_fan_out(self, tmp_path):
+        from custom_components.fermax_blue.streaming import FermaxStreamSession
+
+        session = FermaxStreamSession.__new__(FermaxStreamSession)
+        session._consumer = None
+        session._encoded_sinks = []
+        session._encoded_tapped = False
+        assert session.subscribe_encoded_video() is None  # no consumer yet
+        session._consumer = MagicMock()
+        assert session.subscribe_encoded_video() is None  # consumer, but the tap failed
+        session._encoded_tapped = True
+
+        live = session.subscribe_encoded_video()
+        dead = session.subscribe_encoded_video()
+        dead.stop()
+        session._forward_encoded(self.IDR, 42)
+
+        assert session._encoded_sinks == [live]
+        assert bytes(await live.recv()) == self.IDR
+
+    async def test_stop_ends_the_encoded_sinks(self, tmp_path):
+        session, _send_transport, patches = _mocked_session(tmp_path, receive_only=True)
+        with contextlib.ExitStack() as stack:
+            for p in patches:
+                stack.enter_context(p)
+            assert await session.start() is True
+            sink = MagicMock(readyState="live")
+            session.add_encoded_sink(sink)
+            await session.stop()
+        sink.end.assert_called_once_with()
+        assert session._encoded_sinks == []
+
+
+class TestQueueDepth:
+    """Diagnostics helper tolerates tracks without an inspectable queue."""
+
+    def test_reads_qsize_or_none(self):
+        from custom_components.fermax_blue.streaming import _queue_depth
+
+        assert _queue_depth(SimpleNamespace(_queue=asyncio.Queue())) == 0
+        assert _queue_depth(SimpleNamespace(_queue=object())) is None
+        assert _queue_depth(object()) is None

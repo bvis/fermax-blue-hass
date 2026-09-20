@@ -44,6 +44,15 @@ CALL_MODES = [CALL_MODE_NOTIFY, CALL_MODE_RECORD, CALL_MODE_AUTO_RESPOND]
 DEFAULT_STREAM_DURATION = 30
 MIN_STREAM_DURATION = 10
 MAX_STREAM_DURATION = 120
+# An answered call lasts this long server-side (push field ConversationTimeout)
+DEFAULT_CONVERSATION_TIMEOUT = 90
+
+# WebRTC bridge for go2rtc: signaling endpoint served by HA, gated by a token
+WEBRTC_PATH = "/api/fermax_blue/webrtc/{token}"
+WEBRTC_TOKENS = "webrtc_tokens"  # hass.data[DOMAIN] key: token -> coordinator
+# How long a viewer waits for the intercom to answer an auto-on request
+# (a cold panel has been seen taking ~27 s to start streaming)
+WEBRTC_START_TIMEOUT = 40
 
 # Config keys — API/Firebase credentials (provided by the user)
 CONF_FERMAX_AUTH_URL = "fermax_auth_url"
