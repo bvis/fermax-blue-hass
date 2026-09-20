@@ -39,6 +39,10 @@ _LOGGER = logging.getLogger(__name__)
 
 # How often a peer checks that the session behind it is still alive
 SESSION_POLL_SECONDS = 1.0
+# go2rtc redials the moment we hang up on a viewer it still serves; when the
+# intercom could not be woken (it answers 409 while tearing a session down)
+# this pause spaces the attempts out instead of hammering the API
+WAKE_RETRY_DELAY = 5.0
 # Placeholder video while the intercom wakes up
 PLACEHOLDER_FPS = 2
 PLACEHOLDER_SIZE = (640, 480)
@@ -265,9 +269,18 @@ class WebRtcPeer:
 
     async def _attach_session(self) -> None:
         """Wake the intercom, switch the tracks to the live media, then watch it."""
-        session = await self._coordinator.ensure_stream()
+        try:
+            session = await self._coordinator.ensure_stream()
+        except Exception:
+            # A background task: an unhandled error would leave the viewer on
+            # the placeholder for ever, silently
+            _LOGGER.warning("Could not start the intercom for a WebRTC viewer", exc_info=True)
+            await self.close()
+            return
         if session is None or self._closed:
-            _LOGGER.warning("WebRTC viewer connected but no live session could be started")
+            if not self._closed:
+                _LOGGER.warning("WebRTC viewer connected but no live session could be started")
+                await asyncio.sleep(WAKE_RETRY_DELAY)
             await self.close()
             return
         self._session = session

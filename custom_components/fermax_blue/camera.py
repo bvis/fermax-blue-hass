@@ -121,6 +121,8 @@ class FermaxCamera(FermaxBlueEntity, Camera):
         )
         await response.prepare(request)
 
+        # While someone watches the MJPEG, the session decodes every frame
+        self.coordinator.mjpeg_clients += 1
         try:
             while True:
                 stream = self.coordinator.stream_session
@@ -150,6 +152,8 @@ class FermaxCamera(FermaxBlueEntity, Camera):
                     await asyncio.sleep(2)  # Refresh preview every 2s
         except (ConnectionResetError, ConnectionError, asyncio.CancelledError):
             pass
+        finally:
+            self.coordinator.mjpeg_clients -= 1
 
         return response
 

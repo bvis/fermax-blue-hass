@@ -120,6 +120,8 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         self._conversation_timeout = DEFAULT_CONVERSATION_TIMEOUT
         # Gates the go2rtc signaling endpoint for this intercom (see webrtc_bridge)
         self.webrtc_token = secrets.token_urlsafe(16)
+        # MJPEG viewers currently connected: the session decodes every frame for them
+        self.mjpeg_clients = 0
         self._firebase_config = firebase_config or {}
         self._processed_notifications: deque[str] = deque(maxlen=100)
         self._notification_start_time: float | None = None
@@ -713,6 +715,7 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
             on_end=_on_stream_end,
             media_root=media_root,
             receive_only=receive_only,
+            full_decode=lambda: self.mjpeg_clients > 0,
         )
 
         success = await self._stream_session.start()

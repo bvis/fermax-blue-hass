@@ -960,6 +960,7 @@ class TestGrabFrames:
         assert session._last_raw_frame != session._latest_frame
         assert len(session._recording_frames) == 100
         assert session._recording_frames[-1] == session._last_raw_frame
+        assert session._recording_video_wall is not None
         decoded = Image.open(io.BytesIO(session._latest_frame))
         assert decoded.size == (64, 48)
         badge = decoded.getpixel((8, 8))
@@ -967,6 +968,16 @@ class TestGrabFrames:
         assert badge[1] < 80
         assert session.is_active is False
         assert ended == [True]
+
+    async def test_frames_are_not_recorded_when_the_encoded_video_is_tapped(self):
+        session = self._session()
+        session._encoded_tapped = True
+        session._consumer = SimpleNamespace(track=ScriptedTrack([FakeVideoFrame()]))
+
+        await session._grab_frames()
+
+        assert session.latest_frame_raw.startswith(b"\xff\xd8")
+        assert session._recording_frames == []
 
     async def test_unexpected_error_ends_session(self):
         class BrokenFrame:
@@ -1014,6 +1025,7 @@ class TestGrabAudio:
         await session._grab_audio()
 
         assert session._audio_sample_rate == 8000
+        assert session._recording_audio_wall is not None
         assert len(session._recording_audio_frames) == 2
         assert session._recording_audio_frames[0] == np.full(160, 7, dtype=np.int16).tobytes()
         assert session._recording_audio_frames[1] == np.full(160, 9, dtype=np.int16).tobytes()
@@ -1036,18 +1048,65 @@ def _exists(path):
     return Path(path).exists()
 
 
-def _recording_session(tmp_path, video_frames, audio_frames=None, sent=None, rate=48000):
+def _recording_session(
+    tmp_path, access_units=(), jpegs=(), audio_frames=None, sent=None, rate=48000
+):
     session = _bare_session(str(tmp_path))
     session._recording_path = str(tmp_path / "rec.mp4")
-    session._recording_frames = list(video_frames)
+    session._recording_video = list(access_units)
+    session._recording_frames = list(jpegs)
     session._recording_audio_frames = list(audio_frames or [])
     session._recording_sent_audio = list(sent or [])
     session._audio_sample_rate = rate
     return session
 
 
+def _annexb_stream(frames=12, size=(64, 48), fps=20):
+    """Encode a synthetic clip with x264 into Annex B access units, (data, pts@90kHz)."""
+    import fractions
+
+    import av
+
+    encoder = av.CodecContext.create("libx264", "w")
+    encoder.width, encoder.height = size
+    encoder.pix_fmt = "yuv420p"
+    encoder.time_base = fractions.Fraction(1, 90000)
+    encoder.framerate = fractions.Fraction(fps, 1)
+    encoder.options = {"preset": "ultrafast", "tune": "zerolatency", "x264-params": "keyint=5"}
+    units = []
+    for index in range(frames):
+        image = Image.new("RGB", size, (index * 20 % 255, 100, 50))
+        frame = av.VideoFrame.from_image(image).reformat(format="yuv420p")
+        frame.pts = index * 90000 // fps
+        frame.time_base = fractions.Fraction(1, 90000)
+        units += [(bytes(packet), packet.pts) for packet in encoder.encode(frame)]
+    units += [(bytes(packet), packet.pts) for packet in encoder.encode(None)]
+    return units
+
+
+def _jpeg(color=(10, 130, 200)):
+    buf = io.BytesIO()
+    Image.new("RGB", (64, 48), color).save(buf, format="JPEG")
+    return buf.getvalue()
+
+
+def _probe(path):
+    """(video frames decoded, video size, audio stream count, duration seconds)."""
+    import av
+
+    with av.open(path) as container:
+        video = container.streams.video[0]
+        frames = sum(1 for _ in container.decode(video))
+        return (
+            frames,
+            (video.width, video.height),
+            len(container.streams.audio),
+            container.duration / 1e6,
+        )
+
+
 class TestRecording:
-    """Recording init and MP4 finalization via (faked) ffmpeg."""
+    """Recording init and MP4 muxing of the panel's own H264 (or JPEG frames)."""
 
     def test_init_recording_prepares_buffers(self, tmp_path):
         session = _bare_session(str(tmp_path))
@@ -1056,6 +1115,7 @@ class TestRecording:
 
         assert (tmp_path / "fermax_recordings").is_dir()
         assert session._recording_path.endswith(".mp4")
+        assert session._recording_video == []
         assert session._recording_frames == []
         assert session._recording_audio_frames == []
         assert session._recording_sent_audio == []
@@ -1070,97 +1130,93 @@ class TestRecording:
 
         assert session._recording_path is None
 
-    async def test_save_video_only_builds_ffmpeg_command(self, tmp_path):
-        session = _recording_session(tmp_path, [b"\xff\xd8AA", b"\xff\xd8BB"])
-        captured = {}
+    def test_parameter_sets_and_dimensions(self):
+        from custom_components.fermax_blue.streaming import _h264_dimensions, _parameter_sets
 
-        def fake_run(cmd, capture_output=None, timeout=None, shell=None):
-            inputs = [cmd[i + 1] for i, arg in enumerate(cmd) if arg == "-i"]
-            captured["cmd"] = cmd
-            captured["mjpeg"] = Path(inputs[0]).read_bytes()
-            Path(cmd[-1]).write_bytes(b"mp4-output")
-            return SimpleNamespace(returncode=0, stderr=b"")
+        units = _annexb_stream(frames=1)
+        sps, pps = _parameter_sets(units[0][0])
+        assert sps[:5] == b"\x00\x00\x00\x01\x67"
+        assert pps[:5] == b"\x00\x00\x00\x01\x68"
+        assert _parameter_sets(b"\x00\x00\x00\x01\x65") == (b"", b"")
+        assert _h264_dimensions(units[0][0]) == (64, 48)
+        assert _h264_dimensions(b"not h264") == (0, 0)
 
-        with patch("subprocess.run", fake_run):
-            await session._save_recording()
+    async def test_native_video_is_muxed_without_reencoding(self, tmp_path):
+        units = _annexb_stream(frames=12)
+        # A repeated timestamp would break the muxer: it is skipped, not fatal
+        units.insert(3, units[2])
+        session = _recording_session(tmp_path, access_units=units)
 
-        cmd = captured["cmd"]
-        assert cmd[0] == "ffmpeg"
-        assert cmd[-1] == str(tmp_path / "rec.mp4")
-        assert "-c:a" not in cmd
-        assert captured["mjpeg"] == b"\xff\xd8AA\xff\xd8BB"
-        assert _read_bytes(session._recording_path) == b"mp4-output"
-        assert session._recording_frames == []
+        await session._save_recording()
 
-    async def test_save_mixes_received_and_sent_audio(self, tmp_path):
-        recv = np.full(400, 1000, dtype=np.int16).tobytes()  # 0.05 s at 8 kHz
-        sent = np.full(4800, 500, dtype=np.int16).tobytes()  # 0.1 s at 48 kHz
+        frames, size, audio_streams, duration = _probe(session._recording_path)
+        assert frames == 12
+        assert size == (64, 48)
+        assert audio_streams == 0
+        assert 0.5 < duration < 0.7  # 12 frames at 20 fps, timestamps kept
+        assert session._recording_video == []
+
+    async def test_audio_is_mixed_and_offset_to_the_video(self, tmp_path):
+        recv = np.full(8000, 1000, dtype=np.int16).tobytes()  # 1 s at 8 kHz
+        sent = np.full(48000, 500, dtype=np.int16).tobytes()  # 1 s at 48 kHz
         session = _recording_session(
-            tmp_path, [b"\xff\xd8AA"], audio_frames=[recv], sent=[sent], rate=8000
+            tmp_path,
+            access_units=_annexb_stream(frames=40),
+            audio_frames=[recv],
+            sent=[sent],
+            rate=8000,
         )
-        captured = {}
+        session._recording_video_wall = 10.0
+        session._recording_audio_wall = 10.5  # the panel audio arrived half a second in
 
-        def fake_run(cmd, capture_output=None, timeout=None, shell=None):
-            inputs = [cmd[i + 1] for i, arg in enumerate(cmd) if arg == "-i"]
-            captured["cmd"] = cmd
-            captured["pcm"] = Path(inputs[1]).read_bytes()
-            Path(cmd[-1]).write_bytes(b"mp4-output")
-            return SimpleNamespace(returncode=0, stderr=b"")
+        pcm, rate = session._mixed_audio()
+        mixed = np.frombuffer(pcm, dtype=np.int16)
+        assert rate == 8000
+        assert len(mixed) == 8000  # sent audio resampled 6:1 onto the received rate
+        assert set(mixed.tolist()) == {1500}
 
-        with patch("subprocess.run", fake_run):
-            await session._save_recording()
+        await session._save_recording()
 
-        cmd = captured["cmd"]
-        assert cmd[cmd.index("-ar") + 1] == "8000"
-        assert "aac" in cmd
-        mixed = np.frombuffer(captured["pcm"], dtype=np.int16)
-        # Sent 48 kHz audio is resampled 6:1 to the 8 kHz received rate, the
-        # shorter received signal is zero-padded, then both are summed
-        assert len(mixed) == 800
-        assert set(mixed[:400].tolist()) == {1500}
-        assert set(mixed[400:].tolist()) == {500}
+        import av
+
+        with av.open(session._recording_path) as container:
+            audio = container.streams.audio[0]
+            assert audio.codec_context.name == "aac"
+            assert audio.rate == 8000
+            first = next(container.decode(audio))
+            # 0.5 s in, minus the AAC encoder's 1024-sample priming delay
+            assert abs(float(first.pts * first.time_base) - 0.5) < 0.15
         assert session._recording_audio_frames == []
         assert session._recording_sent_audio == []
 
-    async def test_save_recv_only_audio_at_48k(self, tmp_path):
-        recv = np.full(960, 250, dtype=np.int16).tobytes()
-        session = _recording_session(tmp_path, [b"\xff\xd8AA"], audio_frames=[recv], rate=48000)
-        captured = {}
+    async def test_jpeg_frames_are_encoded_when_no_encoded_video_was_captured(self, tmp_path):
+        session = _recording_session(tmp_path, jpegs=[_jpeg(), _jpeg((200, 20, 20))])
 
-        def fake_run(cmd, capture_output=None, timeout=None, shell=None):
-            inputs = [cmd[i + 1] for i, arg in enumerate(cmd) if arg == "-i"]
-            captured["cmd"] = cmd
-            captured["pcm"] = Path(inputs[1]).read_bytes()
-            Path(cmd[-1]).write_bytes(b"mp4-output")
-            return SimpleNamespace(returncode=0, stderr=b"")
+        await session._save_recording()
 
-        with patch("subprocess.run", fake_run):
-            await session._save_recording()
+        frames, size, _audio, _duration = _probe(session._recording_path)
+        assert frames == 2
+        assert size == (64, 48)
+        assert session._recording_frames == []
 
-        assert captured["cmd"][captured["cmd"].index("-ar") + 1] == "48000"
-        mixed = np.frombuffer(captured["pcm"], dtype=np.int16)
-        assert len(mixed) == 960
-        assert set(mixed.tolist()) == {250}
+    async def test_nothing_to_save(self, tmp_path):
+        session = _recording_session(tmp_path)
+        await session._save_recording()
+        assert not _exists(session._recording_path)
 
-    async def test_save_logs_ffmpeg_failure(self, tmp_path):
-        session = _recording_session(tmp_path, [b"\xff\xd8AA"])
+    async def test_failed_write_is_logged_and_the_partial_file_removed(self, tmp_path):
+        session = _recording_session(tmp_path, access_units=_annexb_stream(frames=2))
+        with open(session._recording_path, "wb") as partial:  # noqa: ASYNC230
+            partial.write(b"partial")
 
-        def fake_run(cmd, capture_output=None, timeout=None, shell=None):
-            return SimpleNamespace(returncode=1, stderr=b"encoder exploded")
-
-        with patch("subprocess.run", fake_run):
+        with patch(
+            "custom_components.fermax_blue.streaming._write_mp4",
+            side_effect=RuntimeError("muxer exploded"),
+        ):
             await session._save_recording()  # must not raise
 
         assert not _exists(session._recording_path)
-        assert session._recording_frames == []
-
-    async def test_save_falls_back_to_mjpeg_without_ffmpeg(self, tmp_path):
-        session = _recording_session(tmp_path, [b"\xff\xd8AA", b"\xff\xd8BB"])
-
-        with patch("subprocess.run", side_effect=FileNotFoundError):
-            await session._save_recording()
-
-        assert (tmp_path / "rec.mjpeg").read_bytes() == b"\xff\xd8AA\xff\xd8BB"
+        assert session._recording_video == []
 
 
 class TestStopPreviewFrame:
@@ -1672,12 +1728,7 @@ class TestEncodedVideo:
         assert _tap_encoded_video(transport, object(), MagicMock()) is False
 
     async def test_session_subscription_and_fan_out(self, tmp_path):
-        from custom_components.fermax_blue.streaming import FermaxStreamSession
-
-        session = FermaxStreamSession.__new__(FermaxStreamSession)
-        session._consumer = None
-        session._encoded_sinks = []
-        session._encoded_tapped = False
+        session = _bare_session()
         assert session.subscribe_encoded_video() is None  # no consumer yet
         session._consumer = MagicMock()
         assert session.subscribe_encoded_video() is None  # consumer, but the tap failed
@@ -1686,10 +1737,58 @@ class TestEncodedVideo:
         live = session.subscribe_encoded_video()
         dead = session.subscribe_encoded_video()
         dead.stop()
-        session._forward_encoded(self.IDR, 42)
+        assert session._forward_encoded(self.IDR, 42) is True  # default: decode everything
 
         assert session._encoded_sinks == [live]
         assert bytes(await live.recv()) == self.IDR
+
+    def test_only_keyframes_are_decoded_unless_someone_watches_the_mjpeg(self):
+        watching = [False]
+        session = _bare_session()
+        session._full_decode = lambda: watching[0]
+
+        assert session._forward_encoded(self.P, 0) is False
+        assert session._forward_encoded(self.IDR, 1) is True
+        assert session._forward_encoded(self.P, 2) is False
+        watching[0] = True
+        assert session._forward_encoded(self.P, 3) is False  # rejoin only at a keyframe
+        assert session._forward_encoded(self.IDR, 4) is True
+        assert session._forward_encoded(self.P, 5) is True
+        watching[0] = False
+        assert session._forward_encoded(self.P, 6) is False  # leave at once
+
+    def test_recording_starts_at_the_first_keyframe(self, tmp_path):
+        session = _bare_session(str(tmp_path))
+        session._init_recording()
+
+        session._forward_encoded(self.P, 0)
+        assert session._recording_video == []
+        session._forward_encoded(self.IDR, 3000)
+        session._forward_encoded(self.P, 6000)
+        assert session._recording_video == [(self.IDR, 3000), (self.P, 6000)]
+        assert session._recording_video_wall is not None
+
+    def test_tap_drops_frames_the_session_does_not_want_decoded(self):
+        import queue
+
+        from custom_components.fermax_blue.streaming import _tap_encoded_video
+
+        decoder_queue = queue.Queue()
+        track = object()
+        receiver = MagicMock(track=track)
+        receiver._RTCRtpReceiver__decoder_queue = decoder_queue
+        transport = MagicMock()
+        transport._handler._pc.getTransceivers = MagicMock(
+            return_value=[MagicMock(receiver=receiver)]
+        )
+        assert _tap_encoded_video(transport, track, lambda data, ts: data == self.IDR) is True
+
+        decoder_queue.put(("codec", SimpleNamespace(data=self.P, timestamp=1)))
+        decoder_queue.put(("codec", SimpleNamespace(data=self.IDR, timestamp=2)))
+        decoder_queue.put(None)
+        assert decoder_queue.get_nowait()[1].data == self.IDR
+        assert decoder_queue.get_nowait() is None
+        assert decoder_queue.empty()
 
     async def test_stop_ends_the_encoded_sinks(self, tmp_path):
         session, _send_transport, patches = _mocked_session(tmp_path, receive_only=True)

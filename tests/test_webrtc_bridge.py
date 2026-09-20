@@ -246,8 +246,12 @@ class TestSessionAttachment:
         coordinator = coordinator or _coordinator(session)
         peer = WebRtcPeer(coordinator)
         await _run(peer, [_offer()])
-        with patch.object(webrtc_bridge, "SESSION_POLL_SECONDS", 0):
+        with (
+            patch.object(webrtc_bridge, "SESSION_POLL_SECONDS", 0),
+            patch.object(webrtc_bridge, "WAKE_RETRY_DELAY", 0),
+        ):
             await asyncio.sleep(0)  # let _attach_session run past ensure_stream
+            await asyncio.sleep(0)
             await asyncio.sleep(0)
         return peer, coordinator
 
@@ -277,6 +281,14 @@ class TestSessionAttachment:
         peer, _ = await self._attached(None)
         await asyncio.sleep(0)
         assert peer._closed is True
+
+    async def test_failed_wake_up_closes_peer_instead_of_hanging(self, caplog):
+        coordinator = _coordinator(None)
+        coordinator.ensure_stream = AsyncMock(side_effect=RuntimeError("cloud says no"))
+        peer, _ = await self._attached(None, coordinator)
+        await asyncio.sleep(0)
+        assert peer._closed is True
+        assert "Could not start the intercom" in caplog.text
 
     async def test_session_end_closes_peer(self):
         session = _session(active=False)

@@ -231,7 +231,7 @@ The camera advertises a WebRTC stream served through Home Assistant's bundled go
 
   Pressing the microphone button **answers the call**: the first packet of voice picks up, as the attend button in the app does, and the intercom's audio starts flowing. An answered session lasts the conversation time the server allows (90 seconds by default) rather than the preview limit.
 - **Microphone access requires HTTPS.** Browsers and the companion apps refuse to capture audio on plain `http://` addresses, so use your HTTPS URL (Nabu Casa, a reverse proxy) when you want to talk.
-- **Hardware budget.** The panel's own H264 is forwarded to the viewer without re-encoding, so a WebRTC viewer with microphone adds about a fifth of a core to the ~1.2 cores a live session already costs on a Raspberry Pi 4 (decoding for the MJPEG preview and the recording).
+- **Hardware budget.** The panel's own H264 is forwarded to the viewer and written to the recording without re-encoding, and frames are only decoded for the still image (at every keyframe, about every 2 s) unless an MJPEG client is connected. On a Raspberry Pi 4 a live session costs about a third of a core; a WebRTC viewer with microphone adds about 0.7 of a core, an MJPEG viewer about 0.4.
 - Everything else is unchanged: the MJPEG stream, snapshots, the media browser recordings and the `fermax_blue.send_audio` service keep working, and the session is recorded as before.
 
 ## Dashboard Card
@@ -256,7 +256,7 @@ A ready-to-use dashboard card template is included in [`blueprints/fermax_dashbo
 
 ## Call Recordings
 
-Every video stream session is automatically recorded to MP4 (video + intercom audio) in `/config/media/fermax_recordings/`. Doorbell visitor photos are saved as JPG in the same directory. Files are named with timestamps (e.g., `2026-04-06_13-00-00.mp4`, `2026-04-06_13-00-00_photo.jpg`).
+Every video stream session is automatically recorded to MP4 in `/config/media/fermax_recordings/`: the intercom's own H264 video as it was received, plus the call audio (both directions when you talk back) as AAC. Doorbell visitor photos are saved as JPG in the same directory. Files are named with timestamps (e.g., `2026-04-06_13-00-00.mp4`, `2026-04-06_13-00-00_photo.jpg`).
 
 Recordings and photos are automatically deleted after the retention period (default: 10 days, configurable in options).
 

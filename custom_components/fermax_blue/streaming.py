@@ -139,6 +139,109 @@ def _nal_types(data: bytes) -> list[int]:
     return types
 
 
+def _parameter_sets(data: bytes) -> tuple[bytes, bytes]:
+    """(SPS, PPS) NAL units of an Annex B access unit, each with a start code, or empty."""
+    sps = pps = b""
+    for chunk in data.split(b"\x00\x00\x01")[1:]:
+        nal = chunk.rstrip(b"\x00")
+        if nal and nal[0] & 0x1F == 7:
+            sps = b"\x00\x00\x00\x01" + nal
+        elif nal and nal[0] & 0x1F == 8:
+            pps = b"\x00\x00\x00\x01" + nal
+    return sps, pps
+
+
+def _h264_dimensions(access_unit: bytes) -> tuple[int, int]:
+    """Decode one keyframe to learn the picture size (0, 0 when it cannot be decoded)."""
+    import av
+
+    try:
+        decoder = av.CodecContext.create("h264", "r")
+        frames = decoder.decode(av.Packet(access_unit)) + decoder.decode(None)
+        if frames:
+            return frames[0].width, frames[0].height
+    except Exception:
+        _LOGGER.debug("Could not decode the first keyframe of the recording", exc_info=True)
+    return 0, 0
+
+
+def _write_mp4(
+    path: str,
+    access_units: list[tuple[bytes, int]],
+    jpegs: list[bytes],
+    pcm: bytes,
+    rate: int,
+    audio_offset: float,
+) -> None:
+    """Mux a recording: the panel's own H264 (or re-encoded JPEG frames) plus mono PCM.
+
+    Access units are Annex B with 90 kHz timestamps and go in untouched; the
+    JPEG path only serves sessions where the encoded video could not be
+    tapped. Audio starts ``audio_offset`` seconds into the video (the panel
+    audio only exists after pickup).
+    """
+    from fractions import Fraction
+
+    import av
+    import numpy as np
+    from PIL import Image
+
+    with av.open(path, "w") as out:
+        if access_units:
+            video = out.add_stream("h264")
+            sps, pps = _parameter_sets(access_units[0][0])
+            video.codec_context.extradata = sps + pps
+            width, height = _h264_dimensions(access_units[0][0])
+            if width:
+                video.codec_context.width, video.codec_context.height = width, height
+            video.time_base = Fraction(1, 90000)
+        else:
+            first = Image.open(io.BytesIO(jpegs[0]))
+            video = out.add_stream("libx264", rate=25)
+            video.codec_context.width, video.codec_context.height = first.size
+            video.codec_context.pix_fmt = "yuv420p"
+            video.codec_context.options = {"preset": "ultrafast"}
+        audio = None
+        if pcm:
+            audio = out.add_stream("aac", rate=rate)
+            audio.codec_context.layout = "mono"
+
+        if access_units:
+            origin, last = access_units[0][1], -1
+            for data, timestamp in access_units:
+                pts = timestamp - origin
+                if pts <= last:
+                    continue  # out of order: the muxer needs monotonic timestamps
+                last = pts
+                packet = av.Packet(data)
+                packet.pts = packet.dts = pts
+                packet.time_base = Fraction(1, 90000)
+                packet.stream = video
+                out.mux(packet)
+        else:
+            for index, jpeg in enumerate(jpegs):
+                image = Image.open(io.BytesIO(jpeg)).convert("RGB")
+                frame = av.VideoFrame.from_image(image).reformat(format="yuv420p")
+                frame.pts = index
+                frame.time_base = Fraction(1, 25)
+                out.mux(video.encode(frame))
+            out.mux(video.encode(None))
+
+        if audio is not None:
+            samples = np.frombuffer(pcm, dtype=np.int16)
+            start = int(audio_offset * rate)
+            for index in range(0, len(samples), 1024):
+                chunk = samples[index : index + 1024]
+                frame = av.AudioFrame.from_ndarray(
+                    chunk.reshape(1, -1), format="s16", layout="mono"
+                )
+                frame.sample_rate = rate
+                frame.pts = start + index
+                frame.time_base = Fraction(1, rate)
+                out.mux(audio.encode(frame))
+            out.mux(audio.encode(None))
+
+
 def _create_encoded_video_track(source: Any) -> Any:
     """A video track handing the panel's H264 access units on as ``av.Packet``.
 
@@ -170,13 +273,8 @@ def _create_encoded_video_track(source: Any) -> Any:
 
         def _remember_parameter_sets(self, data: bytes, types: list[int]) -> None:
             if 7 in types or 8 in types:
-                chunks = data.split(b"\x00\x00\x01")
-                for chunk in chunks[1:]:
-                    nal = chunk.rstrip(b"\x00")
-                    if nal and nal[0] & 0x1F == 7:
-                        self._sps = b"\x00\x00\x00\x01" + nal
-                    elif nal and nal[0] & 0x1F == 8:
-                        self._pps = b"\x00\x00\x00\x01" + nal
+                sps, pps = _parameter_sets(data)
+                self._sps, self._pps = sps or self._sps, pps or self._pps
 
         async def recv(self) -> Any:
             from aiortc.mediastreams import MediaStreamError
@@ -207,13 +305,15 @@ def _create_encoded_video_track(source: Any) -> Any:
     return track
 
 
-def _tap_encoded_video(transport: Any, track: Any, forward: Callable[[bytes, int], None]) -> bool:
+def _tap_encoded_video(transport: Any, track: Any, forward: Callable[[bytes, int], bool]) -> bool:
     """Forward every assembled access unit behind ``track`` to ``forward``.
 
     The receiver hands complete encoded frames to its decoder thread through
     a plain queue; wrapping that queue's ``put`` sees them on the event loop
-    before decoding, at no extra cost. Reaches through pymediasoup/aiortc
-    internals: on any surprise the viewer falls back to re-encoded frames.
+    before decoding, at no extra cost, and ``forward`` decides whether the
+    decoder gets the frame at all. Reaches through pymediasoup/aiortc
+    internals: on any surprise every frame is decoded and the viewer falls
+    back to re-encoded frames.
     """
     try:
         receiver = next(
@@ -225,10 +325,8 @@ def _tap_encoded_video(transport: Any, track: Any, forward: Callable[[bytes, int
         original_put = decoder_queue.put
 
         def _put(item: Any, *args: Any, **kwargs: Any) -> None:
-            original_put(item, *args, **kwargs)
-            if item is not None:
-                _codec, encoded = item
-                forward(encoded.data, encoded.timestamp)
+            if item is None or forward(item[1].data, item[1].timestamp):
+                original_put(item, *args, **kwargs)
 
         decoder_queue.put = _put
     except Exception:
@@ -642,6 +740,7 @@ class FermaxStreamSession:
         on_end: Callable[[], None] | None = None,
         media_root: str = "/media",
         receive_only: bool = False,
+        full_decode: Callable[[], bool] | None = None,
     ) -> None:
         # Enforce secure scheme for signaling URL
         if signaling_url and not signaling_url.startswith(("https://", "wss://")):
@@ -682,6 +781,14 @@ class FermaxStreamSession:
         self._audio_sinks: list[Any] = []
         self._encoded_sinks: list[Any] = []
         self._encoded_tapped = False
+        # Whether every frame must be decoded (an MJPEG viewer is watching);
+        # otherwise only keyframes are, for the stills and the snapshot
+        self._full_decode = full_decode or (lambda: True)
+        self._decoding = True
+        self._video_stats = [0, 0, time.monotonic()]  # access units, keyframes, since
+        # Wall-clock start of the recorded video and audio, to align them in the MP4
+        self._recording_video_wall: float | None = None
+        self._recording_audio_wall: float | None = None
         self._device_caps: Any = None
         self._audio_tp: TransportData | None = None
 
@@ -720,11 +827,36 @@ class FermaxStreamSession:
         """Register a track fed by _forward_encoded (see subscribe_encoded_video)."""
         self._encoded_sinks.append(sink)
 
-    def _forward_encoded(self, data: bytes, timestamp: int) -> None:
+    def _forward_encoded(self, data: bytes, timestamp: int) -> bool:
+        """Route one access unit: recording, WebRTC viewers, and whether to decode it."""
+        keyframe = 5 in _nal_types(data)
+        recording = getattr(self, "_recording_video", None)
+        if recording is not None and (recording or keyframe):
+            if not recording:
+                self._recording_video_wall = time.monotonic()
+            recording.append((data, timestamp))
         for sink in self._encoded_sinks:
             if sink.readyState == "live":
                 sink.push(data, timestamp)
         self._encoded_sinks = [s for s in self._encoded_sinks if s.readyState == "live"]
+
+        wants_all = self._full_decode()
+        if keyframe:
+            self._decoding = wants_all  # the decoder (re)joins the stream at a keyframe
+        elif not wants_all:
+            self._decoding = False
+        stats = self._video_stats
+        stats[0] += 1
+        stats[1] += keyframe
+        if stats[0] % 500 == 0:
+            _LOGGER.debug(
+                "Panel video: %d access units, %d keyframes in %.1fs (decoding all: %s)",
+                stats[0],
+                stats[1],
+                time.monotonic() - stats[2],
+                self._decoding,
+            )
+        return keyframe or self._decoding
 
     def attach_audio_sink(self, sink: Any) -> None:
         """Feed the panel audio to a switchable track once the call is answered.
@@ -1009,8 +1141,11 @@ class FermaxStreamSession:
 
             timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
             self._recording_path = f"{recordings_dir}/{timestamp}.mp4"
+            self._recording_video: list[tuple[bytes, int]] = []
+            self._recording_video_wall = None
             self._recording_frames: list[bytes] = []
             self._recording_audio_frames: list[bytes] = []
+            self._recording_audio_wall = None
             self._recording_sent_audio: list[bytes] = []
             self._audio_sample_rate = 48000
             _LOGGER.info("Recording to %s", self._recording_path)
@@ -1018,129 +1153,63 @@ class FermaxStreamSession:
             _LOGGER.debug("Recording not started", exc_info=True)
             self._recording_path = None
 
+    def _mixed_audio(self) -> tuple[bytes, int]:
+        """Received and sent audio summed into one mono PCM buffer at the received rate."""
+        import numpy as np
+
+        recv_rate = getattr(self, "_audio_sample_rate", 8000)
+        recv_pcm = b"".join(getattr(self, "_recording_audio_frames", []))
+        sent_pcm = b"".join(getattr(self, "_recording_sent_audio", []))
+
+        # Resample sent audio (48kHz) to match received (8kHz) if needed
+        if sent_pcm and recv_rate != 48000:
+            sent_arr = np.frombuffer(sent_pcm, dtype=np.int16)
+            ratio = recv_rate / 48000
+            indices = np.arange(0, len(sent_arr), 1 / ratio).astype(int)
+            indices = indices[indices < len(sent_arr)]
+            sent_pcm = sent_arr[indices].tobytes()
+
+        # Mix: pad shorter to match longer, then add
+        recv_arr = np.frombuffer(recv_pcm, dtype=np.int16)
+        sent_arr = np.frombuffer(sent_pcm, dtype=np.int16) if sent_pcm else np.zeros(0, np.int16)
+        max_len = max(len(recv_arr), len(sent_arr))
+        recv_arr = np.pad(recv_arr, (0, max_len - len(recv_arr)))
+        sent_arr = np.pad(sent_arr, (0, max_len - len(sent_arr)))
+        mixed = np.clip(recv_arr.astype(np.int32) + sent_arr.astype(np.int32), -32768, 32767)
+        return mixed.astype(np.int16).tobytes(), recv_rate
+
     async def _save_recording(self) -> None:
-        """Convert collected video + audio frames to MP4 via ffmpeg."""
-        video_frames = getattr(self, "_recording_frames", [])
-        audio_frames = getattr(self, "_recording_audio_frames", [])
-        if not self._recording_path or not video_frames:
+        """Mux the collected video and audio into the MP4."""
+        access_units = getattr(self, "_recording_video", [])
+        jpegs = getattr(self, "_recording_frames", [])
+        if not self._recording_path or not (access_units or jpegs):
             return
 
-        import subprocess
-        import tempfile
-
-        mjpeg_fd, mjpeg_path = tempfile.mkstemp(suffix=".mjpeg")
-        pcm_fd, pcm_path = tempfile.mkstemp(suffix=".pcm")
-        has_audio = bool(audio_frames)
+        pcm, rate = (b"", 0)
+        if getattr(self, "_recording_audio_frames", None):
+            pcm, rate = self._mixed_audio()
+        video_wall = getattr(self, "_recording_video_wall", None)
+        audio_wall = getattr(self, "_recording_audio_wall", None)
+        offset = 0.0
+        if video_wall is not None and audio_wall is not None:
+            offset = max(0.0, audio_wall - video_wall)
         try:
-            video_data = b"".join(video_frames)
-
-            def _write_and_close(fd: int, data: bytes) -> None:
-                os.write(fd, data)
-                os.close(fd)
-
-            await asyncio.to_thread(_write_and_close, mjpeg_fd, video_data)
-            if has_audio:
-                import numpy as np
-
-                # Mix received audio with sent audio for full recording
-                sent_frames = getattr(self, "_recording_sent_audio", [])
-                recv_pcm = b"".join(audio_frames)
-                sent_pcm = b"".join(sent_frames) if sent_frames else b""
-
-                # Resample sent audio (48kHz) to match received (8kHz) if needed
-                recv_rate = getattr(self, "_audio_sample_rate", 8000)
-                if sent_pcm and recv_rate != 48000:
-                    sent_arr = np.frombuffer(sent_pcm, dtype=np.int16)
-                    ratio = recv_rate / 48000
-                    indices = np.arange(0, len(sent_arr), 1 / ratio).astype(int)
-                    indices = indices[indices < len(sent_arr)]
-                    sent_arr = sent_arr[indices]
-                    sent_pcm = sent_arr.tobytes()
-
-                # Mix: pad shorter to match longer, then add
-                recv_arr = np.frombuffer(recv_pcm, dtype=np.int16)
-                sent_arr = (
-                    np.frombuffer(sent_pcm, dtype=np.int16)
-                    if sent_pcm
-                    else np.zeros(0, dtype=np.int16)
-                )
-                max_len = max(len(recv_arr), len(sent_arr))
-                if len(recv_arr) < max_len:
-                    recv_arr = np.pad(recv_arr, (0, max_len - len(recv_arr)))
-                if len(sent_arr) < max_len:
-                    sent_arr = np.pad(sent_arr, (0, max_len - len(sent_arr)))
-                mixed = np.clip(
-                    recv_arr.astype(np.int32) + sent_arr.astype(np.int32), -32768, 32767
-                ).astype(np.int16)
-
-                pcm_data = mixed.tobytes()
-                await asyncio.to_thread(_write_and_close, pcm_fd, pcm_data)
-
-            else:
-                os.close(pcm_fd)
-
-            cmd = [
-                "ffmpeg",
-                "-y",
-                "-f",
-                "mjpeg",
-                "-framerate",
-                "25",
-                "-i",
-                mjpeg_path,
-            ]
-            if has_audio:
-                sr = str(getattr(self, "_audio_sample_rate", 48000))
-                cmd += [
-                    "-f",
-                    "s16le",
-                    "-ar",
-                    sr,
-                    "-ac",
-                    "1",
-                    "-i",
-                    pcm_path,
-                ]
-            cmd += [
-                "-c:v",
-                "libx264",
-                "-preset",
-                "ultrafast",
-                "-pix_fmt",
-                "yuv420p",
-            ]
-            if has_audio:
-                cmd += ["-c:a", "aac", "-b:a", "64k"]
-            cmd += ["-shortest", self._recording_path]
-
-            proc = await asyncio.to_thread(
-                subprocess.run,
-                cmd,
-                capture_output=True,
-                timeout=60,
-                shell=False,
-            )
-            if proc.returncode == 0:
-                size = await asyncio.to_thread(os.path.getsize, self._recording_path)
-                _LOGGER.info(
-                    "Recording saved: %s (%d KB, audio=%s)",
-                    self._recording_path,
-                    size // 1024,
-                    has_audio,
-                )
-            else:
-                _LOGGER.warning("ffmpeg exited with %d: %s", proc.returncode, proc.stderr[-200:])
-        except FileNotFoundError:
-            _LOGGER.debug("ffmpeg not available, saving raw MJPEG")
-            dest = self._recording_path.replace(".mp4", ".mjpeg")
             await asyncio.to_thread(
-                lambda: open(dest, "wb").write(b"".join(video_frames))  # noqa: SIM115
+                _write_mp4, self._recording_path, access_units, jpegs, pcm, rate, offset
             )
+            size = await asyncio.to_thread(os.path.getsize, self._recording_path)
+            _LOGGER.info(
+                "Recording saved: %s (%d KB, audio=%s)",
+                self._recording_path,
+                size // 1024,
+                bool(pcm),
+            )
+        except Exception:
+            _LOGGER.warning("Could not save recording %s", self._recording_path, exc_info=True)
+            with contextlib.suppress(OSError):
+                os.unlink(self._recording_path)
         finally:
-            with contextlib.suppress(OSError):
-                os.unlink(mjpeg_path)
-            with contextlib.suppress(OSError):
-                os.unlink(pcm_path)
+            self._recording_video = []
             self._recording_frames = []
             self._recording_audio_frames = []
             self._recording_sent_audio = []
@@ -1204,6 +1273,8 @@ class FermaxStreamSession:
                     and self._recording_audio_frames is not None
                 ):
                     # Convert audio frame to raw PCM bytes
+                    if not self._recording_audio_frames:
+                        self._recording_audio_wall = time.monotonic()
                     self._audio_sample_rate = frame.sample_rate
                     raw = frame.to_ndarray().tobytes()
                     self._recording_audio_frames.append(raw)
@@ -1241,8 +1312,13 @@ class FermaxStreamSession:
                 frame_count += 1
                 raw_jpeg, display_jpeg = await asyncio.to_thread(self._encode_jpegs, frame)
 
-                # Save raw frame for recording (without LIVE overlay)
-                if hasattr(self, "_recording_frames") and self._recording_frames is not None:
+                # Without the encoded video, the recording is built from these frames
+                if (
+                    not self._encoded_tapped
+                    and getattr(self, "_recording_frames", None) is not None
+                ):
+                    if not self._recording_frames:
+                        self._recording_video_wall = time.monotonic()
                     self._recording_frames.append(raw_jpeg)
                 # Keep the overlay-free frame so still previews after the
                 # stream ends don't show a stale "LIVE" badge (see stop())

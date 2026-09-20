@@ -18,6 +18,7 @@ from custom_components.fermax_blue.coordinator import FermaxBlueCoordinator
 def mock_coordinator():
     """Return a mock coordinator."""
     coordinator = MagicMock(spec=FermaxBlueCoordinator)
+    coordinator.mjpeg_clients = 0
     coordinator.pairing = Pairing(
         device_id="test_dev",
         tag="Test Home",
