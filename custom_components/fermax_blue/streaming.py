@@ -172,13 +172,18 @@ def _write_mp4(
     pcm: bytes,
     rate: int,
     audio_offset: float,
+    video_span: float = 0.0,
 ) -> None:
     """Mux a recording: the panel's own H264 (or re-encoded JPEG frames) plus mono PCM.
 
-    Access units are Annex B with 90 kHz timestamps and go in untouched; the
-    JPEG path only serves sessions where the encoded video could not be
-    tapped. Audio starts ``audio_offset`` seconds into the video (the panel
-    audio only exists after pickup).
+    Access units are Annex B and go in untouched. Their timestamps keep the
+    panel's spacing but are rescaled so that the first and last frame sit
+    ``video_span`` seconds apart (the wall-clock span in which they arrived):
+    the panel stamps at 1 kHz although the codec advertises 90 kHz, and
+    trusting it made a 90 s call play its video in one second. The JPEG path
+    only serves sessions where the encoded video could not be tapped. Audio
+    starts ``audio_offset`` seconds into the video (the panel audio only
+    exists after pickup).
     """
     from fractions import Fraction
 
@@ -208,8 +213,10 @@ def _write_mp4(
 
         if access_units:
             origin, last = access_units[0][1], -1
+            ticks = access_units[-1][1] - origin
+            scale = 90000 * video_span / ticks if video_span > 0 and ticks > 0 else 1.0
             for data, timestamp in access_units:
-                pts = timestamp - origin
+                pts = round((timestamp - origin) * scale)
                 if pts <= last:
                     continue  # out of order: the muxer needs monotonic timestamps
                 last = pts
@@ -835,6 +842,7 @@ class FermaxStreamSession:
         if recording is not None and (recording or keyframe):
             if not recording:
                 self._recording_video_wall = time.monotonic()
+            self._recording_video_wall_last = time.monotonic()
             recording.append((data, timestamp))
         for sink in self._encoded_sinks:
             if sink.readyState == "live":
@@ -1190,13 +1198,16 @@ class FermaxStreamSession:
         if getattr(self, "_recording_audio_frames", None):
             pcm, rate = self._mixed_audio()
         video_wall = getattr(self, "_recording_video_wall", None)
+        video_wall_last = getattr(self, "_recording_video_wall_last", None)
         audio_wall = getattr(self, "_recording_audio_wall", None)
-        offset = 0.0
+        offset = span = 0.0
         if video_wall is not None and audio_wall is not None:
             offset = max(0.0, audio_wall - video_wall)
+        if video_wall is not None and video_wall_last is not None:
+            span = video_wall_last - video_wall
         try:
             await asyncio.to_thread(
-                _write_mp4, self._recording_path, access_units, jpegs, pcm, rate, offset
+                _write_mp4, self._recording_path, access_units, jpegs, pcm, rate, offset, span
             )
             size = await asyncio.to_thread(os.path.getsize, self._recording_path)
             _LOGGER.info(
