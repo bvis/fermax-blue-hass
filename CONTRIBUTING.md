@@ -78,21 +78,26 @@ docs/installation-guide
 ### Quick Start
 
 ```bash
-# Run ALL checks (lint + format + typecheck + tests) — same as CI
+# Run ALL checks (lint + format + typecheck + dead code + tests) — same as CI
 make check
+
+# Same, on both supported Python versions — run before pushing
+make pre-push
 ```
 
 ### Available Commands
 
-All commands use Docker (`python:3.12-slim`), so your local environment stays clean:
+All commands run in a Docker image built from `Dockerfile.dev` (Python 3.13 by default), so your local environment stays clean:
 
 ```bash
-make lint          # Ruff linting (E, W, F, I, N, UP, B, SIM, RUF, PT, etc.)
+make lint          # Ruff linting (E, F, W, I, N, UP, B, A, SIM, TCH)
 make format        # Auto-format code with ruff
 make format-check  # Verify formatting without changes (CI mode)
 make typecheck     # Mypy type checking
-make test          # Pytest with coverage report
+make deadcode      # Vulture dead-code analysis
+make test          # Pytest with coverage report (95% minimum)
 make check         # Run ALL of the above in sequence
+make pre-push      # Full CI replica on Python 3.13 + 3.14
 make cli           # Interactive API tester (test features against real API)
 ```
 
@@ -117,18 +122,22 @@ This is useful for:
 ### Running a Specific Test
 
 ```bash
-docker run --rm -v $(pwd):/app -w /app python:3.12-slim sh -c \
-  "pip install -q pytest pytest-asyncio httpx firebase-messaging homeassistant && \
-   pytest tests/test_api.py::TestAutoOn::test_auto_on_success -v"
+make dev-image   # once, or whenever Dockerfile.dev changes
+docker run --rm -v $(pwd):/app -w /app fermax-blue-dev \
+  pytest tests/test_api.py::TestAutoOn::test_auto_on_success -v
 ```
 
 ### CI Pipeline
 
-Every push and PR runs 4 jobs in GitHub Actions:
-- **test** — Pytest on Python 3.12 + 3.13 with coverage
+Every push and PR runs these jobs in GitHub Actions (plus a weekly run that catches dependency drift):
+- **test** — Pytest on Python 3.13 + 3.14 with coverage
 - **lint** — Ruff check + format verification
-- **type-check** — Mypy strict type checking
+- **type-check** — Mypy type checking
+- **dead-code** — Vulture
+- **hassfest** — Home Assistant manifest validation
 - **validate** — HACS integration validation
+
+CodeQL and a secret scan run alongside them.
 
 ## Reporting Issues
 
