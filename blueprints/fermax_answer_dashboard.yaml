@@ -1,0 +1,105 @@
+# Fermax Blue — "Answer from your phone" dashboard
+#
+# A complete dashboard (not a single card) to see, hear and talk to the visitor
+# and open the door, designed for the Home Assistant companion app. The doorbell
+# notification blueprint (fermax_doorbell_answer.yaml) opens this view.
+#
+# Prerequisites:
+# - Fermax Blue 0.20 or newer (WebRTC live view)
+# - The WebRTC card + integration from HACS (https://github.com/AlexxIT/WebRTC),
+#   set up with its own go2rtc. Home Assistant's bundled go2rtc cannot be shared:
+#   it only listens on a private socket. Talking needs a card that captures the
+#   microphone; Home Assistant's own cards play video and audio only.
+# - Home Assistant reachable over HTTPS: browsers and the companion apps refuse
+#   microphone access on plain http://.
+#
+# To install:
+# 1. Settings > Dashboards > Add dashboard > "New dashboard from scratch",
+#    title "Intercom", URL "lovelace-intercom" (the blueprint uses /lovelace-intercom/call)
+# 2. Open it > pencil > three dots > "Raw configuration editor"
+# 3. Paste this file, replacing DEVICE_NAME and DOOR with your entity names
+#    (Settings > Devices & services > Fermax Blue > your device lists them)
+#
+# The clock refreshes once a minute; the time is not burnt into the video on
+# purpose (that would cost a full re-encode of the stream).
+
+title: Intercom
+views:
+  - title: Call
+    path: call
+    icon: mdi:doorbell-video
+    type: sections
+    max_columns: 2
+    sections:
+      - type: grid
+        cards:
+          - type: markdown
+            text_only: true
+            content: >-
+              ## {{ now().strftime('%H:%M') }} · {{ now().strftime('%-d %b') }}
+
+              Last call: {{ relative_time(states.sensor.DEVICE_NAME_last_call.last_changed) }} ago
+
+          # Live video with the intercom's audio; the microphone button answers the call
+          - type: custom:webrtc-camera
+            entity: camera.DEVICE_NAME_visitor
+            media: video,audio,microphone
+            muted: false
+            ui: true
+            style: "video { object-fit: contain; }"
+
+          - type: horizontal-stack
+            cards:
+              - type: tile
+                entity: button.DEVICE_NAME_DOOR_open
+                name: Open door
+                icon: mdi:door-open
+                color: green
+                tap_action:
+                  action: perform-action
+                  perform_action: button.press
+                  target:
+                    entity_id: button.DEVICE_NAME_DOOR_open
+              - type: tile
+                entity: button.DEVICE_NAME_f1
+                name: F1
+                icon: mdi:bell-ring
+                tap_action:
+                  action: perform-action
+                  perform_action: button.press
+                  target:
+                    entity_id: button.DEVICE_NAME_f1
+              - type: tile
+                entity: button.DEVICE_NAME_video_source
+                name: Switch camera
+                icon: mdi:camera-switch
+                tap_action:
+                  action: perform-action
+                  perform_action: button.press
+                  target:
+                    entity_id: button.DEVICE_NAME_video_source
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Status
+          - type: tile
+            entity: sensor.DEVICE_NAME_last_call
+            name: Last call
+          - type: tile
+            entity: sensor.DEVICE_NAME_last_opening
+            name: Last opening
+          - type: tile
+            entity: binary_sensor.DEVICE_NAME_connection
+            name: Connection
+          - type: tile
+            entity: lock.DEVICE_NAME_DOOR_lock
+            name: Door lock
+          - type: tile
+            entity: switch.DEVICE_NAME_dnd
+            name: Do not disturb
+          - type: tile
+            entity: select.DEVICE_NAME_call_mode
+            name: Call mode
+            features:
+              - type: select-options

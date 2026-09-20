@@ -15,6 +15,7 @@ This integration simulates a Fermax Blue mobile app client, connecting to the Fe
 
 - **Live video streaming** — Real-time video from the intercom camera (~720x480) with the intercom's audio, over WebRTC in the standard camera cards and the companion apps; MJPEG is still served. Opening the card wakes the intercom, and the card shows the last snapshot until the live picture arrives.
 - **Talk-back** — Speak to the visitor from a card that captures the microphone; the first word answers the call (see [Live view and talk-back](#live-view-and-talk-back))
+- **Answer from your phone** — A ready-made dashboard and notification blueprint: ring → notification with the visitor's photo → see, hear, talk and open the door from the companion app (see [Answer calls from your phone](#answer-calls-from-your-phone))
 - **Camera preview** — Last captured frame persists across HA restarts, always visible in the camera card
 - **Doorbell detection** — Real-time push notification when someone rings (via Firebase Cloud Messaging)
 - **Door opening** — Open your building's door remotely (lock entity + button)
@@ -235,6 +236,31 @@ The camera advertises a WebRTC stream served through Home Assistant's bundled go
 - **Hardware budget.** The panel's own H264 is forwarded to the viewer and written to the recording without re-encoding, and frames are only decoded for the still image (at every keyframe, about every 2 s) unless an MJPEG client is connected. On a Raspberry Pi 4 a live session costs about a third of a core; a WebRTC viewer with microphone adds about 0.7 of a core, an MJPEG viewer about 0.4.
 - Everything else is unchanged: the MJPEG stream, snapshots, the media browser recordings and the `fermax_blue.send_audio` service keep working, and the session is recorded as before.
 
+## Answer calls from your phone
+
+The flow the integration is built for: someone rings, your phone shows a notification with the visitor's photo, you tap it and, inside the Home Assistant companion app, you see and hear the visitor, talk to them and open the door. Two files in [`blueprints/`](blueprints/) set it up; nothing is installed automatically, so your dashboards stay yours.
+
+**Requirements**
+
+- Home Assistant reachable over **HTTPS** (Nabu Casa, a reverse proxy, DuckDNS…): browsers and the companion apps refuse microphone access on plain `http://`.
+- The **WebRTC card** from HACS ([AlexxIT/WebRTC](https://github.com/AlexxIT/WebRTC)), set up with **its own go2rtc** (leave the URL empty in its setup dialog). Home Assistant's bundled go2rtc cannot be shared: it listens on a private socket only. The card is what captures the microphone; Home Assistant's own cards play video and audio only.
+
+**Dashboard** — [`blueprints/fermax_answer_dashboard.yaml`](blueprints/fermax_answer_dashboard.yaml)
+
+1. **Settings** > **Dashboards** > **Add dashboard** > *New dashboard from scratch*, title `Intercom`, URL `lovelace-intercom`.
+2. Open it > pencil > three dots > **Raw configuration editor**, paste the file, replace `DEVICE_NAME` and `DOOR` with your entity names.
+
+The view has a clock, the live video with sound (opening it wakes the intercom; the **microphone button answers the call**), buttons to open the door, F1 and switch camera, and a status column. The time is not burnt into the video on purpose: that would cost a full re-encode of the stream.
+
+**Notification** — [`blueprints/fermax_doorbell_answer.yaml`](blueprints/fermax_doorbell_answer.yaml)
+
+1. Copy it to `config/blueprints/automation/fermax_blue/`, then **Settings** > **Automations** > **Create automation** > **Use blueprint** > *Fermax: Answer from your phone*.
+2. Pick the doorbell event, the camera, your phone's notification service and, optionally, the door button. The dashboard path defaults to `/lovelace-intercom/call`.
+
+The notification is high priority (critical on iOS, high importance on Android, both optional), carries the latest picture, opens the view when tapped and offers two actions: *See and talk* (opens the view) and *Open door* (opens without entering the app; accepted for three minutes after the ring).
+
+Grant the microphone when the app asks for it the first time; on iOS the prompt can come back per session.
+
 ## Dashboard Card
 
 A ready-to-use dashboard card template is included in [`blueprints/fermax_dashboard_card.yaml`](blueprints/fermax_dashboard_card.yaml). It provides a complete intercom control panel with:
@@ -290,8 +316,7 @@ data:
 
 ### Doorbell notification
 
-
-A doorbell notification blueprint is available at [`blueprints/fermax_doorbell_notification.yaml`](blueprints/fermax_doorbell_notification.yaml).
+A doorbell notification blueprint is available at [`blueprints/fermax_doorbell_notification.yaml`](blueprints/fermax_doorbell_notification.yaml). For the full see-hear-talk-open flow use [`blueprints/fermax_doorbell_answer.yaml`](blueprints/fermax_doorbell_answer.yaml) instead (see [Answer calls from your phone](#answer-calls-from-your-phone)).
 
 ### Cast doorbell to Google Nest
 
