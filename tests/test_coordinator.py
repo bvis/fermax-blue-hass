@@ -1368,10 +1368,15 @@ class TestPickup:
         assert await coordinator.pickup() is False
         session.pickup.assert_not_awaited()
 
-    async def test_already_answered(self, coordinator):
+    async def test_already_answered_still_extends_the_timer(self, coordinator):
         session = self._live(coordinator, picked_up=True)
-        assert await coordinator.pickup() is True
+        with patch(
+            "custom_components.fermax_blue.coordinator.async_call_later",
+            return_value=MagicMock(),
+        ) as call_later:
+            assert await coordinator.pickup() is True
         session.pickup.assert_not_awaited()
+        assert call_later.call_args.args[1] == 90
 
     async def test_session_refuses(self, coordinator):
         self._live(coordinator, pickup_ok=False)

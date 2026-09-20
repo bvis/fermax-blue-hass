@@ -762,9 +762,9 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         session = self._stream_session
         if not session or not session.is_active:
             return False
-        if session.picked_up:
-            return True
-        if not await session.pickup():
+        # An auto-on session is answered from the start; the viewer talking is
+        # what turns it into a conversation, so the timer follows either way
+        if not session.picked_up and not await session.pickup():
             return False
         self._schedule_stream_stop(max(self._stream_duration, self._conversation_timeout))
         return True

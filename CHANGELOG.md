@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+- **Talking from a WebRTC viewer keeps the call for the conversation time** — a session woken by opening the card is answered from the start, and the stop timer was only extended to the 90 s conversation time when a listen-only session got answered later, so a viewer who opened the microphone was still cut off at the configured stream duration (30 s by default). The timer now follows the conversation time whenever the microphone connects.
+
 ## [0.20.0-beta.2] - 2026-09-20
 
 ### Changed
