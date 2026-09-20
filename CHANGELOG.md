@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Fixed
+- **A call that ends is saved once** — the local stop timer and the server's hang-up arrive within a second of each other at the end of an answered call, and both stopped the session, so the recording was written twice and the log repeated the shutdown. Stopping is now idempotent.
+
 ### Added
 - **Answer-from-your-phone dashboard and blueprint** — `blueprints/fermax_answer_dashboard.yaml` is a complete dashboard for the companion app (clock, live video with sound and a microphone button that answers the call, open door / F1 / switch camera, status), to paste into a new dashboard's raw configuration editor. `blueprints/fermax_doorbell_answer.yaml` sends a high-priority notification with the visitor's photo that opens that view when tapped and offers an *Open door* action that works without opening the app. The README explains the requirements: HTTPS and the WebRTC card from HACS with its own go2rtc.
 
