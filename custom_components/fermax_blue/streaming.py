@@ -781,6 +781,7 @@ class FermaxStreamSession:
         self._audio_sinks: list[Any] = []
         self._encoded_sinks: list[Any] = []
         self._encoded_tapped = False
+        self._stopping = False
         # Whether every frame must be decoded (an MJPEG viewer is watching);
         # otherwise only keyframes are, for the stills and the snapshot
         self._full_decode = full_decode or (lambda: True)
@@ -1340,7 +1341,15 @@ class FermaxStreamSession:
                 self._on_end()
 
     async def stop(self) -> None:
-        """Stop the streaming session and clean up."""
+        """Stop the streaming session and clean up (idempotent).
+
+        The local timer and the server's hang-up push both stop the session
+        within a second of each other; the second call must not save the
+        recording again.
+        """
+        if self._stopping:
+            return
+        self._stopping = True
         self._active = False
 
         if self._frame_task and not self._frame_task.done():

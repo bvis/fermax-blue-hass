@@ -1219,6 +1219,22 @@ class TestRecording:
         assert session._recording_video == []
 
 
+class TestStopOnce:
+    """A second stop() (timer plus hang-up push) does not save the recording twice."""
+
+    async def test_second_stop_is_a_no_op(self, tmp_path):
+        session, _send_transport, patches = _mocked_session(tmp_path, receive_only=True)
+        with contextlib.ExitStack() as stack:
+            for p in patches:
+                stack.enter_context(p)
+            assert await session.start() is True
+            with patch.object(session, "_save_recording", AsyncMock()) as save:
+                await asyncio.gather(session.stop(), session.stop())
+                await session.stop()
+        save.assert_awaited_once()
+        assert session.is_active is False
+
+
 class TestStopPreviewFrame:
     """stop() swaps the frozen LIVE frame for the overlay-free copy."""
 
