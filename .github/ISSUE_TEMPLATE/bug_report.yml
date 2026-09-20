@@ -12,7 +12,7 @@ body:
     attributes:
       label: Integration version
       description: "Found in Settings > Devices & Services > Fermax Blue"
-      placeholder: "0.15.4"
+      placeholder: "0.20.2"
     validations:
       required: true
 
@@ -20,7 +20,7 @@ body:
     id: ha_version
     attributes:
       label: Home Assistant version
-      placeholder: "2026.4.2"
+      placeholder: "2026.9.3"
     validations:
       required: true
 

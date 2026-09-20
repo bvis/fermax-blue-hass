@@ -21,7 +21,7 @@ This integration simulates a Fermax Blue mobile app client, connecting to the Fe
 - **Door opening** — Open your building's door remotely (lock entity + button)
 - **On-demand camera** — Triggers the intercom camera without a doorbell ring via auto-on
 - **F1 auxiliary button** — Trigger the intercom's F1 function
-- **Switch camera** — Step through the cameras of multi-camera installations, during a live stream or outside one
+- **Switch camera** — Step through the cameras of multi-camera installations while a live stream is up (the intercom only accepts the change inside a session)
 - **Call guard** — Call the building's guard/janitor
 - **Do Not Disturb** — Toggle DND mode per device (useful for night automations)
 - **Photo caller control** — Enable/disable automatic visitor photo capture
@@ -42,6 +42,8 @@ Tested with:
 Should work with any Fermax Blue-compatible intercom (devices that work with the Fermax Blue / DuoxMe mobile app).
 
 ## Installation
+
+Requires Home Assistant **2025.12 or newer** (the live-view dependencies need the `av` version that ships with it).
 
 ### HACS (Recommended)
 
@@ -79,8 +81,9 @@ After setup, you can configure the integration options:
 3. Available options:
    - **Polling interval** (1-30 minutes, default: 5)
    - **Recording retention** (1-90 days, default: 10) — auto-deletes older call recordings
-   - **Auto-respond to doorbell** — when enabled, answers the call automatically: starts video stream, sends audio file through the intercom speaker, records the call to MP4. When disabled, only triggers notifications without interacting with the intercom
-   - **Audio file path** — WAV/MP3 file for auto-response (e.g., `/config/media/mi_mensaje.wav`)
+   - **Audio file path** — WAV/MP3 file played by the auto-respond call mode (e.g., `/config/media/mi_mensaje.wav`)
+
+Two more settings live on the device as entities rather than in the options dialog: `select.<name>_call_mode` chooses what a ring does (*notify only*, *record* the call, or *auto-respond*: answer, play the audio file through the intercom speaker and record), and `number.<name>_stream_duration` sets how long a stream session lasts (10-120 s, default 30).
 
 ### API Credentials
 
@@ -208,6 +211,8 @@ For each paired intercom device, the integration creates:
 | `switch.<name>_dnd` | Switch | Do Not Disturb mode |
 | `switch.<name>_photo_caller` | Switch | Enable/disable automatic visitor photos |
 | `switch.<name>_ring_preview` | Switch | Enable/disable live view-only preview on ring without answering the call (see [Ring preview](#ring-preview)) |
+| `select.<name>_call_mode` | Select | What a ring does: notify only, record the call, or auto-respond with the configured audio file |
+| `number.<name>_stream_duration` | Number | Length of a stream session in seconds (10-120, default 30) |
 
 ### Ring preview
 
@@ -437,15 +442,15 @@ All development tools run via Docker — no local Python dependencies needed. On
 See [CONTRIBUTING.md](CONTRIBUTING.md) for full guidelines.
 
 ```bash
-make check         # Run all checks (lint + format + type-check + dead-code + tests)
+make check          # Run all checks (lint + format + type-check + dead-code + tests)
 make lint           # Ruff linting (E, F, W, I, N, UP, B, A, SIM, TCH)
 make format         # Auto-format code
 make format-check   # Verify formatting (CI mode)
 make typecheck      # Mypy type checking
 make deadcode       # Vulture dead code analysis
-make test           # Pytest with coverage (min 40%)
+make test           # Pytest with coverage (min 95%)
 make cli            # Interactive API tester
-make pre-push       # Full CI replica (same as GitHub Actions)
+make pre-push       # Full CI replica on Python 3.13 + 3.14 (same as GitHub Actions)
 ```
 
 This project uses [Conventional Commits](https://www.conventionalcommits.org/).
