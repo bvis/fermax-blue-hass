@@ -1,0 +1,117 @@
+blueprint:
+  name: "Fermax: Answer from your phone"
+  description: >
+    When someone rings, send a high-priority notification with the visitor's
+    photo to the companion app. Tapping it opens the intercom dashboard view
+    (see, hear, talk and open the door); an "Open door" button on the
+    notification opens the door without opening the app. Pair it with the
+    dashboard in blueprints/fermax_answer_dashboard.yaml.
+  domain: automation
+  input:
+    doorbell_event:
+      name: Doorbell event entity
+      selector:
+        entity:
+          filter:
+            domain: event
+            integration: fermax_blue
+    camera_entity:
+      name: Camera entity
+      description: Its latest picture is attached to the notification
+      selector:
+        entity:
+          filter:
+            domain: camera
+            integration: fermax_blue
+    door_button:
+      name: Door button (optional)
+      description: Pressed when the "Open door" notification action is used. Leave empty to omit the action.
+      default: ""
+      selector:
+        entity:
+          filter:
+            domain: button
+            integration: fermax_blue
+    notify_service:
+      name: Notification service
+      description: "The companion app notification service (e.g. notify.mobile_app_your_phone)"
+      selector:
+        text:
+    dashboard_path:
+      name: Dashboard view to open
+      description: Path of the view the notification opens inside the app
+      default: /lovelace-intercom/call
+      selector:
+        text:
+    notification_title:
+      name: Notification title
+      default: "Doorbell"
+      selector:
+        text:
+    notification_message:
+      name: Notification message
+      default: "Someone is at the door. Tap to see, talk and open."
+      selector:
+        text:
+    critical:
+      name: Critical alert (iOS) / high importance (Android)
+      description: Break through silent mode and Do Not Disturb
+      default: true
+      selector:
+        boolean:
+
+mode: restart
+
+variables:
+  door_button: !input door_button
+  critical: !input critical
+  dashboard_path: !input dashboard_path
+  camera_entity: !input camera_entity
+
+triggers:
+  - trigger: state
+    entity_id: !input doorbell_event
+    attribute: event_type
+
+actions:
+  - action: !input notify_service
+    data:
+      title: !input notification_title
+      message: !input notification_message
+      data:
+        tag: fermax-doorbell
+        ttl: 0
+        priority: high
+        channel: Intercom
+        importance: "{{ 'high' if critical else 'default' }}"
+        image: "/api/camera_proxy/{{ camera_entity }}"
+        clickAction: "{{ dashboard_path }}"
+        url: "{{ dashboard_path }}"
+        push:
+          sound:
+            name: default
+            critical: "{{ 1 if critical else 0 }}"
+            volume: 1.0
+        actions: >-
+          {% set items = [{"action": "URI", "title": "See and talk", "uri": dashboard_path}] %}
+          {% if door_button %}
+            {% set items = items + [{"action": "FERMAX_OPEN_DOOR", "title": "Open door"}] %}
+          {% endif %}
+          {{ items }}
+  - if:
+      - condition: template
+        value_template: "{{ door_button != '' }}"
+    then:
+      # The "Open door" action only counts while this call is recent
+      - wait_for_trigger:
+          - trigger: event
+            event_type: mobile_app_notification_action
+            event_data:
+              action: FERMAX_OPEN_DOOR
+        timeout:
+          minutes: 3
+      - condition: template
+        value_template: "{{ wait.trigger is not none }}"
+      - action: button.press
+        target:
+          entity_id: !input door_button
