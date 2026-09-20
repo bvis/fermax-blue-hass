@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.20.1] - 2026-09-20
+
+### Fixed
+- **Recordings play their video at real time** — the intercom stamps its H264 frames on a 1 kHz clock although the codec advertises 90 kHz, and the MP4 written since 0.20.0 trusted the advertised rate, so the video of a 90 s call played in one second and froze while the audio carried on. The frame timestamps are now scaled to the time the frames actually took to arrive, keeping the intercom's own spacing; a 30 s preview yields a 30 s video again. Recordings made with 0.20.0 keep the fault.
+
 ## [0.20.0] - 2026-09-20
 
 ### Added

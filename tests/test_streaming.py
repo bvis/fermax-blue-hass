@@ -1156,6 +1156,20 @@ class TestRecording:
         assert 0.5 < duration < 0.7  # 12 frames at 20 fps, timestamps kept
         assert session._recording_video == []
 
+    async def test_video_timestamps_are_rescaled_to_the_wall_clock(self, tmp_path):
+        # The panel stamps at 1 kHz while claiming 90 kHz: 12 frames at 20 fps
+        # arrive over 0.55 s but their stamps only span 550 ticks.
+        units = [(data, pts // 90) for data, pts in _annexb_stream(frames=12)]
+        session = _recording_session(tmp_path, access_units=units)
+        session._recording_video_wall = 10.0
+        session._recording_video_wall_last = 10.55
+
+        await session._save_recording()
+
+        frames, _size, _audio, duration = _probe(session._recording_path)
+        assert frames == 12
+        assert 0.5 < duration < 0.7
+
     async def test_audio_is_mixed_and_offset_to_the_video(self, tmp_path):
         recv = np.full(8000, 1000, dtype=np.int16).tobytes()  # 1 s at 8 kHz
         sent = np.full(48000, 500, dtype=np.int16).tobytes()  # 1 s at 48 kHz
@@ -1783,6 +1797,7 @@ class TestEncodedVideo:
         session._forward_encoded(self.P, 6000)
         assert session._recording_video == [(self.IDR, 3000), (self.P, 6000)]
         assert session._recording_video_wall is not None
+        assert session._recording_video_wall_last >= session._recording_video_wall
 
     def test_tap_drops_frames_the_session_does_not_want_decoded(self):
         import queue
