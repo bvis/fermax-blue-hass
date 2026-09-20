@@ -787,6 +787,8 @@ class FermaxStreamSession:
         self._switchable_track: Any = None
         self._audio_sinks: list[Any] = []
         self._encoded_sinks: list[Any] = []
+        self._clock_first: int | None = None
+        self._clock_scale: int | None = None
         self._encoded_tapped = False
         self._stopping = False
         # Whether every frame must be decoded (an MJPEG viewer is watching);
@@ -835,8 +837,27 @@ class FermaxStreamSession:
         """Register a track fed by _forward_encoded (see subscribe_encoded_video)."""
         self._encoded_sinks.append(sink)
 
+    def _to_90khz(self, timestamp: int) -> int:
+        """Rebase the panel's RTP clock onto the 90 kHz the codec advertises.
+
+        The panels seen so far stamp at 1 kHz: consecutive frames sit a few
+        dozen ticks apart instead of a few thousand, which made a 90 s call
+        span one second for every consumer downstream. The clock is sniffed
+        from the first gap of the session and applied from then on.
+        """
+        # ponytail: two clocks known (1 kHz, 90 kHz); measure the ratio if a third shows up
+        if self._clock_first is None:
+            self._clock_first = timestamp
+        gap = timestamp - self._clock_first
+        if self._clock_scale is None:
+            if gap <= 0:
+                return 0
+            self._clock_scale = 90 if gap < 1000 else 1
+        return gap * self._clock_scale
+
     def _forward_encoded(self, data: bytes, timestamp: int) -> bool:
         """Route one access unit: recording, WebRTC viewers, and whether to decode it."""
+        timestamp = self._to_90khz(timestamp)
         keyframe = 5 in _nal_types(data)
         recording = getattr(self, "_recording_video", None)
         if recording is not None and (recording or keyframe):
