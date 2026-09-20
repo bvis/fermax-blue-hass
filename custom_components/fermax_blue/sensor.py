@@ -12,6 +12,7 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .api import redact_email
@@ -57,8 +58,17 @@ async def async_setup_entry(
     """Set up Fermax Blue sensors."""
     coordinators: list[FermaxBlueCoordinator] = hass.data[DOMAIN][entry.entry_id]
     entities: list[SensorEntity] = []
+    registry = er.async_get(hass)
 
     for coordinator in coordinators:
+        # Installs from before 2026-04-15 carry a `<device>_status` sensor that
+        # `_device_status` superseded; it would otherwise linger forever as a
+        # restored, permanently unavailable entity.
+        legacy = registry.async_get_entity_id(
+            "sensor", DOMAIN, f"{coordinator.pairing.device_id}_status"
+        )
+        if legacy:
+            registry.async_remove(legacy)
         for key in SENSOR_TYPES:
             entities.append(FermaxSensor(coordinator, key))
 

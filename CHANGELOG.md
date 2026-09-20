@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.20.2] - 2026-09-20
+
+### Fixed
+- **Live viewers get real-time video timestamps** — the intercom stamps its H264 frames on a 1 kHz clock while the codec advertises 90 kHz, and those stamps were forwarded as they came to go2rtc and the WebRTC cards, so a viewer saw frames marked 0.4 ms apart and audio/video sync was left to chance. The clock is now detected from the first frame gap of a session and rebased to 90 kHz for every consumer (viewers and the recording alike); a real 90 kHz panel is left untouched.
+- **Old installs lose the stale `sensor.<name>_status`** — installs from before 2026-04-15 kept a status sensor that `_device_status` superseded, permanently unavailable and impossible to remove from the integration. It is now dropped from the entity registry at setup.
+
 ## [0.20.1] - 2026-09-20
 
 ### Fixed

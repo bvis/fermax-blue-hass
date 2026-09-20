@@ -1795,9 +1795,26 @@ class TestEncodedVideo:
         assert session._recording_video == []
         session._forward_encoded(self.IDR, 3000)
         session._forward_encoded(self.P, 6000)
-        assert session._recording_video == [(self.IDR, 3000), (self.P, 6000)]
+        assert session._recording_video == [(self.IDR, 3000), (self.P, 6000)]  # rebased on 0
         assert session._recording_video_wall is not None
         assert session._recording_video_wall_last >= session._recording_video_wall
+
+    def test_panel_clock_is_rebased_to_90khz(self, tmp_path):
+        # 1 kHz stamps (40 ticks per frame at 25 fps) come out as 90 kHz ones
+        session = _bare_session(str(tmp_path))
+        session._init_recording()
+        session._forward_encoded(self.IDR, 1000)
+        session._forward_encoded(self.P, 1040)
+        session._forward_encoded(self.P, 1080)
+        assert session._recording_video == [(self.IDR, 0), (self.P, 3600), (self.P, 7200)]
+
+        # a real 90 kHz clock is left alone
+        session = _bare_session(str(tmp_path))
+        session._init_recording()
+        session._forward_encoded(self.IDR, 5000)
+        session._forward_encoded(self.P, 5000)  # duplicate stamp: still undecided
+        session._forward_encoded(self.P, 8600)
+        assert session._recording_video == [(self.IDR, 0), (self.P, 0), (self.P, 3600)]
 
     def test_tap_drops_frames_the_session_does_not_want_decoded(self):
         import queue

@@ -1250,8 +1250,16 @@ class TestGenericSensorValues:
 
         hass, entry = _setup_hass(mock_coordinator)
         added = []
-        await async_setup_entry(hass, entry, lambda entities: added.extend(entities))
+        registry = MagicMock()
+        registry.async_get_entity_id.return_value = "sensor.old_status"
+        with patch("custom_components.fermax_blue.sensor.er.async_get", return_value=registry):
+            await async_setup_entry(hass, entry, lambda entities: added.extend(entities))
 
+        # the superseded `<device>_status` sensor of old installs is dropped
+        registry.async_get_entity_id.assert_called_once_with(
+            "sensor", "fermax_blue", "test_dev_status"
+        )
+        registry.async_remove.assert_called_once_with("sensor.old_status")
         assert sorted(entity.unique_id for entity in added) == [
             "test_dev_device_status",
             "test_dev_last_call",
