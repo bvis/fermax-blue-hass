@@ -253,9 +253,10 @@ The flow the integration is built for: someone rings, your phone shows a notific
 **Dashboard** — [`blueprints/fermax_answer_dashboard.yaml`](blueprints/fermax_answer_dashboard.yaml)
 
 1. **Settings** > **Dashboards** > **Add dashboard** > *New dashboard from scratch*, title `Intercom`, URL `lovelace-intercom`.
-2. Open it > pencil > three dots > **Raw configuration editor**, paste the file, replace `DEVICE_NAME` and `DOOR` with your entity names.
+2. Create a **Toggle** helper named `Intercom talk` (**Settings** > **Devices & services** > **Helpers**); the view uses it to decide whether the card captures your microphone.
+3. Open it > pencil > three dots > **Raw configuration editor**, paste the file, replace `DEVICE_NAME` and `DOOR` with your entity names.
 
-The view has a clock, the live video with sound (opening it wakes the intercom; the **microphone button answers the call**), buttons to open the door, F1 and switch camera, and a status column. The time is not burnt into the video on purpose: that would cost a full re-encode of the stream.
+The view has a clock, the live video with the intercom's sound, buttons to open the door, F1 and switch camera, and a status column. Opening it wakes the intercom but does **not** answer the call: the microphone stays out until you press **Talk**, and the intercom treats the first microphone packet as you picking up. Talking therefore reconnects the stream — the card requests the microphone while negotiating the connection, so it cannot be switched on mid-stream. The file's header carries an optional automation that flips the helper back off when the call ends. The time is not burnt into the video on purpose: that would cost a full re-encode of the stream.
 
 **Notification** — [`blueprints/fermax_doorbell_answer.yaml`](blueprints/fermax_doorbell_answer.yaml)
 
