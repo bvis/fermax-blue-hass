@@ -270,6 +270,8 @@ Grant the microphone when the app asks for it the first time; on iOS the prompt 
 
 A ready-to-use dashboard card template is included in [`blueprints/fermax_dashboard_card.yaml`](blueprints/fermax_dashboard_card.yaml). It provides a complete intercom control panel with:
 
+<img width="1041" height="866" alt="image" src="https://github.com/user-attachments/assets/59b0f4cc-67ad-495e-bd34-b03ca7e56018" />
+
 - Live camera / preview image
 - Door open + camera preview buttons
 - F1 + call guard buttons
