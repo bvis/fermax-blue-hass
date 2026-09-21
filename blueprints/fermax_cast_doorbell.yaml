@@ -82,8 +82,11 @@ action:
             target:
               entity_id: !input display_device
             data:
-              media_content_id: "media-source://camera/{{ camera_entity }}"
-              media_content_type: "video/x-motion-jpeg"
+              # The MJPEG endpoint, not media-source://camera/...: the camera advertises a
+              # WebRTC stream source, which the HLS path cannot open ("Protocol not found")
+              # and then retries forever. Cast signs this relative path automatically.
+              media_content_id: "/api/camera_proxy_stream/{{ camera_entity }}"
+              media_content_type: "image/jpg"
 
   # Announce on speakers
   - choose:
