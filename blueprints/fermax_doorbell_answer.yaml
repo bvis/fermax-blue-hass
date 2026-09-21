@@ -71,7 +71,12 @@ variables:
 triggers:
   - trigger: state
     entity_id: !input doorbell_event
-    attribute: event_type
+    not_from:
+      - unknown
+      - unavailable
+    not_to:
+      - unknown
+      - unavailable
 
 actions:
   - action: !input notify_service
