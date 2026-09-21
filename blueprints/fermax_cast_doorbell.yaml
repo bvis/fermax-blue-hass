@@ -60,7 +60,12 @@ blueprint:
 trigger:
   - platform: state
     entity_id: !input doorbell_event
-    attribute: event_type
+    not_from:
+      - unknown
+      - unavailable
+    not_to:
+      - unknown
+      - unavailable
 
 action:
   # Wait for stream to start (triggered by FCM notification)

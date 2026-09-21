@@ -349,7 +349,12 @@ automation:
     trigger:
       - platform: state
         entity_id: event.fermax_your_home_doorbell
-        attribute: event_type
+        not_from:
+          - unknown
+          - unavailable
+        not_to:
+          - unknown
+          - unavailable
     action:
       - service: light.turn_on
         target:
