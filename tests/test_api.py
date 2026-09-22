@@ -1,5 +1,6 @@
 """Tests for the Fermax Blue API client."""
 
+import json
 import logging
 from dataclasses import FrozenInstanceError
 from unittest.mock import AsyncMock, patch
@@ -273,6 +274,39 @@ class TestPairings:
         assert pairings[0].access_doors["ZERO"].visible is False
 
     @pytest.mark.asyncio
+    async def test_get_pairings_panel_access_doors(self, authenticated_api):
+        """Doors of a NOWIFI pairing come under panelAccessDoors, tied to their panel."""
+        resp = _mock_response(
+            200,
+            json=[
+                {
+                    "deviceId": "unit_1",
+                    "tag": "Home",
+                    "type": "NOWIFI",
+                    "accessDoorMap": {},
+                    "panelAccessDoors": [
+                        {
+                            "deviceId": "panel_1",
+                            "title": "Portal",
+                            "isVisible": True,
+                            "doorId": {"block": 0, "subblock": -1, "number": 0},
+                        }
+                    ],
+                }
+            ],
+        )
+
+        with patch("httpx.AsyncClient.get", return_value=resp):
+            pairings = await authenticated_api.get_pairings()
+
+        doors = list(pairings[0].access_doors.values())
+        assert len(doors) == 1
+        assert doors[0].title == "Portal"
+        assert doors[0].visible is True
+        assert doors[0].panel_id == "panel_1"
+        assert doors[0].access_id == {"block": 0, "subblock": -1, "number": 0}
+
+    @pytest.mark.asyncio
     async def test_empty_pairings(self, authenticated_api):
         """Test when no devices are paired."""
         resp = _mock_response(200, json=[])
@@ -298,6 +332,25 @@ class TestDoorControl:
             )
 
         assert result is True
+
+    @pytest.mark.asyncio
+    async def test_open_door_on_panel(self, authenticated_api):
+        """A panel door is posted to the panel, on behalf of the unit."""
+        resp = _mock_response(200, text="ok")
+
+        with patch("httpx.AsyncClient.post", return_value=resp) as post:
+            result = await authenticated_api.open_door(
+                "unit_1", {"block": 0, "subblock": -1, "number": 0}, "panel_1"
+            )
+
+        assert result is True
+        assert post.call_args.args[0].endswith("/device/panel_1/directed-opendoor")
+        assert post.call_args.kwargs["params"] == {"unitId": "unit_1"}
+        assert json.loads(post.call_args.kwargs["content"]) == {
+            "block": 0,
+            "subblock": -1,
+            "number": 0,
+        }
 
     @pytest.mark.asyncio
     async def test_open_door_failure(self, authenticated_api):

@@ -152,7 +152,7 @@ async def main() -> None:
                     door_name, door = visible_doors[idx]
 
                     print(f"Opening {door_name}...", end=" ", flush=True)
-                    result = await api.open_door(pairing.device_id, door.access_id)
+                    result = await api.open_door(pairing.device_id, door.access_id, door.panel_id)
                     print("OK" if result else "FAILED")
 
                 elif choice == "2":

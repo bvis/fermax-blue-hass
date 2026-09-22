@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.20.3-beta.1] - 2026-09-22
+
+### Fixed
+- **Doors of panel-linked pairings are found and open** (#97, #46) — some installations, typically a monitor paired without its own Wi-Fi subscription (`NOWIFI`), list their doors under `panelAccessDoors` instead of `accessDoorMap`. The integration only read the latter, so those accounts got no lock or open-door button and the CLI reported "No visible doors found!". Those doors are now discovered, and opening one is addressed to the panel on behalf of the paired unit (`directed-opendoor?unitId=…`), as the official app does. Pairings with `accessDoorMap` are unchanged.
+
 ## [0.20.2] - 2026-09-20
 
 ### Fixed
