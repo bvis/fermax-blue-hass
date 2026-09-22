@@ -85,6 +85,8 @@ class AccessDoor:
     title: str
     access_id: dict
     visible: bool
+    # Doors listed under panelAccessDoors are opened on the panel itself
+    panel_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -388,6 +390,19 @@ class FermaxBlueApi:
                     access_id=door_data["accessId"],
                     visible=door_data.get("visible", False),
                 )
+            for door_data in item.get("panelAccessDoors") or []:
+                panel_id = door_data["deviceId"]
+                door_id = door_data["doorId"]
+                door_name = (
+                    f"{panel_id}_{door_id['block']}_{door_id['subblock']}_{door_id['number']}"
+                )
+                access_doors[door_name] = AccessDoor(
+                    name=door_name,
+                    title=door_data.get("title") or door_name,
+                    access_id=door_id,
+                    visible=door_data.get("isVisible", False),
+                    panel_id=panel_id,
+                )
 
             pairings.append(
                 Pairing(
@@ -419,12 +434,14 @@ class FermaxBlueApi:
             wireless_signal=data.get("wirelessSignal", 0),
         )
 
-    async def open_door(self, device_id: str, access_id: dict) -> bool:
-        """Open a door."""
+    async def open_door(self, device_id: str, access_id: dict, panel_id: str | None = None) -> bool:
+        """Open a door; a panel door is addressed to the panel on behalf of the unit."""
+        target, params = (panel_id, {"unitId": device_id}) if panel_id else (device_id, None)
         try:
             await self._api_post(
-                f"/deviceaction/api/v1/device/{device_id}/directed-opendoor",
+                f"/deviceaction/api/v1/device/{target}/directed-opendoor",
                 content=json.dumps(access_id),
+                params=params,
             )
             return True
         except httpx.HTTPStatusError:

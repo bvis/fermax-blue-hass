@@ -412,7 +412,7 @@ class TestOpenDoorFallback:
             assert await coordinator.open_door() is True
         mock_api.open_door_incall.assert_awaited_once()
         mock_api.open_door.assert_awaited_once_with(
-            "dev1", {"block": 100, "subblock": -1, "number": 0}
+            "dev1", {"block": 100, "subblock": -1, "number": 0}, None
         )
 
     @pytest.mark.asyncio
@@ -1056,9 +1056,27 @@ class TestOpenDoorSelection:
             assert await full_coordinator.open_door("SIDE") is True
 
         mock_api.open_door.assert_awaited_once_with(
-            "dev1", {"block": 100, "subblock": -1, "number": 0}
+            "dev1", {"block": 100, "subblock": -1, "number": 0}, None
         )
         dispatch.assert_called_once_with(full_coordinator.hass, SIGNAL_DOOR_OPENED.format("dev1"))
+
+    async def test_panel_door_is_opened_on_its_panel(self, full_coordinator, mock_api):
+        door = AccessDoor(
+            name="p",
+            title="Portal",
+            access_id={"block": 0, "subblock": -1, "number": 0},
+            visible=True,
+            panel_id="panel_1",
+        )
+        full_coordinator.pairing = Pairing(
+            device_id="dev1", tag="Home", installation_id="inst_1", access_doors={"p": door}
+        )
+        mock_api.open_door = AsyncMock(return_value=True)
+
+        with patch("custom_components.fermax_blue.coordinator.async_dispatcher_send"):
+            assert await full_coordinator.open_door("p") is True
+
+        mock_api.open_door.assert_awaited_once_with("dev1", door.access_id, "panel_1")
 
     async def test_no_doors_configured_returns_false(self, full_coordinator, mock_api):
         full_coordinator.pairing = Pairing(

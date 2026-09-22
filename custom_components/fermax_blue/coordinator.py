@@ -530,7 +530,9 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
                 _LOGGER.error("No accessible door found for %s", door_name)
                 return False
 
-            success = await self.api.open_door(self.pairing.device_id, door.access_id)
+            success = await self.api.open_door(
+                self.pairing.device_id, door.access_id, door.panel_id
+            )
 
         if success:
             async_dispatcher_send(
