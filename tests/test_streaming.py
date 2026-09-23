@@ -4,6 +4,7 @@ import asyncio
 import contextlib
 import io
 import json
+import os
 import wave
 from pathlib import Path
 from types import SimpleNamespace
@@ -1105,6 +1106,40 @@ def _probe(path):
         )
 
 
+def _strict_decode(path):
+    """(frames, errors) decoding with the avcC header only, as browsers' hardware decoders do.
+
+    FFmpeg quietly prefers the parameter sets repeated inside the keyframes, so
+    a file whose header describes another encoder still plays in it; Safari and
+    VideoToolbox do not. The in-band SPS/PPS are stripped before decoding.
+    """
+    import av
+
+    def without_parameter_sets(data):
+        kept, pos = b"", 0
+        while pos + 4 <= len(data):
+            end = pos + 4 + int.from_bytes(data[pos : pos + 4], "big")
+            if data[pos + 4] & 0x1F not in (7, 8):
+                kept += data[pos:end]
+            pos = end
+        return kept
+
+    frames = errors = 0
+    with av.open(path) as container:
+        video = container.streams.video[0]
+        decoder = av.CodecContext.create("h264", "r")
+        decoder.extradata = video.codec_context.extradata
+        for packet in container.demux(video):
+            if not packet.size:
+                continue
+            try:
+                frames += len(decoder.decode(av.Packet(without_parameter_sets(bytes(packet)))))
+            except av.error.FFmpegError:
+                errors += 1
+        frames += len(decoder.decode(None))
+    return frames, errors
+
+
 class TestRecording:
     """Recording init and MP4 muxing of the panel's own H264 (or JPEG frames)."""
 
@@ -1130,16 +1165,14 @@ class TestRecording:
 
         assert session._recording_path is None
 
-    def test_parameter_sets_and_dimensions(self):
-        from custom_components.fermax_blue.streaming import _h264_dimensions, _parameter_sets
+    def test_parameter_sets(self):
+        from custom_components.fermax_blue.streaming import _parameter_sets
 
         units = _annexb_stream(frames=1)
         sps, pps = _parameter_sets(units[0][0])
         assert sps[:5] == b"\x00\x00\x00\x01\x67"
         assert pps[:5] == b"\x00\x00\x00\x01\x68"
         assert _parameter_sets(b"\x00\x00\x00\x01\x65") == (b"", b"")
-        assert _h264_dimensions(units[0][0]) == (64, 48)
-        assert _h264_dimensions(b"not h264") == (0, 0)
 
     async def test_native_video_is_muxed_without_reencoding(self, tmp_path):
         units = _annexb_stream(frames=12)
@@ -1155,6 +1188,15 @@ class TestRecording:
         assert audio_streams == 0
         assert 0.5 < duration < 0.7  # 12 frames at 20 fps, timestamps kept
         assert session._recording_video == []
+
+    async def test_mp4_header_carries_the_panel_parameter_sets(self, tmp_path):
+        # The muxer once opened its own x264 encoder, whose SPS/PPS replaced the
+        # panel's in the avcC: FFmpeg played the file, browsers did not.
+        session = _recording_session(tmp_path, access_units=_annexb_stream(frames=12))
+
+        await session._save_recording()
+
+        assert _strict_decode(session._recording_path) == (12, 0)
 
     async def test_video_timestamps_are_rescaled_to_the_wall_clock(self, tmp_path):
         # The panel stamps at 1 kHz while claiming 90 kHz: 12 frames at 20 fps
@@ -1231,6 +1273,17 @@ class TestRecording:
 
         assert not _exists(session._recording_path)
         assert session._recording_video == []
+
+
+@pytest.mark.skipif(
+    not os.environ.get("FERMAX_RECORDINGS"), reason="on demand: make check-recordings DIR=..."
+)
+def test_real_recordings_play_in_browsers():
+    """Every MP4 in $FERMAX_RECORDINGS decodes off its header alone."""
+    paths = sorted(Path(os.environ["FERMAX_RECORDINGS"]).glob("*.mp4"))
+    assert paths
+    broken = {p.name: result for p in paths if (result := _strict_decode(p))[1] or not result[0]}
+    assert not broken, f"(frames, errors) per broken recording: {broken}"
 
 
 class TestStopOnce:
