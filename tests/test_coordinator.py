@@ -928,7 +928,7 @@ class TestHandleNotification:
         assert mock_api.ack_notification.call_count == 1
         assert list(full_coordinator._processed_notifications).count("dup") == 1
 
-    def test_ring_marks_state_and_dispatches_door_signal(self, full_coordinator, mock_api):
+    def test_ring_marks_state_and_dispatches_device_signal(self, full_coordinator, mock_api):
         _close_coro_tasks(full_coordinator)
 
         dispatch, _ = self._fire(
@@ -937,9 +937,7 @@ class TestHandleNotification:
 
         assert full_coordinator.doorbell_ringing is True
         assert full_coordinator._photo_fetch_pending is True
-        dispatch.assert_called_once_with(
-            full_coordinator.hass, SIGNAL_DOORBELL_RING.format("dev1", "ZERO")
-        )
+        dispatch.assert_called_once_with(full_coordinator.hass, SIGNAL_DOORBELL_RING.format("dev1"))
         # ACK falls back to the persistent id and flags the message as a call
         mock_api.ack_notification.assert_called_once_with("ring1", is_call=True)
 

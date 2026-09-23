@@ -60,14 +60,11 @@ class FermaxCamera(FermaxBlueEntity, Camera):
         """Register for doorbell ring events."""
         await super().async_added_to_hass()
 
-        for door_name in self.coordinator.pairing.access_doors:
-            self.async_on_remove(
-                async_dispatcher_connect(
-                    self.hass,
-                    SIGNAL_DOORBELL_RING.format(self._device_id, door_name),
-                    self._on_doorbell_ring,
-                )
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass, SIGNAL_DOORBELL_RING.format(self._device_id), self._on_doorbell_ring
             )
+        )
 
         # Force state update so HA knows we have an image immediately
         if self.coordinator.last_photo:

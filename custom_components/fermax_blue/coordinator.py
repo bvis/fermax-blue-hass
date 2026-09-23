@@ -475,11 +475,9 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
             self._doorbell_ringing = True
             self._photo_fetch_pending = True
 
-            door_key = data.get("AccessDoorKey", data.get("accessDoorKey", "GENERAL"))
-            async_dispatcher_send(
-                self.hass,
-                SIGNAL_DOORBELL_RING.format(self.pairing.device_id, door_key),
-            )
+            # Per device, whatever door rang: the push's AccessDoorKey does not
+            # match the door names of every pairing type (#97)
+            async_dispatcher_send(self.hass, SIGNAL_DOORBELL_RING.format(self.pairing.device_id))
 
             # Cancel previous reset timer if still pending
             if self._doorbell_reset_unsub:

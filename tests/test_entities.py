@@ -1067,6 +1067,31 @@ class TestEventEntities:
             entity._trigger_event.assert_called_once_with(event_type)
 
     @pytest.mark.asyncio
+    async def test_doorbell_listens_to_the_device_whatever_its_doors(self, mock_coordinator):
+        # Panel doors (#97) are named after the panel, not after the push's AccessDoorKey
+        from custom_components.fermax_blue import event as event_module
+
+        mock_coordinator.pairing = MagicMock(
+            device_id="test_dev", access_doors={"panel_1_0_1": MagicMock()}
+        )
+        entity = event_module.FermaxDoorbellEvent(mock_coordinator)
+        entity.hass = MagicMock()
+        entity.async_on_remove = MagicMock()
+
+        with (
+            patch(
+                "homeassistant.helpers.update_coordinator.CoordinatorEntity.async_added_to_hass",
+                new_callable=AsyncMock,
+            ),
+            patch.object(event_module, "async_dispatcher_connect") as connect,
+        ):
+            await entity.async_added_to_hass()
+
+        connect.assert_called_once_with(
+            entity.hass, "fermax_blue_doorbell_ring_test_dev", entity._handle_event
+        )
+
+    @pytest.mark.asyncio
     async def test_setup_entry_creates_the_three_event_entities(self, mock_coordinator):
         from custom_components.fermax_blue.const import DOMAIN
         from custom_components.fermax_blue.event import async_setup_entry
@@ -1490,8 +1515,10 @@ class TestCameraBehavior:
         ):
             await camera.async_added_to_hass()
 
-        # One subscription per access door, and state written because a photo exists.
-        assert connect.call_count == len(mock_coordinator.pairing.access_doors)
+        # One ring subscription for the device, and state written because a photo exists.
+        connect.assert_called_once_with(
+            camera.hass, "fermax_blue_doorbell_ring_test_dev", camera._on_doorbell_ring
+        )
         camera.async_on_remove.assert_called_with("unsub")
         camera.async_write_ha_state.assert_called_once()
 
