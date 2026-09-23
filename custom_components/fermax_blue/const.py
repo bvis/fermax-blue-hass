@@ -16,7 +16,7 @@ APP_HEADERS = {
 }
 
 # Signal dispatchers
-SIGNAL_DOORBELL_RING = f"{DOMAIN}_doorbell_ring_{{}}_{{}}"
+SIGNAL_DOORBELL_RING = f"{DOMAIN}_doorbell_ring_{{}}"
 SIGNAL_CALL_ENDED = f"{DOMAIN}_call_ended_{{}}"
 SIGNAL_DOOR_OPENED = f"{DOMAIN}_door_opened_{{}}"
 SIGNAL_CAMERA_ON = f"{DOMAIN}_camera_on_{{}}"

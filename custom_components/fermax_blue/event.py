@@ -63,14 +63,11 @@ class FermaxDoorbellEvent(FermaxBlueEventEntity):
         """Register callbacks when added to hass."""
         await super().async_added_to_hass()
 
-        for door_name in self.coordinator.pairing.access_doors:
-            self.async_on_remove(
-                async_dispatcher_connect(
-                    self.hass,
-                    SIGNAL_DOORBELL_RING.format(self._device_id, door_name),
-                    self._handle_event,
-                )
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass, SIGNAL_DOORBELL_RING.format(self._device_id), self._handle_event
             )
+        )
 
     @callback
     def _handle_event(self) -> None:
