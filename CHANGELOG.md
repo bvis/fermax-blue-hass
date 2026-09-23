@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.20.3-beta.2] - 2026-09-23
+
+### Fixed
+- **Recordings play in browsers and on iOS** — since 0.20.0 the MP4 header described the stream of an encoder the muxer opened by itself (H264 level 3.0, different picture parameters) instead of the intercom's own video (level 5.1). FFmpeg-based players read the parameters repeated inside the video and played the files anyway, while browsers, the Home Assistant media browser and Apple devices decode from the header and showed a broken or empty video. The header now carries the intercom's parameters, and the last frame of a recording is no longer dropped. Recordings made with 0.20.0 to 0.20.3-beta.1 keep the fault.
+
 ## [0.20.3-beta.1] - 2026-09-22
 
 ### Fixed

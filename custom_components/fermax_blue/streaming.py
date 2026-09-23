@@ -151,20 +151,6 @@ def _parameter_sets(data: bytes) -> tuple[bytes, bytes]:
     return sps, pps
 
 
-def _h264_dimensions(access_unit: bytes) -> tuple[int, int]:
-    """Decode one keyframe to learn the picture size (0, 0 when it cannot be decoded)."""
-    import av
-
-    try:
-        decoder = av.CodecContext.create("h264", "r")
-        frames = decoder.decode(av.Packet(access_unit)) + decoder.decode(None)
-        if frames:
-            return frames[0].width, frames[0].height
-    except Exception:
-        _LOGGER.debug("Could not decode the first keyframe of the recording", exc_info=True)
-    return 0, 0
-
-
 def _write_mp4(
     path: str,
     access_units: list[tuple[bytes, int]],
@@ -193,12 +179,14 @@ def _write_mp4(
 
     with av.open(path, "w") as out:
         if access_units:
-            video = out.add_stream("h264")
-            sps, pps = _parameter_sets(access_units[0][0])
+            # A stream from add_stream("h264") opens an x264 encoder whose own
+            # SPS/PPS land in the avcC: FFmpeg still plays the file off the
+            # in-band ones, browsers do not. A template stream is never opened.
+            keyframe = access_units[0][0]
+            with av.open(io.BytesIO(keyframe), format="h264") as probe:
+                video = out.add_stream_from_template(probe.streams.video[0])
+            sps, pps = _parameter_sets(keyframe)
             video.codec_context.extradata = sps + pps
-            width, height = _h264_dimensions(access_units[0][0])
-            if width:
-                video.codec_context.width, video.codec_context.height = width, height
             video.time_base = Fraction(1, 90000)
         else:
             first = Image.open(io.BytesIO(jpegs[0]))
@@ -212,16 +200,22 @@ def _write_mp4(
             audio.codec_context.layout = "mono"
 
         if access_units:
-            origin, last = access_units[0][1], -1
+            origin = access_units[0][1]
             ticks = access_units[-1][1] - origin
             scale = 90000 * video_span / ticks if video_span > 0 and ticks > 0 else 1.0
+            timed: list[tuple[bytes, int]] = []
             for data, timestamp in access_units:
                 pts = round((timestamp - origin) * scale)
-                if pts <= last:
+                if timed and pts <= timed[-1][1]:
                     continue  # out of order: the muxer needs monotonic timestamps
-                last = pts
+                timed.append((data, pts))
+            # Without a duration the last frame falls outside the edit list
+            ends = [pts for _, pts in timed[1:]]
+            ends.append(2 * timed[-1][1] - timed[-2][1] if len(timed) > 1 else 3600)
+            for (data, pts), end in zip(timed, ends, strict=True):
                 packet = av.Packet(data)
                 packet.pts = packet.dts = pts
+                packet.duration = end - pts
                 packet.time_base = Fraction(1, 90000)
                 packet.stream = video
                 out.mux(packet)
