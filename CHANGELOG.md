@@ -1,13 +1,9 @@
 # Changelog
 
-## [0.20.3-beta.2] - 2026-09-23
+## [0.20.3] - 2026-09-23
 
 ### Fixed
-- **Recordings play in browsers and on iOS** — since 0.20.0 the MP4 header described the stream of an encoder the muxer opened by itself (H264 level 3.0, different picture parameters) instead of the intercom's own video (level 5.1). FFmpeg-based players read the parameters repeated inside the video and played the files anyway, while browsers, the Home Assistant media browser and Apple devices decode from the header and showed a broken or empty video. The header now carries the intercom's parameters, and the last frame of a recording is no longer dropped. Recordings made with 0.20.0 to 0.20.3-beta.1 keep the fault.
-
-## [0.20.3-beta.1] - 2026-09-22
-
-### Fixed
+- **Recordings play in browsers and on iOS** — since 0.20.0 the MP4 header described the stream of an encoder the muxer opened by itself (H264 level 3.0, different picture parameters) instead of the intercom's own video (level 5.1). FFmpeg-based players read the parameters repeated inside the video and played the files anyway, while browsers, the Home Assistant media browser and Apple devices decode from the header and showed a broken or empty video. The header now carries the intercom's parameters, and the last frame of a recording is no longer dropped. Recordings made with 0.20.0 to 0.20.2 keep the fault.
 - **Doors of panel-linked pairings are found and open** (#97, #46) — some installations, typically a monitor paired without its own Wi-Fi subscription (`NOWIFI`), list their doors under `panelAccessDoors` instead of `accessDoorMap`. The integration only read the latter, so those accounts got no lock or open-door button and the CLI reported "No visible doors found!". Those doors are now discovered, and opening one is addressed to the panel on behalf of the paired unit (`directed-opendoor?unitId=…`), as the official app does. Pairings with `accessDoorMap` are unchanged.
 
 ## [0.20.2] - 2026-09-20
