@@ -24,10 +24,12 @@ import io
 import logging
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
+from urllib.parse import urlparse
 
 from aiohttp import web
 from homeassistant.components.http import HomeAssistantView
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.network import NoURLAvailableError, get_url
 
 from .const import WEBRTC_PATH
 from .streaming import _create_switchable_audio_track
@@ -56,9 +58,14 @@ def webrtc_stream_source(hass: HomeAssistant, token: str) -> str:
     api = hass.config.api
     scheme = "wss" if api and api.use_ssl else "ws"
     port = api.port if api else 8123
-    # ponytail: assumes go2rtc runs next to HA (the bundled instance). A go2rtc
-    # add-on in another container needs HA's reachable host here instead.
-    return f"webrtc:{scheme}://127.0.0.1:{port}{WEBRTC_PATH.format(token=token)}"
+    host = "127.0.0.1"
+    if scheme == "wss":
+        # A certificate names HA's hostname, never 127.0.0.1, and go2rtc
+        # rejects the handshake against an IP literal (#100)
+        with contextlib.suppress(NoURLAvailableError):
+            url = get_url(hass, allow_ip=False, allow_cloud=False, prefer_external=False)
+            host = urlparse(url).hostname or host
+    return f"webrtc:{scheme}://{host}:{port}{WEBRTC_PATH.format(token=token)}"
 
 
 def _make_h264_context(width: int, height: int, bitrate: int) -> Any:
