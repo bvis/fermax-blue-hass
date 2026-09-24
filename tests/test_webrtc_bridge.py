@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from aiohttp import web
 from aiortc.mediastreams import MediaStreamError
+from homeassistant.helpers.network import NoURLAvailableError
 
 from custom_components.fermax_blue import webrtc_bridge
 from custom_components.fermax_blue.webrtc_bridge import (
@@ -125,10 +126,26 @@ class TestStreamSource:
             == "webrtc:ws://127.0.0.1:8123/api/fermax_blue/webrtc/tok"
         )
 
-    def test_ssl_uses_wss(self):
+    def test_ssl_uses_wss_and_the_certificate_hostname(self):
         hass = MagicMock()
         hass.config.api = SimpleNamespace(use_ssl=True, port=8443)
-        assert webrtc_stream_source(hass, "t").startswith("webrtc:wss://127.0.0.1:8443/")
+        with patch(
+            "custom_components.fermax_blue.webrtc_bridge.get_url",
+            return_value="https://ha.example.com",
+        ) as get_url:
+            assert webrtc_stream_source(hass, "t").startswith("webrtc:wss://ha.example.com:8443/")
+        get_url.assert_called_once_with(
+            hass, allow_ip=False, allow_cloud=False, prefer_external=False
+        )
+
+    def test_ssl_without_hostname_falls_back_to_loopback(self):
+        hass = MagicMock()
+        hass.config.api = SimpleNamespace(use_ssl=True, port=8443)
+        with patch(
+            "custom_components.fermax_blue.webrtc_bridge.get_url",
+            side_effect=NoURLAvailableError,
+        ):
+            assert webrtc_stream_source(hass, "t").startswith("webrtc:wss://127.0.0.1:8443/")
 
     def test_missing_api_config_defaults(self):
         hass = MagicMock()

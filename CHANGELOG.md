@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.20.5-beta.1] - 2026-09-24
+
+### Fixed
+- **WebRTC live view works when Home Assistant serves HTTPS itself** (#100) — go2rtc was pointed at `wss://127.0.0.1`, and a TLS certificate names Home Assistant's hostname, never the loopback address, so go2rtc aborted the handshake (`x509: cannot validate certificate for 127.0.0.1`) and the card stayed blank while the intercom woke up. With TLS on, the signaling address now uses the hostname from Home Assistant's network settings (internal URL first, then external; never the cloud URL). Installations without TLS, or with TLS but no hostname configured, keep `127.0.0.1`.
+
 ## [0.20.4] - 2026-09-24
 
 ### Fixed
