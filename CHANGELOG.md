@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.20.4-beta.1] - 2026-09-24
+## [0.20.4] - 2026-09-24
 
 ### Fixed
 - **Doorbell rings reach panel-linked pairings** (#97) — the ring event and the camera only listened for rings addressed to one of the pairing's door names, and the doors that 0.20.3 started reading from `panelAccessDoors` are named after the panel, not after the door key the intercom puts in the ring notification. On those installations the call arrived (the *Last call* sensor updated) but the doorbell event never fired, so ring automations and blueprints did nothing. Rings are now delivered per device, whatever door key they carry.
