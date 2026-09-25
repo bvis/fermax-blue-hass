@@ -102,6 +102,7 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         self._last_photo_id: str | None = None
         self._doorbell_ringing: bool = False
         self._camera_active: bool = False
+        self._wake_lock = asyncio.Lock()
 
         self._photo_fetch_pending: bool = False
         self._doorbell_reset_unsub: CALLBACK_TYPE | None = None
@@ -709,7 +710,7 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
             self.async_set_updated_data(self.data)
 
         media_root = self.hass.config.media_dirs.get("local", "/media")
-        self._stream_session = FermaxStreamSession(
+        session = self._stream_session = FermaxStreamSession(
             signaling_url=signaling_url,
             oauth_token=oauth_token,
             fcm_token=fcm_token,
@@ -720,7 +721,10 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
             full_decode=lambda: self.mjpeg_clients > 0,
         )
 
-        success = await self._stream_session.start()
+        success = await session.start()
+        if self._stream_session is not session:
+            # A newer room replaced this one while it was starting
+            return
         if success:
             self._camera_active = True
             _LOGGER.info("Video stream started for room %s", room_id)
@@ -773,18 +777,21 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
 
     async def ensure_stream(self) -> FermaxStreamSession | None:
         """Return the live session, waking the intercom when a viewer opens the camera."""
-        if self.has_active_stream:
-            return self._stream_session
-        # _camera_active is set by a preview request whose push has not landed yet
-        if not self._camera_active and not await self.start_camera_preview():
-            return None
-        deadline = time.monotonic() + WEBRTC_START_TIMEOUT
-        while time.monotonic() < deadline:
-            await asyncio.sleep(0.1)
+        # One wake-up at a time: a second auto-on while the first is pending
+        # answers 409, and its push would replace the session being started
+        async with self._wake_lock:
             if self.has_active_stream:
                 return self._stream_session
-        _LOGGER.warning("Intercom did not start a stream within %ss", WEBRTC_START_TIMEOUT)
-        return None
+            # _camera_active is set by a preview request whose push has not landed yet
+            if not self._camera_active and not await self.start_camera_preview():
+                return None
+            deadline = time.monotonic() + WEBRTC_START_TIMEOUT
+            while time.monotonic() < deadline:
+                await asyncio.sleep(0.1)
+                if self.has_active_stream:
+                    return self._stream_session
+            _LOGGER.warning("Intercom did not start a stream within %ss", WEBRTC_START_TIMEOUT)
+            return None
 
     async def _auto_respond(self) -> None:
         """Send auto-response audio after stream starts."""

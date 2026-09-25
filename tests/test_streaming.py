@@ -4,6 +4,7 @@ import asyncio
 import contextlib
 import io
 import json
+import logging
 import os
 import wave
 from pathlib import Path
@@ -1465,6 +1466,20 @@ class TestOnDemandPickup:
 
         assert await session.pickup() is False
         assert session.picked_up is False
+
+    async def test_pickup_interrupted_by_stop_is_quiet(self, caplog):
+        """A session torn down while answering fails the pickup without an error (#98)."""
+        session = _bare_session()
+        session._signaling = MagicMock()
+
+        async def _stopped_meanwhile(**_kwargs):
+            session._stopping = True
+            raise RuntimeError('Cannot handle answer in signaling state "closed"')
+
+        session._send_transport = MagicMock(produce=AsyncMock(side_effect=_stopped_meanwhile))
+
+        assert await session.pickup() is False
+        assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
 
     async def test_pickup_starts_audio_recorder_when_consumer_exists(self):
         session = _bare_session()
