@@ -114,6 +114,8 @@ class Pairing:
     tag: str
     installation_id: str
     access_doors: dict[str, AccessDoor] = field(default_factory=dict)
+    # The owner's pairing; a guest's opening history must be filtered by its email
+    master: bool = False
 
 
 @dataclass(frozen=True)
@@ -410,6 +412,7 @@ class FermaxBlueApi:
                     tag=item.get("tag", ""),
                     installation_id=item.get("installationId", ""),
                     access_doors=access_doors,
+                    master=bool(item.get("master", False)),
                 )
             )
 
@@ -696,13 +699,17 @@ class FermaxBlueApi:
             params={"value": "true" if enabled else "false"},
         )
 
-    async def get_opening_history(self, device_id: str) -> list[OpeningRecord]:
-        """Get door opening history."""
+    async def get_opening_history(self, device_id: str, *, master: bool) -> list[OpeningRecord]:
+        """Get door opening history, newest first.
+
+        A guest pairing gets an empty registry unless it names itself in
+        guestEmail, as the app does; the owner sees everyone's openings.
+        """
+        params = {"deviceId": device_id, "userId": self._username}
+        if not master:
+            params["guestEmail"] = self._username
         try:
-            response = await self._api_get(
-                "/rexistro/api/v1/opendoorregistry",
-                params={"deviceId": device_id},
-            )
+            response = await self._api_get("/rexistro/api/v1/opendoorregistry", params=params)
         except Exception:
             _LOGGER.debug("Failed to get opening history", exc_info=True)
             return []

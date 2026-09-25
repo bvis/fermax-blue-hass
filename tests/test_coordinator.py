@@ -776,6 +776,9 @@ class TestAsyncUpdateData:
         assert full_coordinator._photo_fetch_pending is False
         assert full_coordinator.dnd_enabled is True
         assert full_coordinator.last_opening.door == "ZERO"
+        mock_api.get_opening_history.assert_awaited_once_with(
+            "dev1", master=full_coordinator.pairing.master
+        )
         # The clean copy is scheduled for /media persistence
         full_coordinator.hass.async_create_task.assert_called_once()
 

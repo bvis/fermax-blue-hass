@@ -272,6 +272,15 @@ class TestPairings:
         assert len(pairings[0].access_doors) == 2
         assert pairings[0].access_doors["GENERAL"].visible is True
         assert pairings[0].access_doors["ZERO"].visible is False
+        assert pairings[0].master is False
+
+    @pytest.mark.asyncio
+    async def test_get_pairings_master(self, authenticated_api):
+        """The owner's pairing is flagged master; its opening history is unfiltered."""
+        resp = _mock_response(200, json=[{"deviceId": "d", "master": True}])
+        with patch("httpx.AsyncClient.get", return_value=resp):
+            pairings = await authenticated_api.get_pairings()
+        assert pairings[0].master is True
 
     @pytest.mark.asyncio
     async def test_get_pairings_panel_access_doors(self, authenticated_api):
@@ -706,7 +715,7 @@ class TestOpeningHistory:
             },
         )
         with patch("httpx.AsyncClient.get", return_value=resp):
-            result = await authenticated_api.get_opening_history("dev1")
+            result = await authenticated_api.get_opening_history("dev1", master=False)
         assert len(result) == 2
         assert isinstance(result[0], OpeningRecord)
         assert result[0].user == "user@test.com"
@@ -714,10 +723,32 @@ class TestOpeningHistory:
         assert result[1].guest_email == "guest@test.com"
 
     @pytest.mark.asyncio
+    async def test_get_openings_guest_filters_by_own_email(self, authenticated_api):
+        """A guest pairing gets an empty registry unless it names itself (#106)."""
+        resp = _mock_response(200, json={"openDoorRegistry": []})
+        with patch("httpx.AsyncClient.get", return_value=resp) as mock_get:
+            await authenticated_api.get_opening_history("dev1", master=False)
+        assert mock_get.call_args.kwargs["params"] == {
+            "deviceId": "dev1",
+            "userId": "test@example.com",
+            "guestEmail": "test@example.com",
+        }
+
+    @pytest.mark.asyncio
+    async def test_get_openings_master_sees_everyone(self, authenticated_api):
+        resp = _mock_response(200, json={"openDoorRegistry": []})
+        with patch("httpx.AsyncClient.get", return_value=resp) as mock_get:
+            await authenticated_api.get_opening_history("dev1", master=True)
+        assert mock_get.call_args.kwargs["params"] == {
+            "deviceId": "dev1",
+            "userId": "test@example.com",
+        }
+
+    @pytest.mark.asyncio
     async def test_get_openings_empty(self, authenticated_api):
         resp = _mock_response(200, json={"openDoorRegistry": []})
         with patch("httpx.AsyncClient.get", return_value=resp):
-            result = await authenticated_api.get_opening_history("dev1")
+            result = await authenticated_api.get_opening_history("dev1", master=False)
         assert result == []
 
 

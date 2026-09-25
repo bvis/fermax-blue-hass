@@ -195,9 +195,10 @@ async def main() -> None:
                     print("OK")
 
                 elif choice == "8":
-                    user_id = input("User ID (or press Enter for 'me'): ").strip() or "me"
                     print("Fetching opening history...", end=" ", flush=True)
-                    records = await api.get_opening_history(pairing.device_id, user_id)
+                    records = await api.get_opening_history(
+                        pairing.device_id, master=pairing.master
+                    )
                     print(f"OK ({len(records)} entries)")
                     for r in records[:10]:
                         guest = f" (guest: {r.guest_email})" if r.guest_email else ""
