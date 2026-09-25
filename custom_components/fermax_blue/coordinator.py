@@ -330,7 +330,9 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
 
         # Fetch latest door opening (1 API call, lightweight)
         try:
-            openings = await self.api.get_opening_history(self.pairing.device_id)
+            openings = await self.api.get_opening_history(
+                self.pairing.device_id, master=self.pairing.master
+            )
             if openings:
                 self._last_opening = openings[0]
         except Exception:

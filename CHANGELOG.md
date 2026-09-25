@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.20.5-beta.2] - 2026-09-25
+
+### Fixed
+- **The *Last opening* sensor shows the latest opening** (#106) — the opening registry was requested by device only, and the cloud answers that with an empty list for an account that shares an installation rather than owning it. The request now names the signed-in user, and for a shared installation also filters by that user's email, as the official app does. On a shared installation the sensor reports that account's own openings, which is what the app lists for it.
+
 ## [0.20.5-beta.1] - 2026-09-24
 
 ### Fixed
