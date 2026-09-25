@@ -4,6 +4,7 @@
 
 ### Fixed
 - **The *Last opening* sensor shows the latest opening** (#106) — the opening registry was requested by device only, and the cloud answers that with an empty list for an account that shares an installation rather than owning it. The request now names the signed-in user, and for a shared installation also filters by that user's email, as the official app does. On a shared installation the sensor reports that account's own openings, which is what the app lists for it.
+- **Talk-back from the WebRTC card no longer stalls on a black screen** (#98) — two viewers opening the camera together (a card with the microphone, a card retrying) each woke the intercom. The second wake-up was refused (`autoOn failed: 409`) or announced a second room that replaced the session still being set up, so the first one failed while answering (`Cannot handle answer in signaling state "closed"`) and could drop the reference to the new one: the card kept loading until a later retry. The intercom is now woken once for all viewers, a replaced session no longer undoes its successor, and an answer interrupted by the end of the session is not logged as an error.
 
 ## [0.20.5-beta.1] - 2026-09-24
 

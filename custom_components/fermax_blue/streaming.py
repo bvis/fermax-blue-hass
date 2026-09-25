@@ -921,7 +921,11 @@ class FermaxStreamSession:
                 appData={},
             )
         except Exception:
-            _LOGGER.exception("Pickup failed")
+            if self._stopping:
+                # Torn down while answering (hang-up, or a new room replacing it)
+                _LOGGER.debug("Pickup interrupted: session stopped", exc_info=True)
+            else:
+                _LOGGER.exception("Pickup failed")
             return False
         self._receive_only = False
         self._signaling._send_hangup = True

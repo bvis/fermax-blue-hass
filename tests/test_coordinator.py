@@ -1,5 +1,6 @@
 """Tests for the Fermax Blue coordinator."""
 
+import asyncio
 import time
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -112,6 +113,7 @@ def coordinator(mock_hass, mock_api, pairing):
         coord._last_photo_id = None
         coord._doorbell_ringing = False
         coord._camera_active = False
+        coord._wake_lock = asyncio.Lock()
         coord._last_divert_response = None
         coord._photo_fetch_pending = False
         coord._call_mode = CALL_MODE_NOTIFY
@@ -1228,6 +1230,46 @@ class TestStreamLifecycle:
             )
         return session, session_cls, dispatch, call_later
 
+    async def test_superseded_start_keeps_the_new_session(self, full_coordinator):
+        """A push that replaces a session mid-start must not be undone by its failure (#98)."""
+        listener = MagicMock()
+        listener.fcm_token = "fcm_tok"
+        full_coordinator.notification_listener = listener
+        release = asyncio.Event()
+        first, second = MagicMock(), MagicMock()
+
+        async def _first_start():
+            await release.wait()
+            return False  # stopped by the second push while answering
+
+        first.start = AsyncMock(side_effect=_first_start)
+        first.stop = AsyncMock(side_effect=release.set)
+        first.latest_frame = None
+        second.start = AsyncMock(return_value=True)
+        with (
+            patch(
+                "custom_components.fermax_blue.coordinator.streaming_deps_available",
+                return_value=True,
+            ),
+            patch(
+                "custom_components.fermax_blue.coordinator.FermaxStreamSession",
+                side_effect=[first, second],
+            ),
+            patch("custom_components.fermax_blue.coordinator.async_dispatcher_send"),
+            patch(
+                "custom_components.fermax_blue.coordinator.async_call_later",
+                return_value=MagicMock(),
+            ),
+        ):
+            url = "https://signaling-pro-duoxme.fermax.io"
+            starting = asyncio.create_task(full_coordinator._start_stream("room1", url))
+            await asyncio.sleep(0)
+            await full_coordinator._start_stream("room2", url)
+            await starting
+
+        assert full_coordinator.stream_session is second
+        assert full_coordinator._camera_active is True
+
     async def test_no_listener_never_builds_session(self, full_coordinator):
         with (
             patch(
@@ -1462,6 +1504,25 @@ class TestEnsureStream:
         coordinator.start_camera_preview = AsyncMock(return_value=MagicMock())
         with patch("custom_components.fermax_blue.coordinator.WEBRTC_START_TIMEOUT", 0):
             assert await coordinator.ensure_stream() is None
+
+    async def test_concurrent_viewers_wake_the_intercom_once(self, coordinator):
+        """A second auto-on while the first is pending answers 409 (#98)."""
+        session = MagicMock(is_active=True)
+        release = asyncio.Event()
+
+        async def _preview():
+            await release.wait()
+            coordinator._camera_active = True
+            coordinator._stream_session = session
+            return MagicMock()
+
+        coordinator.start_camera_preview = AsyncMock(side_effect=_preview)
+        viewers = [asyncio.create_task(coordinator.ensure_stream()) for _ in range(2)]
+        await asyncio.sleep(0)
+        release.set()
+
+        assert await asyncio.gather(*viewers) == [session, session]
+        coordinator.start_camera_preview.assert_awaited_once()
 
 
 class TestConversationTimeoutFromPush:
