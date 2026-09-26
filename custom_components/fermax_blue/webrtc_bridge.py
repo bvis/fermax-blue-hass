@@ -157,7 +157,13 @@ def _create_switchable_video_track(placeholder_jpeg: Callable[[], bytes | None])
             self._source: Any = None
             self._placeholder_jpeg: bytes | None = None
             self._placeholder: Any = None
-            self._n = 0
+            # One 90 kHz timeline for both phases: a timestamp going back when
+            # the call ends reads as a 13 h jump ahead downstream and the
+            # viewer freezes (#98)
+            self._pts = 0
+            # After a call: the panel's last keyframe. x264 frames following the
+            # panel's stream do not decode past go2rtc, so the still stays in it
+            self._still: bytes | None = None
             # (source pts, our pts) at the first live packet: the live timeline
             # continues where the placeholder left off
             self._origin: tuple[int, int] | None = None
@@ -171,22 +177,32 @@ def _create_switchable_video_track(placeholder_jpeg: Callable[[], bytes | None])
                 try:
                     item = await self._source.recv()
                 except Exception:
+                    self._still = getattr(self._source, "last_keyframe", None) or self._still
                     self._source = None
                 else:
                     if hasattr(item, "pts") and not hasattr(item, "planes"):
                         if self._origin is None:
-                            self._origin = (item.pts, self._n * 90000 // PLACEHOLDER_FPS)
+                            self._origin = (item.pts, self._pts)
                         item.pts = self._origin[1] + item.pts - self._origin[0]
+                        self._pts = item.pts + 90000 // PLACEHOLDER_FPS
                     return item
             await asyncio.sleep(1 / PLACEHOLDER_FPS)
+            if self._still:
+                import av
+
+                packet = av.Packet(self._still)
+                packet.pts = self._pts
+                packet.time_base = Fraction(1, 90000)
+                self._pts += 90000 // PLACEHOLDER_FPS
+                return packet
             jpeg = placeholder_jpeg()
             if self._placeholder is None or jpeg is not self._placeholder_jpeg:
                 self._placeholder_jpeg = jpeg
                 self._placeholder = _placeholder_frame(jpeg)
             frame = self._placeholder
-            frame.pts = self._n
-            frame.time_base = Fraction(1, PLACEHOLDER_FPS)
-            self._n += 1
+            frame.pts = self._pts
+            frame.time_base = Fraction(1, 90000)
+            self._pts += 90000 // PLACEHOLDER_FPS
             return frame
 
     return _Track()
@@ -298,22 +314,42 @@ class WebRtcPeer:
                 await asyncio.sleep(WAKE_RETRY_DELAY)
             await self.close()
             return
+        self._attach(session)
+        await self._route_microphone()
+        while not self._closed:
+            await asyncio.sleep(SESSION_POLL_SECONDS)
+            if session.is_active:
+                continue
+            # The call ends on its own, as in the app. The viewer keeps the
+            # last frame; closing the peer instead would make go2rtc redial and
+            # wake the intercom again for as long as the card stays open.
+            self._session = None
+            next_session = await self._next_session(session)
+            if next_session is None:
+                return
+            # A later ring or preview is watched, never answered: an open
+            # microphone must not pick up a call nobody chose to take
+            self._mic_routed = True
+            session = next_session
+            self._attach(session)
+
+    def _attach(self, session: FermaxStreamSession) -> None:
+        """Switch the tracks to a live session."""
         self._session = session
         # The panel's own H264 costs nothing to forward; re-encoding is the fallback
         video = session.subscribe_encoded_video() or session.subscribe_video()
         if video is not None:
             self._video.set_source(video)
         session.attach_audio_sink(self._audio)
-        await self._route_microphone()
+
+    async def _next_session(self, previous: FermaxStreamSession) -> FermaxStreamSession | None:
+        """Wait, without waking the intercom, for a session someone else starts (#98)."""
         while not self._closed:
             await asyncio.sleep(SESSION_POLL_SECONDS)
-            if not session.is_active:
-                # The call ends on its own, as in the app. The viewer keeps the
-                # last snapshot; closing the peer instead would make go2rtc
-                # redial and wake the intercom again for as long as the card
-                # stays open.
-                self._session = None
-                return
+            session = self._coordinator.stream_session
+            if session is not None and session is not previous and session.is_active:
+                return session
+        return None
 
     async def _pump_microphone(self, track: Any) -> None:
         """The first microphone packet marks a viewer who wants to talk."""

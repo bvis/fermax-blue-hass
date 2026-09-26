@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.20.5-beta.3] - 2026-09-26
+
+### Fixed
+- **The live view no longer freezes, or stays on *Loading*, once a call ends** (#98) — when the intercom hung up, the viewer switched from the panel's own video to a snapshot re-encoded by the integration. Those frames did not decode on the other side of go2rtc, and their timestamps went back to where the snapshot had stopped before the call, which a player reads as a jump of several hours ahead. The open card froze, and a card opened afterwards (a dashboard reload) received no picture at all until Home Assistant restarted. After a call the viewer now keeps showing the panel's last keyframe, on a timeline that only moves forward.
+- **A card left open shows the next session live** (#98) — once a call ended, an open card stayed on the last picture for good: a ring or the camera preview button started a new session it never joined. It now switches to the next session on its own, without waking the intercom. That session is watched and listened to only: an open microphone never answers a call nobody chose to take; reopen the card with the microphone to talk.
+
 ## [0.20.5-beta.2] - 2026-09-25
 
 ### Fixed

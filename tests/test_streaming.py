@@ -1779,6 +1779,18 @@ class TestEncodedVideo:
         track.push(self.SPS + self.PPS + self.IDR, 100)
         assert bytes(await track.recv()) == self.SPS + self.PPS + self.IDR
 
+    async def test_last_keyframe_keeps_its_parameter_sets(self):
+        from custom_components.fermax_blue.streaming import _create_encoded_video_track
+
+        track = _create_encoded_video_track(MagicMock())
+        assert track.last_keyframe is None
+        track.push(self.SPS + self.PPS + self.IDR, 0)
+        track.push(self.P, 3000)
+        track.push(self.IDR + b"\xcc", 6000)  # later keyframe without parameter sets
+        for _ in range(3):
+            await track.recv()
+        assert track.last_keyframe == self.SPS + self.PPS + self.IDR + b"\xcc"
+
     async def test_end_and_stop_raise_media_stream_error(self):
         from custom_components.fermax_blue.streaming import _create_encoded_video_track
 
