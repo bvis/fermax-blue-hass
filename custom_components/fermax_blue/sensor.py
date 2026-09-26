@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any
 
 from homeassistant.components.sensor import (
@@ -14,6 +15,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.util import dt as dt_util
 
 from .api import redact_email
 from .const import DOMAIN
@@ -43,9 +45,11 @@ SENSOR_TYPES: dict[str, SensorTypeInfo] = {
     ),
     "last_opening": SensorTypeInfo(
         translation_key="last_opening",
+        device_class=SensorDeviceClass.TIMESTAMP,
     ),
     "last_call": SensorTypeInfo(
         translation_key="last_call",
+        device_class=SensorDeviceClass.TIMESTAMP,
     ),
 }
 
@@ -73,6 +77,13 @@ async def async_setup_entry(
             entities.append(FermaxSensor(coordinator, key))
 
     async_add_entities(entities)
+
+
+def _aware(value: datetime | None) -> datetime | None:
+    """A timestamp sensor needs a zone; the cloud's instants are UTC (#106)."""
+    if value is None or value.tzinfo:
+        return value
+    return value.replace(tzinfo=UTC)
 
 
 class FermaxSensor(FermaxBlueEntity, SensorEntity):
@@ -103,11 +114,11 @@ class FermaxSensor(FermaxBlueEntity, SensorEntity):
             return None
         if self._key == "last_opening":
             if self.coordinator.last_opening:
-                return self.coordinator.last_opening.timestamp
+                return _aware(dt_util.parse_datetime(self.coordinator.last_opening.timestamp))
             return None
         if self._key == "last_call":
             if self.coordinator.last_call:
-                return self.coordinator.last_call.call_date.isoformat()
+                return _aware(self.coordinator.last_call.call_date)
             return None
         return None
 

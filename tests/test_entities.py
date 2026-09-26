@@ -1,9 +1,10 @@
 """Tests for entity platforms."""
 
-from datetime import UTC
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from homeassistant.components.sensor import SensorDeviceClass
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 
 from custom_components.fermax_blue.api import (
@@ -470,7 +471,25 @@ class TestLastOpeningSensor:
             door="Portal",
         )
         sensor = FermaxLastOpeningSensor(mock_coordinator)
-        assert sensor.native_value == "2026-04-05T10:30:00Z"
+        # a timestamp sensor: HA shows it in the user's time zone (#106)
+        assert sensor.native_value == datetime(2026, 4, 5, 10, 30, tzinfo=UTC)
+        assert sensor.device_class == SensorDeviceClass.TIMESTAMP
+
+    @pytest.mark.parametrize(
+        ("raw", "expected"),
+        [
+            ("2026-04-05T12:30:00+02:00", datetime(2026, 4, 5, 10, 30, tzinfo=UTC)),
+            ("2026-04-05T10:30:00", datetime(2026, 4, 5, 10, 30, tzinfo=UTC)),  # no offset: UTC
+            ("", None),
+            ("not a date", None),
+        ],
+    )
+    def test_last_opening_parsing(self, mock_coordinator, raw, expected):
+        from custom_components.fermax_blue.api import OpeningRecord
+        from custom_components.fermax_blue.sensor import FermaxLastOpeningSensor
+
+        mock_coordinator.last_opening = OpeningRecord(timestamp=raw, user="John", door="Portal")
+        assert FermaxLastOpeningSensor(mock_coordinator).native_value == expected
 
     def test_last_opening_extra_attrs_redacts_emails(self, mock_coordinator):
         from custom_components.fermax_blue.api import OpeningRecord
@@ -537,7 +556,8 @@ class TestLastCallSensor:
         mock_coordinator.last_call = call
         mock_coordinator.call_log = [call]
         sensor = FermaxLastCallSensor(mock_coordinator)
-        assert "2026-04-05" in sensor.native_value
+        assert sensor.native_value == datetime(2026, 4, 5, 10, 30, tzinfo=UTC)
+        assert sensor.device_class == SensorDeviceClass.TIMESTAMP
         attrs = sensor.extra_state_attributes
         assert attrs["call_id"] == "abc123"
         assert attrs["answered"] is False
