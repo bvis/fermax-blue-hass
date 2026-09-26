@@ -69,6 +69,7 @@ views:
             card:
               type: custom:webrtc-camera
               entity: camera.DEVICE_NAME_visitor
+              mode: webrtc
               media: video,audio
               muted: false
               ui: true
@@ -83,6 +84,7 @@ views:
             card:
               type: custom:webrtc-camera
               entity: camera.DEVICE_NAME_visitor
+              mode: webrtc
               media: video,audio,microphone
               muted: false
               ui: true

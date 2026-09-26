@@ -233,8 +233,11 @@ The camera advertises a WebRTC stream served through Home Assistant's bundled go
   ```yaml
   type: custom:webrtc-camera
   entity: camera.<name>_visitor
+  mode: webrtc
   media: video,audio,microphone
   ```
+
+  Keep `mode: webrtc`: the card's default MSE mode cannot carry the intercom's OPUS audio, so without it the card spins for ever.
 
   Pressing the microphone button **answers the call**: the first packet of voice picks up, as the attend button in the app does, and the intercom's audio starts flowing. An answered session lasts the conversation time the server allows (90 seconds by default) rather than the preview limit.
 - **Microphone access requires HTTPS.** Browsers and the companion apps refuse to capture audio on plain `http://` addresses, so use your HTTPS URL (Nabu Casa, a reverse proxy) when you want to talk.

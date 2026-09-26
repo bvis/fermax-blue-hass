@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.20.5-beta.3] - 2026-09-26
+
+### Fixed
+- **No more endless `Error from stream worker` for the camera** (#100) — Home Assistant advertises HLS for every camera that goes through go2rtc, so opening the more-info dialog or a `camera_view: live` card could hand the `webrtc:` source to ffmpeg, which cannot open it and retried with growing backoff for the life of the instance (`Protocol not found`). The camera now declines to create an HLS stream; go2rtc reads the source directly, so the WebRTC view is unaffected.
+- **The WebRTC card examples set `mode: webrtc`** (#100) — the card's default MSE mode cannot carry the intercom's OPUS audio and spun for ever without an error. The README example and the answer-from-your-phone dashboard now force WebRTC, which talk-back needs anyway.
+
 ## [0.20.5-beta.2] - 2026-09-25
 
 ### Fixed
