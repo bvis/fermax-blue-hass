@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.20.5-beta.4] - 2026-09-26
+
+### Fixed
+- ***Last opening* and *Last call* show your local time** (#106) — both sensors published the cloud's timestamp as plain text, so Home Assistant displayed the opening in UTC: two hours behind the app in Spain in summer. They are now timestamp sensors, which Home Assistant shows in your time zone (and as "x minutes ago" on dashboards). Templates that read the state get an ISO timestamp in UTC, as before for *Last opening*.
+
 ## [0.20.5-beta.3] - 2026-09-26
 
 ### Fixed
