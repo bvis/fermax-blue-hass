@@ -265,6 +265,9 @@ def _create_encoded_video_track(source: Any) -> Any:
             self._started = False
             self._sps = b""
             self._pps = b""
+            # The newest keyframe with its parameter sets: what a viewer keeps
+            # showing once the call ends (webrtc_bridge)
+            self.last_keyframe: bytes | None = None
 
         def push(self, data: bytes, timestamp: int) -> None:
             self._queue.put_nowait((data, timestamp))
@@ -296,6 +299,8 @@ def _create_encoded_video_track(source: Any) -> Any:
                     self._started = True
                     if 7 not in types:
                         data = self._sps + self._pps + data
+                if 5 in types:
+                    self.last_keyframe = data if 7 in types else self._sps + self._pps + data
                 packet = av.Packet(data)
                 packet.pts = timestamp
                 packet.time_base = Fraction(1, 90000)
