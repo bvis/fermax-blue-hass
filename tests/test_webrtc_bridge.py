@@ -97,6 +97,7 @@ def _coordinator(session=None, pickup=True, last_photo=None):
     coordinator = MagicMock()
     coordinator.last_photo = last_photo
     coordinator.ensure_stream = AsyncMock(return_value=session)
+    coordinator.stream_session = session
     coordinator.pickup = AsyncMock(return_value=pickup)
     return coordinator
 
@@ -186,7 +187,7 @@ class TestPlaceholderVideo:
             first_pts = first.pts
             second = await track.recv()
             assert first.width == webrtc_bridge.PLACEHOLDER_SIZE[0]
-            assert second.pts == first_pts + 1
+            assert second.pts == first_pts + 90  # 90 kHz at 1000 fps
 
             track.set_source(Live())
             assert await track.recv() == "live-frame"
@@ -330,6 +331,25 @@ class TestSessionAttachment:
             peer._video.set_source(None)
             frame = await peer._video.recv()
         assert frame.width == 8  # dimensions of the test snapshot, not the black default
+        await peer.close()
+
+    async def test_a_later_session_is_joined_without_waking_the_intercom(self):
+        # A card left open after the call picks up the next ring or preview (#98)
+        first = _session()
+        peer, coordinator = await self._attached(first)
+        coordinator.pickup.reset_mock()
+        peer._mic_ready = True
+        second = _session()
+        first.is_active = False
+        coordinator.stream_session = second
+        with patch.object(webrtc_bridge, "SESSION_POLL_SECONDS", 0):
+            for _ in range(6):
+                await asyncio.sleep(0)
+        assert peer._session is second
+        assert peer._video._source is second.subscribe_encoded_video.return_value
+        second.attach_audio_sink.assert_called_once_with(peer._audio)
+        coordinator.ensure_stream.assert_awaited_once()  # no second wake-up
+        coordinator.pickup.assert_not_awaited()  # an open microphone never answers a later ring
         await peer.close()
 
 
@@ -548,4 +568,59 @@ class TestPacketPassThrough:
         second = await track.recv()
         assert first.pts == 3 * 90000 // PLACEHOLDER_FPS
         assert second.pts == first.pts + 3_000
+        track.stop()
+
+    async def test_placeholder_resumes_after_the_last_packet(self):
+        # A timestamp going back when the call ends reads as a 13 h jump
+        # ahead downstream: the viewer froze and new ones never started (#98)
+        import av
+
+        from custom_components.fermax_blue.webrtc_bridge import (
+            PLACEHOLDER_FPS,
+            _create_switchable_video_track,
+        )
+
+        track = _create_switchable_video_track(lambda: None)
+        packets = []
+        for pts in (900_000, 903_000):
+            packet = av.Packet(b"\x00\x00\x00\x01\x65")
+            packet.pts = pts
+            packets.append(packet)
+        source = MagicMock()
+        source.recv = AsyncMock(side_effect=[*packets, MediaStreamError])
+        source.last_keyframe = None  # decoded fallback: back to the snapshot
+        track.set_source(source)
+        with patch.object(webrtc_bridge.asyncio, "sleep", AsyncMock()):
+            await track.recv()
+            last = await track.recv()
+            after = await track.recv()
+        assert after.pts * after.time_base * 90000 == last.pts + 90000 // PLACEHOLDER_FPS
+        track.stop()
+
+    async def test_last_panel_keyframe_is_repeated_after_the_call(self):
+        # x264 frames after the panel's stream do not decode past go2rtc (#98);
+        # the panel's own last keyframe does
+        import av
+
+        from custom_components.fermax_blue.webrtc_bridge import (
+            PLACEHOLDER_FPS,
+            _create_switchable_video_track,
+        )
+
+        track = _create_switchable_video_track(lambda: None)
+        packet = av.Packet(b"\x00\x00\x00\x01\x65")
+        packet.pts = 900_000
+        source = MagicMock()
+        source.recv = AsyncMock(side_effect=[packet, MediaStreamError])
+        source.last_keyframe = b"\x00\x00\x00\x01\x67\x01\x00\x00\x00\x01\x65"
+        track.set_source(source)
+        with patch.object(webrtc_bridge.asyncio, "sleep", AsyncMock()):
+            live = await track.recv()
+            first = await track.recv()
+            second = await track.recv()
+        for still in (first, second):
+            assert isinstance(still, av.Packet)
+            assert bytes(still) == source.last_keyframe
+        assert first.pts == live.pts + 90000 // PLACEHOLDER_FPS
+        assert second.pts == first.pts + 90000 // PLACEHOLDER_FPS
         track.stop()
