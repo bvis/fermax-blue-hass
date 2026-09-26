@@ -91,6 +91,12 @@ class FermaxCamera(FermaxBlueEntity, Camera):
             return None
         return webrtc_stream_source(self.hass, self.coordinator.webrtc_token)
 
+    async def async_create_stream(self) -> None:
+        """No HLS stream: ffmpeg cannot open the webrtc: source and would retry it for ever.
+
+        go2rtc reads stream_source() directly, so WebRTC is unaffected (#100).
+        """
+
     async def async_camera_image(
         self,
         width: int | None = None,  # noqa: V107

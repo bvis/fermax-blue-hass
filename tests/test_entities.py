@@ -1574,3 +1574,13 @@ class TestCameraWebRtc:
             "custom_components.fermax_blue.camera.streaming_deps_available", return_value=False
         ):
             assert await camera.stream_source() is None
+
+    @pytest.mark.asyncio
+    async def test_no_hls_stream_is_created(self, mock_coordinator):
+        # ffmpeg cannot open the webrtc: source; HLS would retry it for ever (#100)
+        camera = self._make_camera(mock_coordinator)
+        with patch(
+            "custom_components.fermax_blue.camera.streaming_deps_available", return_value=True
+        ):
+            assert await camera.async_create_stream() is None
+        assert camera.stream is None
