@@ -1,28 +1,16 @@
 # Changelog
 
-## [0.20.5-beta.4] - 2026-09-26
+## [0.20.5] - 2026-09-27
 
 ### Fixed
-- ***Last opening* and *Last call* show your local time** (#106) — both sensors published the cloud's timestamp as plain text, so Home Assistant displayed the opening in UTC: two hours behind the app in Spain in summer. They are now timestamp sensors, which Home Assistant shows in your time zone (and as "x minutes ago" on dashboards). Templates that read the state get an ISO timestamp in UTC, as before for *Last opening*.
-
-## [0.20.5-beta.3] - 2026-09-26
-
-### Fixed
+- **WebRTC live view works when Home Assistant serves HTTPS itself** (#100) — go2rtc was pointed at `wss://127.0.0.1`, and a TLS certificate names Home Assistant's hostname, never the loopback address, so go2rtc aborted the handshake (`x509: cannot validate certificate for 127.0.0.1`) and the card stayed blank while the intercom woke up. With TLS on, the signaling address now uses the hostname from Home Assistant's network settings (internal URL first, then external; never the cloud URL). Installations without TLS, or with TLS but no hostname configured, keep `127.0.0.1`.
+- **Talk-back from the WebRTC card no longer stalls on a black screen** (#98) — two viewers opening the camera together (a card with the microphone, a card retrying) each woke the intercom. The second wake-up was refused (`autoOn failed: 409`) or announced a second room that replaced the session still being set up, so the first one failed while answering (`Cannot handle answer in signaling state "closed"`) and could drop the reference to the new one: the card kept loading until a later retry. The intercom is now woken once for all viewers, a replaced session no longer undoes its successor, and an answer interrupted by the end of the session is not logged as an error.
 - **The live view no longer freezes, or stays on *Loading*, once a call ends** (#98) — when the intercom hung up, the viewer switched from the panel's own video to a snapshot re-encoded by the integration. Those frames did not decode on the other side of go2rtc, and their timestamps went back to where the snapshot had stopped before the call, which a player reads as a jump of several hours ahead. The open card froze, and a card opened afterwards (a dashboard reload) received no picture at all until Home Assistant restarted. After a call the viewer now keeps showing the panel's last keyframe, on a timeline that only moves forward.
 - **A card left open shows the next session live** (#98) — once a call ended, an open card stayed on the last picture for good: a ring or the camera preview button started a new session it never joined. It now switches to the next session on its own, without waking the intercom. That session is watched and listened to only: an open microphone never answers a call nobody chose to take; reopen the card with the microphone to talk.
 - **No more endless `Error from stream worker` for the camera** (#100) — Home Assistant advertises HLS for every camera that goes through go2rtc, so opening the more-info dialog or a `camera_view: live` card could hand the `webrtc:` source to ffmpeg, which cannot open it and retried with growing backoff for the life of the instance (`Protocol not found`). The camera now declines to create an HLS stream; go2rtc reads the source directly, so the WebRTC view is unaffected.
 - **The WebRTC card examples set `mode: webrtc`** (#100) — the card's default MSE mode cannot carry the intercom's OPUS audio and spun for ever without an error. The README example and the answer-from-your-phone dashboard now force WebRTC, which talk-back needs anyway.
-
-## [0.20.5-beta.2] - 2026-09-25
-
-### Fixed
 - **The *Last opening* sensor shows the latest opening** (#106) — the opening registry was requested by device only, and the cloud answers that with an empty list for an account that shares an installation rather than owning it. The request now names the signed-in user, and for a shared installation also filters by that user's email, as the official app does. On a shared installation the sensor reports that account's own openings, which is what the app lists for it.
-- **Talk-back from the WebRTC card no longer stalls on a black screen** (#98) — two viewers opening the camera together (a card with the microphone, a card retrying) each woke the intercom. The second wake-up was refused (`autoOn failed: 409`) or announced a second room that replaced the session still being set up, so the first one failed while answering (`Cannot handle answer in signaling state "closed"`) and could drop the reference to the new one: the card kept loading until a later retry. The intercom is now woken once for all viewers, a replaced session no longer undoes its successor, and an answer interrupted by the end of the session is not logged as an error.
-
-## [0.20.5-beta.1] - 2026-09-24
-
-### Fixed
-- **WebRTC live view works when Home Assistant serves HTTPS itself** (#100) — go2rtc was pointed at `wss://127.0.0.1`, and a TLS certificate names Home Assistant's hostname, never the loopback address, so go2rtc aborted the handshake (`x509: cannot validate certificate for 127.0.0.1`) and the card stayed blank while the intercom woke up. With TLS on, the signaling address now uses the hostname from Home Assistant's network settings (internal URL first, then external; never the cloud URL). Installations without TLS, or with TLS but no hostname configured, keep `127.0.0.1`.
+- ***Last opening* and *Last call* show your local time** (#106) — both sensors published the cloud's timestamp as plain text, so Home Assistant displayed the opening in UTC: two hours behind the app in Spain in summer. They are now timestamp sensors, which Home Assistant shows in your time zone (and as "x minutes ago" on dashboards). Templates that read the state get an ISO timestamp in UTC, as before for *Last opening*.
 
 ## [0.20.4] - 2026-09-24
 
