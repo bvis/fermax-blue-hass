@@ -482,6 +482,12 @@ Features available in the Fermax Blue mobile app that are not yet implemented:
 
 Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
+## Support
+
+This integration is free and open source, and stays that way — every feature is available to everyone. If it's useful to you and you'd like to support the time that goes into maintaining it, you can [buy me a coffee](https://buymeacoffee.com/basiliovera) ☕. Entirely optional and always appreciated.
+
+The most valuable contribution, though, is a good bug report or a payload from a panel or monitor model I can't test against — that's what moves the integration forward.
+
 ## Acknowledgments
 
 This integration would not be possible without the work of the Fermax open-source community:
