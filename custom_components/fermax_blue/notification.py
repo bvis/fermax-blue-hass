@@ -88,6 +88,21 @@ def _b64_pad(value: str) -> str:
     return value + "=" * (-len(value) % 4)
 
 
+def _header_param(value: str, name: str) -> str:
+    """Return parameter *name* from an upstream-sliced ``;``-separated header value.
+
+    Upstream slices the leading ``dh=`` / ``salt=`` off by length and keeps the
+    rest, so a VAPID-signed push (``dh=<key>; p256ecdsa=<key>``) reaches us as
+    ``<key>; p256ecdsa=<key>``. The first segment is the wanted one unless the
+    parameter shows up labelled further on.
+    """
+    segments = [segment.strip() for segment in value.split(";")]
+    for segment in segments:
+        if segment.startswith(f"{name}="):
+            return segment[len(name) + 1 :]
+    return segments[0]
+
+
 def _patch_fcm_decrypt() -> None:
     """Make firebase_messaging's per-message decrypt resilient (issues #21, #25).
 
@@ -104,11 +119,13 @@ def _patch_fcm_decrypt() -> None:
        ``ValueError: Invalid EC key`` (issue #25). The exception propagates
        before the listen loop records/acks the message, so MCS redelivers the
        same poisoned message on every reconnect — an endless crash/restart loop.
+       VAPID-signed pushes hit the same error on every message: upstream keeps
+       the ``; p256ecdsa=<key>`` parameter attached to ``dh`` (issue #117).
 
-    Pad both headers before decoding, and swallow any decrypt failure by
-    returning ``b""``: the upstream handler then logs a decrypt warning, acks the
-    message (breaking the redelivery loop) and the listener stays alive to
-    process the next push. Idempotent: safe to call on every (re)start.
+    Keep only the ``dh`` / ``salt`` parameter and pad it before decoding, and
+    swallow any decrypt failure by returning ``b""``: the upstream handler then
+    logs a decrypt warning, acks the message (breaking the redelivery loop) and
+    the listener stays alive to process the next push. Idempotent: safe to call on every (re)start.
     """
     original = FcmPushClient._decrypt_raw_data
     if getattr(original, "_fermax_decrypt_patched", False):
@@ -121,7 +138,12 @@ def _patch_fcm_decrypt() -> None:
         raw_data: bytes,
     ) -> bytes:
         try:
-            return original(credentials, _b64_pad(crypto_key_str), _b64_pad(salt_str), raw_data)
+            return original(
+                credentials,
+                _b64_pad(_header_param(crypto_key_str, "dh")),
+                _b64_pad(_header_param(salt_str, "salt")),
+                raw_data,
+            )
         except Exception:
             # Returning b"" lets the upstream handler ack and skip this single
             # message (breaking the redelivery loop) instead of letting the
