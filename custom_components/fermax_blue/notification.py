@@ -6,10 +6,13 @@ import asyncio
 import contextlib
 import logging
 import time
+from base64 import urlsafe_b64decode
 from collections import deque
 from collections.abc import Callable
 from typing import Any
 
+import http_ece
+from cryptography.hazmat.primitives.serialization import load_der_private_key
 from firebase_messaging import FcmPushClient, FcmPushClientConfig
 from firebase_messaging.fcmregister import FcmRegister, FcmRegisterConfig
 from homeassistant.core import HomeAssistant
@@ -103,61 +106,47 @@ def _header_param(value: str, name: str) -> str:
     return segments[0]
 
 
-def _patch_fcm_decrypt() -> None:
-    """Make firebase_messaging's per-message decrypt resilient (issues #21, #25).
+def _decrypt_push(
+    credentials: dict[str, dict[str, str]],
+    crypto_key_str: str,
+    salt_str: str,
+    raw_data: bytes,
+) -> bytes:
+    """Decrypt one push for our own FcmPushClient (issues #21, #25, #117).
 
-    Two upstream weaknesses let a single bad push crash the whole FcmPushClient,
-    because ``_handle_data_message`` does not guard ``_decrypt_raw_data`` and any
-    exception propagates to the ``_listen`` catch-all that shuts the client down:
+    Installed on our client instance, never on the shared class: another
+    integration patching ``FcmPushClient`` does not see our pushes and we do
+    not see theirs. Upstream's version breaks three ways, all fixed here:
 
-    1. ``_decrypt_raw_data`` base64-decodes the per-message ``crypto-key`` (dh=)
-       and ``encryption`` (salt=) headers without padding them, so an unpadded
-       value (legal per RFC 8188/8291) raises ``binascii.Error: Incorrect
-       padding`` (issue #21).
-    2. Even with padding fixed, a malformed ``dh`` value decodes to bytes that
-       are not a valid P-256 point, so ``http_ece`` raises
-       ``ValueError: Invalid EC key`` (issue #25). The exception propagates
-       before the listen loop records/acks the message, so MCS redelivers the
-       same poisoned message on every reconnect — an endless crash/restart loop.
-       VAPID-signed pushes hit the same error on every message: upstream keeps
-       the ``; p256ecdsa=<key>`` parameter attached to ``dh`` (issue #117).
+    1. The ``crypto-key`` (dh=) and ``encryption`` (salt=) values arrive
+       unpadded, legal per RFC 8188/8291 (``binascii.Error``, #21).
+    2. Fermax signs its pushes (``dh=<key>; p256ecdsa=<key>``) and upstream
+       decodes the whole value as the key (``Invalid EC key``, #117).
+    3. Any exception escapes before the message is acked, so MCS redelivers
+       it on every reconnect and the client shuts down each time (#25).
 
-    Keep only the ``dh`` / ``salt`` parameter and pad it before decoding, and
-    swallow any decrypt failure by returning ``b""``: the upstream handler then
-    logs a decrypt warning, acks the message (breaking the redelivery loop) and
-    the listener stays alive to process the next push. Idempotent: safe to call on every (re)start.
+    A failure returns ``b""``: upstream then acks and skips that one message
+    and the listener stays alive for the next push.
     """
-    original = FcmPushClient._decrypt_raw_data
-    if getattr(original, "_fermax_decrypt_patched", False):
-        return
-
-    def _decrypt_raw_data_safe(
-        credentials: dict[str, dict[str, str]],
-        crypto_key_str: str,
-        salt_str: str,
-        raw_data: bytes,
-    ) -> bytes:
-        try:
-            return original(
-                credentials,
-                _b64_pad(_header_param(crypto_key_str, "dh")),
-                _b64_pad(_header_param(salt_str, "salt")),
-                raw_data,
-            )
-        except Exception:
-            # Returning b"" lets the upstream handler ack and skip this single
-            # message (breaking the redelivery loop) instead of letting the
-            # exception tear the whole client down.
-            _LOGGER.warning(
-                "Skipping an undecryptable FCM push; FCM listener kept alive",
-                exc_info=True,
-            )
-            return b""
-
-    _decrypt_raw_data_safe._fermax_decrypt_patched = True  # type: ignore[attr-defined]
-    FcmPushClient._decrypt_raw_data = staticmethod(  # type: ignore[assignment]
-        _decrypt_raw_data_safe
-    )
+    try:
+        keys = credentials["keys"]
+        private_key = load_der_private_key(
+            urlsafe_b64decode(_b64_pad(keys["private"])), password=None
+        )
+        return http_ece.decrypt(  # type: ignore[no-any-return]
+            raw_data,
+            salt=urlsafe_b64decode(_b64_pad(_header_param(salt_str, "salt"))),
+            private_key=private_key,
+            dh=urlsafe_b64decode(_b64_pad(_header_param(crypto_key_str, "dh"))),
+            version="aesgcm",
+            auth_secret=urlsafe_b64decode(_b64_pad(keys["secret"])),
+        )
+    except Exception:
+        _LOGGER.warning(
+            "Skipping an undecryptable FCM push; FCM listener kept alive",
+            exc_info=True,
+        )
+        return b""
 
 
 _SENSITIVE_LOG_KEYS = frozenset(
@@ -285,7 +274,6 @@ class FermaxNotificationListener:
             return
 
         _install_fcm_log_rate_limit()
-        _patch_fcm_decrypt()
 
         # Bounded abort: let the upstream client give up after a few sequential
         # errors instead of spinning forever on a poisoned reader; the watchdog
@@ -299,6 +287,9 @@ class FermaxNotificationListener:
                 abort_on_sequential_error_count=FCM_ABORT_SEQUENTIAL_ERROR_COUNT
             ),
         )
+        # Upstream calls self._decrypt_raw_data, so the instance attribute wins
+        # and the class other integrations may patch is left alone.
+        self._push_client._decrypt_raw_data = _decrypt_push  # type: ignore[method-assign]
 
         await self._push_client.start()
         _LOGGER.info("FCM notification listener started")

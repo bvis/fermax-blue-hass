@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+- **Push decryption no longer shared with other integrations** — the integration used to patch the push library's decrypt for the whole Home Assistant process, so another integration doing the same (Aegis for Ajax does) logged Fermax's push errors under its own name, and each one wrapped the other's patch. Fermax now decrypts its own pushes on its own push client and leaves the library untouched.
+
 ## [0.20.6] - 2026-10-06
 
 ### Fixed
