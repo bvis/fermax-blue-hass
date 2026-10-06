@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.20.6-beta.1] - 2026-10-06
+## [0.20.6] - 2026-10-06
 
 ### Fixed
 - **Doorbell rings and the camera preview work again** (#117, #116) — the Fermax cloud now signs its push notifications, so their `crypto-key` header carries a second parameter (`dh=<key>; p256ecdsa=<key>`). The push library decoded both as one key and every push failed with `Invalid EC key`: no ring event, no call data, and the camera preview woke the intercom but never got the room to join. Only the `dh` parameter is used now, in whichever order the header lists them.
