@@ -4,10 +4,14 @@ import asyncio
 import binascii
 import inspect
 import logging
-from base64 import urlsafe_b64decode
+import os
+from base64 import urlsafe_b64decode, urlsafe_b64encode
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import http_ece
 import pytest
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import ec
 from firebase_messaging.fcmpushclient import FcmPushClient
 
 from custom_components.fermax_blue.notification import (
@@ -19,8 +23,8 @@ from custom_components.fermax_blue.notification import (
     FCM_UPSTREAM_LOGGER,
     FermaxNotificationListener,
     _b64_pad,
+    _decrypt_push,
     _FcmExcInfoRateLimitFilter,
-    _patch_fcm_decrypt,
 )
 
 
@@ -447,14 +451,6 @@ def test_exc_filter_ignores_records_without_exc_info():
         assert record.getMessage() == "plain message"
 
 
-@pytest.fixture
-def restore_fcm_decrypt():
-    """Restore FcmPushClient._decrypt_raw_data after a test mutates it via the patch."""
-    original = inspect.getattr_static(FcmPushClient, "_decrypt_raw_data")
-    yield
-    FcmPushClient._decrypt_raw_data = original
-
-
 @pytest.mark.parametrize(
     ("value", "expected"),
     [
@@ -479,81 +475,72 @@ def test_b64_pad_makes_incorrect_padding_value_decodable():
     urlsafe_b64decode(_b64_pad(unpadded).encode("ascii"))
 
 
-def test_patch_pads_crypto_key_and_salt_before_delegating(restore_fcm_decrypt):
-    """The patch right-pads the crypto-key/encryption headers before handing them
-    to the upstream decrypter, so an unpadded header no longer raises
-    binascii.Error in the listen loop and shuts the client down (issue #21)."""
-    received: dict[str, str] = {}
+def _b64(raw: bytes) -> str:
+    return urlsafe_b64encode(raw).decode("ascii").rstrip("=")
 
-    def _spy(credentials, crypto_key_str, salt_str, raw_data):
-        received["crypto_key"] = crypto_key_str
-        received["salt"] = salt_str
-        return b"decrypted"
 
-    FcmPushClient._decrypt_raw_data = staticmethod(_spy)
-    _patch_fcm_decrypt()
-
-    result = FcmPushClient._decrypt_raw_data({}, "A" * 86, "B" * 87, b"raw")
-
-    assert result == b"decrypted"
-    assert received["crypto_key"] == "A" * 86 + "=="
-    assert received["salt"] == "B" * 87 + "="
-    assert len(received["crypto_key"]) % 4 == 0
-    assert len(received["salt"]) % 4 == 0
+@pytest.fixture
+def signed_push():
+    """Credentials plus one push encrypted the way the sender does (aesgcm)."""
+    receiver = ec.generate_private_key(ec.SECP256R1())
+    sender = ec.generate_private_key(ec.SECP256R1())
+    secret, salt = os.urandom(16), os.urandom(16)
+    point = serialization.Encoding.X962, serialization.PublicFormat.UncompressedPoint
+    raw = http_ece.encrypt(
+        b'{"data": "ring"}',
+        salt=salt,
+        private_key=sender,
+        dh=receiver.public_key().public_bytes(*point),
+        version="aesgcm",
+        auth_secret=secret,
+    )
+    der = receiver.private_bytes(
+        serialization.Encoding.DER,
+        serialization.PrivateFormat.PKCS8,
+        serialization.NoEncryption(),
+    )
+    credentials = {"keys": {"private": _b64(der), "secret": _b64(secret)}}
+    return credentials, _b64(sender.public_key().public_bytes(*point)), _b64(salt), raw
 
 
 @pytest.mark.parametrize(
-    "crypto_key_str",
+    "crypto_key",
     [
-        # Upstream slices "dh=" off with [3:] and keeps the VAPID parameter.
-        "A" * 87 + "; p256ecdsa=" + "B" * 87,
-        # Same, with the other parameter first ("p25" sliced off instead).
-        "6ecdsa=" + "B" * 87 + ";dh=" + "A" * 87,
+        "{dh}",  # unpadded, as upstream hands it over after slicing "dh=" (#21)
+        "{dh}; p256ecdsa={vapid}",  # signed push: upstream keeps the VAPID key (#117)
+        "6ecdsa={vapid};dh={dh}",  # signed, other order: "p25" sliced off instead
     ],
 )
-def test_patch_keeps_only_dh_from_a_vapid_signed_crypto_key(restore_fcm_decrypt, crypto_key_str):
-    """A VAPID-signed push carries ``crypto-key: dh=<key>; p256ecdsa=<key>``; the
-    whole value decodes to a non-P-256 point (Invalid EC key, #117)."""
-    received: dict[str, str] = {}
+def test_decrypt_push_decrypts_signed_and_unpadded_headers(signed_push, crypto_key):
+    credentials, dh, salt, raw = signed_push
+    header = crypto_key.format(dh=dh, vapid="B" * 87)
 
-    def _spy(credentials, crypto_key_str, salt_str, raw_data):
-        received["crypto_key"] = crypto_key_str
-        received["salt"] = salt_str
-        return b"decrypted"
-
-    FcmPushClient._decrypt_raw_data = staticmethod(_spy)
-    _patch_fcm_decrypt()
-
-    result = FcmPushClient._decrypt_raw_data({}, crypto_key_str, "C" * 22 + "==", b"raw")
-
-    assert result == b"decrypted"
-    assert received["crypto_key"] == "A" * 87 + "="
-    assert received["salt"] == "C" * 22 + "=="
+    assert _decrypt_push(credentials, header, salt, raw) == b'{"data": "ring"}'
 
 
-def test_patch_returns_empty_bytes_on_decrypt_failure(restore_fcm_decrypt):
-    """A decrypt failure (e.g. malformed dh -> Invalid EC key) is swallowed and
-    returns b"" so the upstream listener acks/skips the poisoned message instead
-    of shutting the whole client down on every reconnect (issue #25)."""
+def test_decrypt_push_returns_empty_bytes_and_warns_on_failure(signed_push, caplog):
+    """A bad push is skipped (b"" makes upstream ack it) instead of killing the
+    client on every redelivery (#25)."""
+    credentials, _dh, salt, raw = signed_push
 
-    def _boom(credentials, crypto_key_str, salt_str, raw_data):
-        raise ValueError("Invalid EC key.")
+    with caplog.at_level(logging.WARNING):
+        assert _decrypt_push(credentials, "A" * 87, salt, raw) == b""
 
-    FcmPushClient._decrypt_raw_data = staticmethod(_boom)
-    _patch_fcm_decrypt()
-
-    result = FcmPushClient._decrypt_raw_data({}, "A" * 86, "B" * 86, b"raw")
-
-    assert result == b""
+    assert "Skipping an undecryptable FCM push" in caplog.text
 
 
-def test_patch_is_idempotent(restore_fcm_decrypt):
-    """Calling the patch twice does not re-wrap _decrypt_raw_data."""
-    FcmPushClient._decrypt_raw_data = staticmethod(
-        lambda credentials, crypto_key_str, salt_str, raw_data: b""
-    )
-    _patch_fcm_decrypt()
-    first = inspect.getattr_static(FcmPushClient, "_decrypt_raw_data")
-    _patch_fcm_decrypt()
-    second = inspect.getattr_static(FcmPushClient, "_decrypt_raw_data")
-    assert first is second
+async def test_start_installs_decrypt_on_its_own_client_only(listener):
+    """Our decrypt goes on our instance; the shared class stays untouched, so
+    another integration's pushes and patches never cross with ours."""
+    class_decrypt = inspect.getattr_static(FcmPushClient, "_decrypt_raw_data")
+    new_client = MagicMock()
+    new_client.start = AsyncMock()
+
+    with patch(
+        "custom_components.fermax_blue.notification.FcmPushClient",
+        return_value=new_client,
+    ):
+        await listener.start()
+
+    assert new_client._decrypt_raw_data is _decrypt_push
+    assert inspect.getattr_static(FcmPushClient, "_decrypt_raw_data") is class_decrypt
