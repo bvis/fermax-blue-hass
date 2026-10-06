@@ -502,6 +502,35 @@ def test_patch_pads_crypto_key_and_salt_before_delegating(restore_fcm_decrypt):
     assert len(received["salt"]) % 4 == 0
 
 
+@pytest.mark.parametrize(
+    "crypto_key_str",
+    [
+        # Upstream slices "dh=" off with [3:] and keeps the VAPID parameter.
+        "A" * 87 + "; p256ecdsa=" + "B" * 87,
+        # Same, with the other parameter first ("p25" sliced off instead).
+        "6ecdsa=" + "B" * 87 + ";dh=" + "A" * 87,
+    ],
+)
+def test_patch_keeps_only_dh_from_a_vapid_signed_crypto_key(restore_fcm_decrypt, crypto_key_str):
+    """A VAPID-signed push carries ``crypto-key: dh=<key>; p256ecdsa=<key>``; the
+    whole value decodes to a non-P-256 point (Invalid EC key, #117)."""
+    received: dict[str, str] = {}
+
+    def _spy(credentials, crypto_key_str, salt_str, raw_data):
+        received["crypto_key"] = crypto_key_str
+        received["salt"] = salt_str
+        return b"decrypted"
+
+    FcmPushClient._decrypt_raw_data = staticmethod(_spy)
+    _patch_fcm_decrypt()
+
+    result = FcmPushClient._decrypt_raw_data({}, crypto_key_str, "C" * 22 + "==", b"raw")
+
+    assert result == b"decrypted"
+    assert received["crypto_key"] == "A" * 87 + "="
+    assert received["salt"] == "C" * 22 + "=="
+
+
 def test_patch_returns_empty_bytes_on_decrypt_failure(restore_fcm_decrypt):
     """A decrypt failure (e.g. malformed dh -> Invalid EC key) is swallowed and
     returns b"" so the upstream listener acks/skips the poisoned message instead
