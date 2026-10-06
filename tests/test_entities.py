@@ -1086,6 +1086,14 @@ class TestEventEntities:
             entity._handle_event()
             entity._trigger_event.assert_called_once_with(event_type)
 
+    def test_ring_carries_the_calling_door(self, mock_coordinator):
+        # Raw AccessDoorKey, UNSUPPORTED included: tells apart panels on one monitor (#115)
+        from custom_components.fermax_blue.event import FermaxDoorbellEvent
+
+        entity = self._make(FermaxDoorbellEvent, mock_coordinator)
+        entity._handle_event("UNSUPPORTED")
+        entity._trigger_event.assert_called_once_with("ring", {"door": "UNSUPPORTED"})
+
     @pytest.mark.asyncio
     async def test_doorbell_listens_to_the_device_whatever_its_doors(self, mock_coordinator):
         # Panel doors (#97) are named after the panel, not after the push's AccessDoorKey
@@ -1441,7 +1449,7 @@ class TestCameraBehavior:
         camera = self._make(mock_coordinator)
         camera.async_write_ha_state = MagicMock()
 
-        camera._on_doorbell_ring()
+        camera._on_doorbell_ring("GENERAL")
 
         camera.async_write_ha_state.assert_called_once()
 

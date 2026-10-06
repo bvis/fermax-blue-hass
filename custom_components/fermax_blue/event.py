@@ -70,8 +70,11 @@ class FermaxDoorbellEvent(FermaxBlueEventEntity):
         )
 
     @callback
-    def _handle_event(self) -> None:
-        self._trigger_event("ring")
+    def _handle_event(self, door: str | None = None) -> None:
+        if door:
+            self._trigger_event("ring", {"door": door})
+        else:
+            self._trigger_event("ring")
         self.async_write_ha_state()
 
 

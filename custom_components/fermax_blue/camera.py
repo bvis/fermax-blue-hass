@@ -71,7 +71,7 @@ class FermaxCamera(FermaxBlueEntity, Camera):
             self.async_write_ha_state()
 
     @callback
-    def _on_doorbell_ring(self) -> None:
+    def _on_doorbell_ring(self, _door: str | None) -> None:
         """Handle doorbell ring - trigger image refresh."""
         self.async_write_ha_state()
 

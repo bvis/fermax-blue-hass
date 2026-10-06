@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- **The doorbell event says which panel rang** (#115) — every ring now carries a `door` attribute with the door key from the call push, unchanged (`GENERAL`, `ZERO`, `UNSUPPORTED`...). Installations with several panels on one monitor can run a different automation per panel. Rings without a key fire as before, without the attribute.
+
 ## [0.20.7] - 2026-10-06
 
 ### Changed

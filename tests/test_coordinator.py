@@ -942,7 +942,9 @@ class TestHandleNotification:
 
         assert full_coordinator.doorbell_ringing is True
         assert full_coordinator._photo_fetch_pending is True
-        dispatch.assert_called_once_with(full_coordinator.hass, SIGNAL_DOORBELL_RING.format("dev1"))
+        dispatch.assert_called_once_with(
+            full_coordinator.hass, SIGNAL_DOORBELL_RING.format("dev1"), "ZERO"
+        )
         # ACK falls back to the persistent id and flags the message as a call
         mock_api.ack_notification.assert_called_once_with("ring1", is_call=True)
 
