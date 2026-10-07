@@ -1,14 +1,12 @@
 # Changelog
 
-## [0.21.0-beta.2] - 2026-10-07
-
-### Fixed
-- **The integration loads on Home Assistant 2026.10** — 2026.10 ships `av 19`, and the latest `aiortc` (1.15.0) only accepts up to `av 17`. With `aiortc`/`pymediasoup` in the manifest their requirements could not be resolved and the whole integration failed to set up. They are now installed when the integration starts: if that fails, a warning says live video is unavailable and everything else (rings, doors, photos, F1, DND, call log) keeps working. Up to 2026.9 nothing changes. Live video returns after a restart, without updating the integration, once an `aiortc` release accepts `av 19`.
-
-## [0.21.0-beta.1] - 2026-10-07
+## [0.21.0] - 2026-10-07
 
 ### Added
 - **The doorbell event says which panel rang** (#115) — every ring now carries a `door` attribute with the door key from the call push, unchanged (`GENERAL`, `ZERO`, `UNSUPPORTED`...). Installations with several panels on one monitor can run a different automation per panel. Rings without a key fire as before, without the attribute.
+
+### Fixed
+- **The integration loads on Home Assistant 2026.10** (#125) — 2026.10 ships `av 19`, and the latest `aiortc` (1.15.0) only accepts up to `av 17`. With `aiortc`/`pymediasoup` in the manifest their requirements could not be resolved and the whole integration failed to set up. They are now installed when the integration starts: if that fails, a warning says live video is unavailable and everything else (rings, doors, photos, F1, DND, call log) keeps working. Up to 2026.9 nothing changes. Live video returns after a restart, without updating the integration, once an `aiortc` release accepts `av 19`.
 
 ## [0.20.7] - 2026-10-06
 
