@@ -35,11 +35,10 @@ _LOGGER = logging.getLogger(__name__)
 def streaming_deps_available() -> bool:
     """Return True when the live-video deps (pymediasoup/aiortc) are installed.
 
-    They are back in the manifest requirements since aiortc 1.15.0 supports
-    av>=17, but installs that upgraded while the deps were optional may still
-    lack them until HA reinstalls requirements. Callers must skip stream work —
-    including the auto-on request that wakes the physical intercom — when this
-    returns False.
+    Setup installs them (STREAMING_REQUIREMENTS) and carries on without them
+    when no aiortc release accepts the av that HA pins, as on HA 2026.10 with
+    av 19. Callers must skip stream work — including the auto-on request that
+    wakes the physical intercom — when this returns False.
     """
     return find_spec("pymediasoup") is not None
 

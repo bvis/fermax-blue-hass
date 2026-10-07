@@ -423,9 +423,9 @@ Press the "Camera preview" button to trigger the first stream. After that, the l
 Sound comes with the WebRTC stream, so the card has to play the stream rather than the still image: `camera_view: live` on a picture-entity card, or the more-info dialog. Home Assistant's own cards do not capture the microphone yet; use a card that does (see [Live view and talk-back](#live-view-and-talk-back)) and open Home Assistant over **HTTPS** — browsers and the companion apps refuse microphone access on plain `http://`. Check the browser's site permissions if the microphone button stays muted.
 
 ### Live video not working after upgrading
-Live video is powered by `pymediasoup`/`aiortc`. On v0.16.8 these were temporarily **optional** because no `aiortc` release was compatible with the `av>=17` shipped by Home Assistant 2026.7 — live streaming was disabled on those systems. Since `aiortc` 1.15.0 (compatible with `av 17`) they are regular requirements again and live video works on all supported HA versions.
+Live video is powered by `pymediasoup`/`aiortc`, which the integration installs when it starts. `aiortc` has to accept the `av` version that Home Assistant ships, and from time to time Home Assistant moves ahead first: Home Assistant 2026.10 ships `av 19`, while `aiortc` 1.15.0 accepts up to `av 17`. On those versions the log shows a WARNING saying live video is unavailable.
 
-If live video is unavailable and the logs show a WARNING about missing streaming dependencies, restart Home Assistant so it installs the integration requirements. Everything else — doorbell detection, door opening, visitor photos, F1, DND, photo caller, call log — works normally even without them.
+Everything else (doorbell detection, door opening, visitor photos, F1, DND, photo caller, call log) keeps working. Live video comes back without updating the integration once a compatible `aiortc` release is out: restart Home Assistant and it gets installed.
 
 ### Diagnostics
 For troubleshooting, you can download diagnostics from **Settings** > **Devices & Services** > **Fermax Blue** > **3 dots menu** > **Download diagnostics**. Credentials are automatically redacted.

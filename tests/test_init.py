@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 import time
@@ -16,6 +17,7 @@ from homeassistant.exceptions import (
     HomeAssistantError,
     ServiceValidationError,
 )
+from homeassistant.requirements import RequirementsNotFound
 
 from custom_components.fermax_blue import (
     _async_options_updated,
@@ -40,6 +42,7 @@ from custom_components.fermax_blue.const import (
     FCM_WATCHDOG_INTERVAL,
     PLATFORMS,
     RECORDINGS_DIR,
+    STREAMING_REQUIREMENTS,
     WEBRTC_TOKENS,
 )
 
@@ -113,6 +116,7 @@ async def _run_setup(mock_hass, entry, api, coordinators):
         patch(f"{MODULE}.FermaxBlueApi", return_value=api) as api_cls,
         patch(f"{MODULE}.FermaxBlueCoordinator", side_effect=list(coordinators)) as coord_cls,
         patch(f"{MODULE}.async_track_time_interval", return_value=MagicMock()) as track,
+        patch(f"{MODULE}.async_process_requirements", AsyncMock()),
     ):
         result = await async_setup_entry(mock_hass, entry)
     return result, api_cls, coord_cls, track
@@ -171,6 +175,50 @@ class TestMigration:
     async def test_current_version_is_untouched(self, mock_hass, entry):
         assert await async_migrate_entry(mock_hass, entry) is True
         mock_hass.config_entries.async_update_entry.assert_not_called()
+
+
+class TestStreamingRequirements:
+    """Live-video deps are installed at setup, never required by the manifest."""
+
+    async def test_deps_installed_as_custom_requirements(self, mock_hass, entry, mock_api):
+        with (
+            patch(f"{MODULE}.async_process_requirements", AsyncMock()) as install,
+            patch(f"{MODULE}.streaming_deps_available") as available,
+        ):
+            await _run_setup_with_install(mock_hass, entry, mock_api)
+
+        install.assert_awaited_once_with(
+            mock_hass, DOMAIN, list(STREAMING_REQUIREMENTS), is_built_in=False
+        )
+        available.cache_clear.assert_called_once()
+
+    async def test_unresolvable_deps_do_not_block_setup(self, mock_hass, entry, mock_api, caplog):
+        failure = RequirementsNotFound(DOMAIN, list(STREAMING_REQUIREMENTS))
+        with patch(f"{MODULE}.async_process_requirements", AsyncMock(side_effect=failure)):
+            result = await _run_setup_with_install(mock_hass, entry, mock_api)
+
+        assert result is True
+        assert "Live video is unavailable" in caplog.text
+
+    def test_manifest_does_not_require_them(self):
+        manifest = json.loads(
+            (
+                Path(__file__).parent.parent / "custom_components/fermax_blue/manifest.json"
+            ).read_text()
+        )
+        names = {req.split(">")[0].split("=")[0] for req in manifest["requirements"]}
+        assert not names & {"aiortc", "pymediasoup"}
+
+
+async def _run_setup_with_install(mock_hass, entry, api):
+    """Run async_setup_entry leaving async_process_requirements to the caller's patch."""
+    with (
+        patch(f"{MODULE}.create_async_httpx_client", return_value=MagicMock()),
+        patch(f"{MODULE}.FermaxBlueApi", return_value=api),
+        patch(f"{MODULE}.FermaxBlueCoordinator", side_effect=[_make_coordinator()]),
+        patch(f"{MODULE}.async_track_time_interval", return_value=MagicMock()),
+    ):
+        return await async_setup_entry(mock_hass, entry)
 
 
 class TestSetupEntry:
