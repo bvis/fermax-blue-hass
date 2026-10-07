@@ -49,6 +49,9 @@ DEFAULT_CONVERSATION_TIMEOUT = 90
 
 # WebRTC bridge for go2rtc: signaling endpoint served by HA, gated by a token
 WEBRTC_PATH = "/api/fermax_blue/webrtc/{token}"
+# Live-video deps, installed at setup instead of via the manifest: when no aiortc
+# release accepts the av that HA pins, the rest of the integration still loads.
+STREAMING_REQUIREMENTS = ("pymediasoup>=1.5.0", "aiortc>=1.15.0")
 WEBRTC_TOKENS = "webrtc_tokens"  # hass.data[DOMAIN] key: token -> coordinator
 # How long a viewer waits for the intercom to answer an auto-on request
 # (a cold panel has been seen taking ~27 s to start streaming)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import importlib
 import logging
 import tempfile
 from datetime import datetime, timedelta
@@ -20,6 +21,7 @@ from homeassistant.exceptions import (
 )
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.httpx_client import create_async_httpx_client
+from homeassistant.requirements import RequirementsNotFound, async_process_requirements
 
 from .api import FermaxBlueApi
 from .const import (
@@ -39,9 +41,11 @@ from .const import (
     FCM_WATCHDOG_INTERVAL,
     PLATFORMS,
     RECORDINGS_DIR,
+    STREAMING_REQUIREMENTS,
     WEBRTC_TOKENS,
 )
 from .coordinator import FermaxBlueCoordinator
+from .streaming import streaming_deps_available
 from .webrtc_bridge import FermaxWebRtcView
 
 _LOGGER = logging.getLogger(__name__)
@@ -90,6 +94,23 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
     return True
 
 
+async def _async_install_streaming_deps(hass: HomeAssistant) -> None:
+    """Install the live-video deps, or carry on without them."""
+    try:
+        await async_process_requirements(
+            hass, DOMAIN, list(STREAMING_REQUIREMENTS), is_built_in=False
+        )
+    except RequirementsNotFound:
+        _LOGGER.warning(
+            "Live video is unavailable: %s cannot be installed alongside the av version "
+            "this Home Assistant ships. Everything else works; live video comes back once "
+            "a compatible aiortc release is out and Home Assistant restarts",
+            ", ".join(STREAMING_REQUIREMENTS),
+        )
+    importlib.invalidate_caches()
+    streaming_deps_available.cache_clear()
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: FermaxBlueConfigEntry) -> bool:
     """Set up Fermax Blue from a config entry."""
     client = create_async_httpx_client(hass)
@@ -108,6 +129,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: FermaxBlueConfigEntry) -
     except Exception as err:
         await api.close()
         raise ConfigEntryNotReady(f"Failed to connect to Fermax API: {err}") from err
+
+    await _async_install_streaming_deps(hass)
 
     scan_interval = entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
     auto_response_file = entry.options.get("auto_response_file", "")
