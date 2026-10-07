@@ -7,6 +7,9 @@
 [![License: MIT](https://img.shields.io/github/license/bvis/fermax-blue-hass.svg)](LICENSE)
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 
+> [!WARNING]
+> **Home Assistant 2026.10: no live video for now.** Home Assistant 2026.10 ships `av 19`, and the WebRTC library this integration uses (`aiortc`) doesn't accept it yet ([aiortc#1447](https://github.com/aiortc/aiortc/pull/1447)). From 0.21.0 the integration still loads on 2026.10, and rings, door opening, photos and everything else work, but live video and talk-back stay off. Once `aiortc` publishes a compatible release, restart Home Assistant and live video comes back without updating the integration. If you rely on live video, stay on Home Assistant 2026.9 until then.
+
 Home Assistant custom integration for **Fermax Blue** video door entry systems (DUOX PLUS / blueStream).
 
 This integration simulates a Fermax Blue mobile app client, connecting to the Fermax cloud API and receiving real-time push notifications via Firebase Cloud Messaging when someone rings your doorbell.
