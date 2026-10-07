@@ -1,0 +1,67 @@
+name: Newest HA core
+
+# The Tests workflow runs against the newest *stable* core. This one installs the
+# newest release on PyPI, beta included, under that core's own
+# package_constraints.txt, exactly as Home Assistant would install us. A beta
+# lands about a week before each stable and can move pins under us (2026.10 took
+# av to 19, which aiortc 1.15.0 refuses), so the daily run turns that into a red
+# build or a warning while there is still time to react.
+#
+# - Red: the manifest requirements don't resolve (the integration would not load)
+#   or the tests fail.
+# - Warning: the live-video deps (STREAMING_REQUIREMENTS) don't resolve. The
+#   integration then loads without live video, so their tests are skipped. When
+#   the warning goes away, so can the README notice about it.
+#
+# Not a required check: a broken beta must not block merges.
+
+on:
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "17 7 * * *"
+  workflow_dispatch:
+    inputs:
+      ha_version:
+        description: "Core version to test (default: newest on PyPI, beta included)"
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Run tests against the newest core
+        env:
+          HA_VERSION: ${{ inputs.ha_version }}
+        run: |
+          docker run --rm -e HA_VERSION -v "$(pwd)":/app -w /app python:3.14-slim bash -c '
+            set -euo pipefail
+            apt-get update -qq && apt-get install -y -qq --no-install-recommends gcc libc-dev >/dev/null
+            pip install --quiet --no-cache-dir --root-user-action=ignore packaging
+            if [ -z "$HA_VERSION" ]; then
+              HA_VERSION=$(python3 -c "
+          import json, urllib.request
+          from packaging.version import Version
+          data = json.load(urllib.request.urlopen(\"https://pypi.org/pypi/homeassistant/json\"))
+          print(max((v for v, files in data[\"releases\"].items() if files and not all(f[\"yanked\"] for f in files)), key=Version))
+          ")
+            fi
+            echo "Testing against homeassistant==$HA_VERSION"
+            python3 -c "import urllib.request; urllib.request.urlretrieve(\"https://raw.githubusercontent.com/home-assistant/core/$HA_VERSION/homeassistant/package_constraints.txt\", \"/tmp/constraints.txt\")"
+            pip install --quiet --no-cache-dir --root-user-action=ignore -c /tmp/constraints.txt \
+              "homeassistant==$HA_VERSION" av \
+              $(python3 -c "import json; print(\" \".join(json.load(open(\"custom_components/fermax_blue/manifest.json\"))[\"requirements\"]))") \
+              pytest pytest-asyncio pytest-cov numpy PyTurboJPEG
+            STREAMING=$(python3 -c "import ast, re; s = open(\"custom_components/fermax_blue/const.py\").read(); print(\" \".join(ast.literal_eval(re.search(r\"STREAMING_REQUIREMENTS = (\(.*?\))\", s).group(1))))")
+            SKIP=()
+            if ! pip install --quiet --no-cache-dir --root-user-action=ignore -c /tmp/constraints.txt $STREAMING; then
+              echo "::warning::$STREAMING do not resolve on homeassistant==$HA_VERSION: live video will be off there"
+              SKIP=(--ignore=tests/test_streaming.py --ignore=tests/test_webrtc_bridge.py)
+            fi
+            pip list 2>/dev/null | grep -iE "^(homeassistant|av|aiortc|pymediasoup) "
+            pytest -q -p no:cacheprovider --no-cov "${SKIP[@]}"
+          '
