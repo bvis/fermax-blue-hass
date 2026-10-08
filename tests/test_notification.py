@@ -609,3 +609,32 @@ async def test_stop_waits_for_the_client_tasks(listener):
     await listener.stop()
 
     assert task.done()
+
+
+async def test_start_keeps_a_running_client(listener):
+    """Turning the switch on while it is on must not open a second connection."""
+    running = MagicMock(stop=AsyncMock())
+    running.is_started = MagicMock(return_value=True)
+    listener._push_client = running
+
+    with patch("custom_components.fermax_blue.notification.FcmPushClient") as fcm_cls:
+        await listener.start()
+
+    fcm_cls.assert_not_called()
+    running.stop.assert_not_called()
+    assert listener._push_client is running
+
+
+async def test_start_closes_a_dead_client_first(listener):
+    dead = MagicMock(stop=AsyncMock(), writer=None, tasks=[])
+    dead.is_started = MagicMock(return_value=False)
+    listener._push_client = dead
+    new_client = MagicMock(start=AsyncMock())
+
+    with patch(
+        "custom_components.fermax_blue.notification.FcmPushClient", return_value=new_client
+    ):
+        await listener.start()
+
+    dead.stop.assert_awaited_once()
+    assert listener._push_client is new_client

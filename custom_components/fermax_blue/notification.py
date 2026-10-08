@@ -266,6 +266,9 @@ class FermaxNotificationListener:
         """Start listening for push notifications."""
         async with self._lifecycle_lock:
             self._stopped = False
+            if self.is_started:
+                return
+            await self._close_client()
             await self._start_locked()
 
     async def _start_locked(self) -> None:
@@ -303,17 +306,23 @@ class FermaxNotificationListener:
         async with self._lifecycle_lock:
             self._stopped = True
             if self._push_client:
-                # The client cancels its tasks without waiting, and the reader's
-                # cleanup then waits for a TLS close the server can take tens of
-                # seconds to send: drop the connection first and wait for them.
-                if self._push_client.writer:
-                    self._push_client.writer.transport.abort()
-                tasks = list(self._push_client.tasks)
-                await self._push_client.stop()
-                if tasks:
-                    await asyncio.wait(tasks, timeout=FCM_STOP_TIMEOUT)
-                self._push_client = None
+                await self._close_client()
                 _LOGGER.info("FCM notification listener stopped")
+
+    async def _close_client(self) -> None:
+        """Stop the current client, if any, and wait for its tasks to end."""
+        client, self._push_client = self._push_client, None
+        if client is None:
+            return
+        # The client cancels its tasks without waiting, and the reader's cleanup
+        # then waits for a TLS close the server can take tens of seconds to
+        # send: drop the connection first and wait for them.
+        if client.writer:
+            client.writer.transport.abort()
+        tasks = list(client.tasks)
+        await client.stop()
+        if tasks:
+            await asyncio.wait(tasks, timeout=FCM_STOP_TIMEOUT)
 
     @property
     def is_started(self) -> bool:
@@ -370,10 +379,8 @@ class FermaxNotificationListener:
             self._restart_backoff = min(self._restart_backoff * 2, FCM_RESTART_BACKOFF_MAX)
 
             _LOGGER.warning("FCM listener restart backoff elapsed; restarting it")
-            if self._push_client is not None:
-                with contextlib.suppress(ConnectionError, OSError, RuntimeError):
-                    await self._push_client.stop()
-                self._push_client = None
+            with contextlib.suppress(ConnectionError, OSError, RuntimeError):
+                await self._close_client()
 
             try:
                 await self._start_locked()
