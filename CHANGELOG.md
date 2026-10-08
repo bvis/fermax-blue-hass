@@ -1,16 +1,12 @@
 # Changelog
 
-## [0.21.2-beta.2] - 2026-10-08
-
-### Fixed
-- **The Notifications switch shows `on` as soon as it is turned on** (#134) — it wrote its state while the push connection was still being set up and stayed `off` until the next poll. It also follows a connection that drops or comes back on its own without waiting for a poll.
-
-## [0.21.2-beta.1] - 2026-10-08
+## [0.21.2] - 2026-10-08
 
 ### Fixed
 - **Turning the Notifications switch off sticks** (#132) — the listener watchdog took it for a crash and turned notifications back on about five minutes later.
 - **Turning the Notifications switch on while it is on no longer opens a second push connection** (#132) — the previous one stayed connected in the background.
 - **The push connection closes cleanly when Home Assistant stops** (#132) — it no longer outlives the shutdown with `Task could not be canceled ... FcmPushClient._listen()`, and the shutdown no longer logs `FCM listener is not running; restart scheduled`.
+- **The Notifications switch shows `on` as soon as it is turned on** (#134) — it wrote its state while the push connection was still being set up and stayed `off` until the next poll. It also follows a connection that drops or comes back on its own without waiting for a poll.
 
 ## [0.21.1] - 2026-10-08
 
