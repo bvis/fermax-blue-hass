@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.21.3-beta.1] - 2026-10-08
+
+### Fixed
+- **Turning the camera on no longer says a restart installs live video when it can't** (#137) — on Home Assistant versions where the streaming libraries don't install (2026.10, see the README), the error told users to restart, which never helped. It now says a restart won't help, that everything else keeps working, and points to the README.
+
 ## [0.21.2] - 2026-10-08
 
 ### Fixed
