@@ -113,6 +113,8 @@ def coordinator(mock_hass, mock_api, pairing):
         coord._last_photo_id = None
         coord._doorbell_ringing = False
         coord._camera_active = False
+        coord.data = {}
+        coord.async_set_updated_data = MagicMock()
         coord._wake_lock = asyncio.Lock()
         coord._last_divert_response = None
         coord._photo_fetch_pending = False
@@ -640,6 +642,8 @@ def full_coordinator(mock_hass, mock_api, pairing):
     ):
         coord = FermaxBlueCoordinator(mock_hass, mock_api, pairing)
     coord.hass = mock_hass  # normally set by the patched-out base __init__
+    coord.data = {}
+    coord.async_set_updated_data = MagicMock()
     return coord
 
 
@@ -1317,6 +1321,12 @@ class TestStreamLifecycle:
 
         assert session_cls.call_args.kwargs["oauth_token"] == "ftok"
         mock_api.get_access_token.assert_not_called()
+
+    async def test_start_publishes_streaming_state(self, full_coordinator):
+        """Entities must see the live session at once, not on the next poll (#115)."""
+        await self._start(full_coordinator, fermax_token="ftok")
+
+        full_coordinator.async_set_updated_data.assert_called_once_with({})
 
     async def test_start_failure_clears_session(self, full_coordinator):
         _, _, dispatch, call_later = await self._start(full_coordinator, start_ok=False)
