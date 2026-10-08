@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import logging
 from typing import Any
 
@@ -17,6 +19,10 @@ from .coordinator import FermaxBlueCoordinator
 from .entity import FermaxBlueEntity
 
 _LOGGER = logging.getLogger(__name__)
+
+# How long turning notifications on waits for the push connection before
+# writing its state; a slower connection is picked up by the watchdog tick.
+NOTIFICATION_START_TIMEOUT = 15
 
 
 async def async_setup_entry(
@@ -59,6 +65,9 @@ class FermaxNotificationSwitch(FermaxBlueEntity, SwitchEntity):
         """Enable notifications."""
         if self.coordinator.notification_listener:
             await self.coordinator.notification_listener.start()
+            with contextlib.suppress(TimeoutError):
+                async with asyncio.timeout(NOTIFICATION_START_TIMEOUT):
+                    await self.coordinator.notification_listener.wait_started()
             self._is_on = True
             self.async_write_ha_state()
 

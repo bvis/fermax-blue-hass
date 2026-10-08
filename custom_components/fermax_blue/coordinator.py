@@ -391,7 +391,11 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
     async def ensure_notifications_running(self) -> None:
         """Watchdog hook: revive the FCM listener if it died."""
         if self.notification_listener:
+            was_started = self.notification_listener.is_started
             await self.notification_listener.ensure_running()
+            if self.notification_listener.is_started != was_started:
+                # The notifications switch shows the connection: refresh it
+                self.async_update_listeners()
 
     @callback
     def _handle_notification(self, notification: dict, persistent_id: str) -> None:
