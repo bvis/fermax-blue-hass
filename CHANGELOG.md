@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.21.2-beta.1] - 2026-10-08
+
+### Fixed
+- **Turning the Notifications switch off sticks** (#132) — the listener watchdog took it for a crash and turned notifications back on about five minutes later.
+- **Turning the Notifications switch on while it is on no longer opens a second push connection** (#132) — the previous one stayed connected in the background.
+- **The push connection closes cleanly when Home Assistant stops** (#132) — it no longer outlives the shutdown with `Task could not be canceled ... FcmPushClient._listen()`, and the shutdown no longer logs `FCM listener is not running; restart scheduled`.
+
 ## [0.21.1] - 2026-10-08
 
 ### Fixed
