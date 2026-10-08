@@ -175,7 +175,7 @@
       "message": "De intercom heeft de portier niet gebeld."
     },
     "streaming_unavailable": {
-      "message": "Live video vereist de optionele streamingafhankelijkheden. Herstart Home Assistant zodat die worden geïnstalleerd."
+      "message": "Live video staat uit: de streamingbibliotheken kunnen op deze Home Assistant-versie nog niet worden geïnstalleerd, dus herstarten helpt niet. Al het andere blijft werken; de README van de integratie legt uit wanneer live video terugkomt."
     },
     "send_audio_no_input": {
       "message": "Geef een audiobestand of een bericht op."

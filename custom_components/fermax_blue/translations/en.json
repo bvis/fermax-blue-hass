@@ -175,7 +175,7 @@
       "message": "The intercom did not place the call to the guard."
     },
     "streaming_unavailable": {
-      "message": "Live video needs the optional streaming dependencies. Restart Home Assistant so it installs them."
+      "message": "Live video is off: its streaming libraries can't be installed on this Home Assistant version yet, so restarting won't help. Everything else keeps working; the integration's README explains when live video comes back."
     },
     "send_audio_no_input": {
       "message": "Provide either an audio file or a message to speak."

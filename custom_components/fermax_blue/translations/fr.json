@@ -175,7 +175,7 @@
       "message": "L'interphone n'a pas appelé le gardien."
     },
     "streaming_unavailable": {
-      "message": "La vidéo en direct nécessite les dépendances de streaming optionnelles. Redémarrez Home Assistant pour qu'il les installe."
+      "message": "La vidéo en direct est désactivée : ses bibliothèques de streaming ne peuvent pas encore être installées sur cette version de Home Assistant, un redémarrage n'y changera rien. Tout le reste fonctionne ; le README de l'intégration explique quand la vidéo en direct reviendra."
     },
     "send_audio_no_input": {
       "message": "Indiquez un fichier audio ou un message à énoncer."

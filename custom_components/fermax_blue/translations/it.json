@@ -175,7 +175,7 @@
       "message": "Il videocitofono non ha chiamato il portiere."
     },
     "streaming_unavailable": {
-      "message": "Il video in diretta richiede le dipendenze di streaming opzionali. Riavvia Home Assistant per installarle."
+      "message": "Il video in diretta è disattivato: le sue librerie di streaming non si possono ancora installare su questa versione di Home Assistant, quindi riavviare non serve. Tutto il resto funziona; il README dell'integrazione spiega quando tornerà il video in diretta."
     },
     "send_audio_no_input": {
       "message": "Indica un file audio o un messaggio da riprodurre."

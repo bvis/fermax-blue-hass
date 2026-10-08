@@ -175,7 +175,7 @@
       "message": "O videoporteiro não efetuou a chamada ao porteiro."
     },
     "streaming_unavailable": {
-      "message": "O vídeo em direto necessita das dependências opcionais de streaming. Reinicia o Home Assistant para as instalar."
+      "message": "O vídeo em direto está desativado: as suas bibliotecas de streaming ainda não podem ser instaladas nesta versão do Home Assistant, por isso reiniciar não resolve. Tudo o resto continua a funcionar; o README da integração explica quando o vídeo em direto volta."
     },
     "send_audio_no_input": {
       "message": "Indica um ficheiro de áudio ou uma mensagem para reproduzir."
