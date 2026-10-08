@@ -733,6 +733,7 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         if success:
             self._camera_active = True
             _LOGGER.info("Video stream started for room %s", room_id)
+            self.async_set_updated_data(self.data)
             async_dispatcher_send(self.hass, SIGNAL_CAMERA_ON.format(self.pairing.device_id))
 
             # Schedule auto-stop after configured duration. Receive-only
