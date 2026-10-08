@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.21.1-beta.1] - 2026-10-08
+## [0.21.1] - 2026-10-08
 
 ### Fixed
 - **The camera reports `streaming` as soon as a call or preview starts** (#115) — it only changed on the next poll, so the camera usually stayed `idle` for the whole session and automations waiting for `streaming` timed out.
