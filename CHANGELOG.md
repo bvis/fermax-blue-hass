@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.21.2-beta.2] - 2026-10-08
+
+### Fixed
+- **The Notifications switch shows `on` as soon as it is turned on** (#134) — it wrote its state while the push connection was still being set up and stayed `off` until the next poll. It also follows a connection that drops or comes back on its own without waiting for a poll.
+
 ## [0.21.2-beta.1] - 2026-10-08
 
 ### Fixed
