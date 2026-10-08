@@ -1,5 +1,6 @@
 """Tests for entity platforms."""
 
+import asyncio
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -1174,14 +1175,43 @@ class TestNotificationSwitch:
         assert self._make(mock_coordinator).is_on is True
 
     @pytest.mark.asyncio
+    async def test_turn_on_writes_state_once_connected(self, mock_coordinator):
+        """The switch must not read the listener while it is still connecting."""
+        calls = []
+        listener = mock_coordinator.notification_listener
+        listener.start = AsyncMock(side_effect=lambda: calls.append("start"))
+        listener.wait_started = AsyncMock(side_effect=lambda: calls.append("connected"))
+        switch = self._make(mock_coordinator)
+        switch.async_write_ha_state.side_effect = lambda: calls.append("write")
+
+        await switch.async_turn_on()
+
+        assert calls == ["start", "connected", "write"]
+
+    @pytest.mark.asyncio
     async def test_turn_on_starts_the_listener(self, mock_coordinator):
         mock_coordinator.notification_listener.start = AsyncMock()
+        mock_coordinator.notification_listener.wait_started = AsyncMock()
         switch = self._make(mock_coordinator)
 
         await switch.async_turn_on()
 
         mock_coordinator.notification_listener.start.assert_awaited_once()
         assert switch._is_on is True
+
+    @pytest.mark.asyncio
+    async def test_turn_on_gives_up_waiting_for_a_slow_connection(self, mock_coordinator):
+        async def never():
+            await asyncio.sleep(3600)
+
+        mock_coordinator.notification_listener.start = AsyncMock()
+        mock_coordinator.notification_listener.wait_started = never
+        switch = self._make(mock_coordinator)
+
+        with patch("custom_components.fermax_blue.switch.NOTIFICATION_START_TIMEOUT", 0.01):
+            await switch.async_turn_on()
+
+        switch.async_write_ha_state.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_turn_off_stops_the_listener(self, mock_coordinator):

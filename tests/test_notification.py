@@ -636,3 +636,14 @@ async def test_start_closes_a_dead_client_first(listener):
 
     dead.stop.assert_awaited_once()
     assert listener._push_client is new_client
+
+
+async def test_wait_started_returns_once_connected(listener):
+    client = MagicMock()
+    client.is_started = MagicMock(side_effect=[False, False, True])
+    listener._push_client = client
+
+    with patch("custom_components.fermax_blue.notification.FCM_START_POLL", 0):
+        await asyncio.wait_for(listener.wait_started(), 5)
+
+    assert client.is_started.call_count == 3

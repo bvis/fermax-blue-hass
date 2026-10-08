@@ -115,6 +115,7 @@ def coordinator(mock_hass, mock_api, pairing):
         coord._camera_active = False
         coord.data = {}
         coord.async_set_updated_data = MagicMock()
+        coord.async_update_listeners = MagicMock()
         coord._wake_lock = asyncio.Lock()
         coord._last_divert_response = None
         coord._photo_fetch_pending = False
@@ -234,6 +235,31 @@ class TestCoordinatorFcmWatchdog:
 
         listener.ensure_running.assert_awaited_once()
         assert coordinator._notification_start_time == 12345.0
+
+    @pytest.mark.asyncio
+    async def test_publishes_a_listener_state_change(self, coordinator):
+        """A listener that drops or reconnects on its own updates the switch."""
+        listener = MagicMock(is_started=True)
+
+        async def drop():
+            listener.is_started = False
+
+        listener.ensure_running = AsyncMock(side_effect=drop)
+        coordinator.notification_listener = listener
+
+        await coordinator.ensure_notifications_running()
+
+        coordinator.async_update_listeners.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_steady_listener_publishes_nothing(self, coordinator):
+        listener = MagicMock(is_started=True)
+        listener.ensure_running = AsyncMock()
+        coordinator.notification_listener = listener
+
+        await coordinator.ensure_notifications_running()
+
+        coordinator.async_update_listeners.assert_not_called()
 
 
 class TestCoordinatorPhotoCaller:

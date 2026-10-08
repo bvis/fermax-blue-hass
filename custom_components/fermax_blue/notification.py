@@ -36,6 +36,7 @@ FCM_ABORT_SEQUENTIAL_ERROR_COUNT = 3
 FCM_RESTART_BACKOFF_INITIAL = 300.0  # seconds until the first restart attempt
 FCM_RESTART_BACKOFF_MAX = 900.0  # ceiling for the doubled delay
 FCM_STOP_TIMEOUT = 5.0  # wait for the client tasks to finish on stop
+FCM_START_POLL = 0.25  # how often wait_started() checks the connection
 FCM_EXC_LOG_LIMIT = 3  # full tracebacks allowed per window
 FCM_EXC_LOG_WINDOW = 300.0  # seconds
 
@@ -328,6 +329,12 @@ class FermaxNotificationListener:
     def is_started(self) -> bool:
         """Return True if the listener is running."""
         return self._push_client is not None and self._push_client.is_started()
+
+    async def wait_started(self) -> None:
+        """Return once the client has connected and logged in."""
+        # The client has no state callback to hang an Event on, so poll it
+        while not self.is_started:  # noqa: ASYNC110
+            await asyncio.sleep(FCM_START_POLL)
 
     async def ensure_running(self) -> bool:
         """Reanimate the FCM listener if it has stopped, with delayed backoff.
