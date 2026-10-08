@@ -175,7 +175,7 @@
       "message": "Die Türsprechanlage hat den Pförtner nicht angerufen."
     },
     "streaming_unavailable": {
-      "message": "Live-Video benötigt die optionalen Streaming-Abhängigkeiten. Starte Home Assistant neu, damit sie installiert werden."
+      "message": "Live-Video ist aus: Die Streaming-Bibliotheken lassen sich auf dieser Home-Assistant-Version noch nicht installieren, ein Neustart hilft also nicht. Alles andere funktioniert weiter; das README der Integration erklärt, wann Live-Video zurückkommt."
     },
     "send_audio_no_input": {
       "message": "Gib eine Audiodatei oder eine Nachricht an."

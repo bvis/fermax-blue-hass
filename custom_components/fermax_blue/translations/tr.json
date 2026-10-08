@@ -175,7 +175,7 @@
       "message": "İnterkom kapıcıyı aramadı."
     },
     "streaming_unavailable": {
-      "message": "Canlı video, isteğe bağlı yayın bağımlılıklarını gerektirir. Kurulmaları için Home Assistant'ı yeniden başlat."
+      "message": "Canlı video kapalı: yayın kitaplıkları bu Home Assistant sürümüne henüz kurulamıyor, bu yüzden yeniden başlatmak işe yaramaz. Diğer her şey çalışmaya devam ediyor; canlı videonun ne zaman geri geleceği entegrasyonun README dosyasında açıklanıyor."
     },
     "send_audio_no_input": {
       "message": "Bir ses dosyası veya seslendirilecek bir mesaj belirt."

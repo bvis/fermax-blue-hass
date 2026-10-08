@@ -175,7 +175,7 @@
       "message": "El videoportero no realizó la llamada al portero."
     },
     "streaming_unavailable": {
-      "message": "El vídeo en directo necesita las dependencias opcionales de streaming. Reinicia Home Assistant para que las instale."
+      "message": "El vídeo en directo está desactivado: sus librerías de streaming aún no se pueden instalar en esta versión de Home Assistant, así que reiniciar no lo arregla. Todo lo demás sigue funcionando; el README de la integración explica cuándo vuelve el vídeo en directo."
     },
     "send_audio_no_input": {
       "message": "Indica un archivo de audio o un mensaje para reproducir."

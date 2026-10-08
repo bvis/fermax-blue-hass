@@ -175,7 +175,7 @@
       "message": "Domofon nie wykonał połączenia z portierem."
     },
     "streaming_unavailable": {
-      "message": "Wideo na żywo wymaga opcjonalnych zależności streamingu. Uruchom ponownie Home Assistant, aby je zainstalować."
+      "message": "Wideo na żywo jest wyłączone: jego biblioteki streamingu nie dają się jeszcze zainstalować w tej wersji Home Assistant, więc ponowne uruchomienie nie pomoże. Wszystko inne działa; README integracji wyjaśnia, kiedy wideo na żywo wróci."
     },
     "send_audio_no_input": {
       "message": "Podaj plik audio albo wiadomość do odczytania."
