@@ -544,3 +544,95 @@ async def test_start_installs_decrypt_on_its_own_client_only(listener):
 
     assert new_client._decrypt_raw_data is _decrypt_push
     assert inspect.getattr_static(FcmPushClient, "_decrypt_raw_data") is class_decrypt
+
+
+async def test_ensure_running_leaves_a_stopped_listener_alone(listener, caplog):
+    """A deliberate stop (switch off, HA shutdown) is not a crash to revive."""
+    listener._push_client = MagicMock(stop=AsyncMock(), writer=None)
+    await listener.stop()
+    listener._restart_at = 0.0
+
+    with (
+        caplog.at_level(logging.INFO),
+        patch("custom_components.fermax_blue.notification.FcmPushClient") as fcm_cls,
+    ):
+        assert await listener.ensure_running() is False
+
+    fcm_cls.assert_not_called()
+    assert "restart scheduled" not in caplog.text
+
+
+async def test_start_after_stop_rearms_the_watchdog(listener):
+    listener._push_client = MagicMock(stop=AsyncMock(), writer=None)
+    await listener.stop()
+
+    client = MagicMock(start=AsyncMock())
+    client.is_started = MagicMock(return_value=False)
+    with patch("custom_components.fermax_blue.notification.FcmPushClient", return_value=client):
+        await listener.start()
+        assert await listener.ensure_running() is False
+
+    assert listener._restart_at is not None
+
+
+async def test_stop_aborts_the_connection_before_stopping_the_client(listener):
+    """The client cancels its reader without waiting, and the reader's cleanup
+    waits for a TLS close the server may take tens of seconds to send."""
+    calls = []
+    writer = MagicMock()
+    writer.transport.abort = lambda: calls.append("abort")
+    client = MagicMock(writer=writer, tasks=[])
+    client.stop = AsyncMock(side_effect=lambda: calls.append("stop"))
+    listener._push_client = client
+
+    await listener.stop()
+
+    assert calls == ["abort", "stop"]
+    assert listener._push_client is None
+
+
+async def test_stop_waits_for_the_client_tasks(listener):
+    async def reader():
+        try:
+            await asyncio.sleep(3600)
+        finally:
+            await asyncio.sleep(0)
+
+    task = asyncio.create_task(reader())
+    await asyncio.sleep(0)
+
+    async def stop():
+        task.cancel()
+
+    listener._push_client = MagicMock(writer=None, tasks=[task], stop=stop)
+
+    await listener.stop()
+
+    assert task.done()
+
+
+async def test_start_keeps_a_running_client(listener):
+    """Turning the switch on while it is on must not open a second connection."""
+    running = MagicMock(stop=AsyncMock())
+    running.is_started = MagicMock(return_value=True)
+    listener._push_client = running
+
+    with patch("custom_components.fermax_blue.notification.FcmPushClient") as fcm_cls:
+        await listener.start()
+
+    fcm_cls.assert_not_called()
+    running.stop.assert_not_called()
+    assert listener._push_client is running
+
+
+async def test_start_closes_a_dead_client_first(listener):
+    dead = MagicMock(stop=AsyncMock(), writer=None, tasks=[])
+    dead.is_started = MagicMock(return_value=False)
+    listener._push_client = dead
+    new_client = MagicMock(start=AsyncMock())
+
+    with patch("custom_components.fermax_blue.notification.FcmPushClient", return_value=new_client):
+        await listener.start()
+
+    dead.stop.assert_awaited_once()
+    assert listener._push_client is new_client

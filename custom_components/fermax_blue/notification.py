@@ -35,6 +35,7 @@ FCM_UPSTREAM_LOGGER = "firebase_messaging.fcmpushclient"
 FCM_ABORT_SEQUENTIAL_ERROR_COUNT = 3
 FCM_RESTART_BACKOFF_INITIAL = 300.0  # seconds until the first restart attempt
 FCM_RESTART_BACKOFF_MAX = 900.0  # ceiling for the doubled delay
+FCM_STOP_TIMEOUT = 5.0  # wait for the client tasks to finish on stop
 FCM_EXC_LOG_LIMIT = 3  # full tracebacks allowed per window
 FCM_EXC_LOG_WINDOW = 300.0  # seconds
 
@@ -196,6 +197,8 @@ class FermaxNotificationListener:
         self._lifecycle_lock = asyncio.Lock()
         self._restart_backoff = FCM_RESTART_BACKOFF_INITIAL
         self._restart_at: float | None = None
+        # Set by stop(): the watchdog must not revive a listener turned off on purpose
+        self._stopped = False
 
     @property
     def fcm_token(self) -> str | None:
@@ -262,6 +265,10 @@ class FermaxNotificationListener:
     async def start(self) -> None:
         """Start listening for push notifications."""
         async with self._lifecycle_lock:
+            self._stopped = False
+            if self.is_started:
+                return
+            await self._close_client()
             await self._start_locked()
 
     async def _start_locked(self) -> None:
@@ -297,10 +304,25 @@ class FermaxNotificationListener:
     async def stop(self) -> None:
         """Stop listening for push notifications."""
         async with self._lifecycle_lock:
+            self._stopped = True
             if self._push_client:
-                await self._push_client.stop()
-                self._push_client = None
+                await self._close_client()
                 _LOGGER.info("FCM notification listener stopped")
+
+    async def _close_client(self) -> None:
+        """Stop the current client, if any, and wait for its tasks to end."""
+        client, self._push_client = self._push_client, None
+        if client is None:
+            return
+        # The client cancels its tasks without waiting, and the reader's cleanup
+        # then waits for a TLS close the server can take tens of seconds to
+        # send: drop the connection first and wait for them.
+        if client.writer:
+            client.writer.transport.abort()
+        tasks = list(client.tasks)
+        await client.stop()
+        if tasks:
+            await asyncio.wait(tasks, timeout=FCM_STOP_TIMEOUT)
 
     @property
     def is_started(self) -> bool:
@@ -321,6 +343,9 @@ class FermaxNotificationListener:
         Returns True when the listener is running, or when a restart attempt
         was successfully initiated (the client may still be connecting).
         """
+        if self._stopped:
+            return False
+
         if self.is_started:
             self._restart_backoff = FCM_RESTART_BACKOFF_INITIAL
             self._restart_at = None
@@ -354,10 +379,8 @@ class FermaxNotificationListener:
             self._restart_backoff = min(self._restart_backoff * 2, FCM_RESTART_BACKOFF_MAX)
 
             _LOGGER.warning("FCM listener restart backoff elapsed; restarting it")
-            if self._push_client is not None:
-                with contextlib.suppress(ConnectionError, OSError, RuntimeError):
-                    await self._push_client.stop()
-                self._push_client = None
+            with contextlib.suppress(ConnectionError, OSError, RuntimeError):
+                await self._close_client()
 
             try:
                 await self._start_locked()
