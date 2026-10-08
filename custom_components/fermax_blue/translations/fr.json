@@ -41,7 +41,11 @@
         "data": {
           "scan_interval": "Intervalle d'interrogation (minutes)",
           "recording_retention": "Rétention des enregistrements (jours)",
-          "auto_response_file": "Chemin du fichier audio"
+          "auto_response_file": "Chemin du fichier audio",
+          "force_streaming_deps": "Installer les bibliothèques de vidéo en direct sans vérifier av"
+        },
+        "data_description": {
+          "force_streaming_deps": "Uniquement pour les versions de Home Assistant où la vidéo en direct ne peut pas être installée (2026.10 et suivantes, jusqu'à une version compatible d'aiortc). Installe les versions testées d'aiortc et de pymediasoup sans les vérifier par rapport à la version d'av fournie par Home Assistant. Désactivez-le dès que la vidéo en direct s'installe normalement."
         }
       }
     }
@@ -175,7 +179,7 @@
       "message": "L'interphone n'a pas appelé le gardien."
     },
     "streaming_unavailable": {
-      "message": "La vidéo en direct est désactivée : ses bibliothèques de streaming ne peuvent pas encore être installées sur cette version de Home Assistant, un redémarrage n'y changera rien. Tout le reste fonctionne ; le README de l'intégration explique quand la vidéo en direct reviendra."
+      "message": "La vidéo en direct est désactivée : ses bibliothèques de streaming ne peuvent pas encore être installées sur cette version de Home Assistant, un redémarrage n'y changera rien. Tout le reste fonctionne ; pour l'essayer quand même, activez « Installer les bibliothèques de vidéo en direct sans vérifier av » dans les options de l'intégration."
     },
     "send_audio_no_input": {
       "message": "Indiquez un fichier audio ou un message à énoncer."

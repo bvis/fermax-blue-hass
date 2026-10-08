@@ -8,7 +8,11 @@
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 
 > [!WARNING]
-> **Home Assistant 2026.10: no live video for now.** Home Assistant 2026.10 ships `av 19`, and the WebRTC library this integration uses (`aiortc`) doesn't accept it yet ([aiortc#1447](https://github.com/aiortc/aiortc/pull/1447)). From 0.21.0 the integration still loads on 2026.10, and rings, door opening, photos and everything else work, but live video and talk-back stay off. Once `aiortc` publishes a compatible release, restart Home Assistant and live video comes back without updating the integration. If you rely on live video, stay on Home Assistant 2026.9 until then.
+> **Home Assistant 2026.10: live video needs one extra step.** Home Assistant 2026.10 ships `av 19`, and the WebRTC library this integration uses (`aiortc`) doesn't accept it yet ([aiortc#1447](https://github.com/aiortc/aiortc/pull/1447)). Out of the box the integration loads, and rings, door opening, photos and everything else work, but live video and talk-back stay off.
+>
+> To turn live video on (0.22.0 or later): **Settings → Devices & services → Fermax Blue → Configure**, tick **Install live video libraries without the av check** and submit. The integration reloads and installs the tested `aiortc` 1.15.0 and `pymediasoup` 1.5.0 without the `av` version check. It reinstalls them by itself after every Home Assistant update, so there's nothing to repeat. If it fails, the reason is in the log under `custom_components.fermax_blue`.
+>
+> This combination works in practice (live preview, recordings), but `aiortc` doesn't officially support `av 19` yet. Untick the option once a compatible `aiortc` release is out.
 
 Home Assistant custom integration for **Fermax Blue** video door entry systems (DUOX PLUS / blueStream).
 
@@ -85,6 +89,7 @@ After setup, you can configure the integration options:
    - **Polling interval** (1-30 minutes, default: 5)
    - **Recording retention** (1-90 days, default: 10) — auto-deletes older call recordings
    - **Audio file path** — WAV/MP3 file played by the auto-respond call mode (e.g., `/config/media/mi_mensaje.wav`)
+   - **Install live video libraries without the av check** (default: off) — only for Home Assistant versions where live video can't be installed, see the warning at the top
 
 Two more settings live on the device as entities rather than in the options dialog: `select.<name>_call_mode` chooses what a ring does (*notify only*, *record* the call, or *auto-respond*: answer, play the audio file through the intercom speaker and record), and `number.<name>_stream_duration` sets how long a stream session lasts (10-120 s, default 30).
 

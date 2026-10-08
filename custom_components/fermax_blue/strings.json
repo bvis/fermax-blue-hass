@@ -41,7 +41,11 @@
         "data": {
           "scan_interval": "Polling interval (minutes)",
           "recording_retention": "Recording retention (days)",
-          "auto_response_file": "Audio file path for auto-response"
+          "auto_response_file": "Audio file path for auto-response",
+          "force_streaming_deps": "Install live video libraries without the av check"
+        },
+        "data_description": {
+          "force_streaming_deps": "Only for Home Assistant versions where live video can't be installed (2026.10 and later, until a compatible aiortc release is out). Installs the tested aiortc and pymediasoup versions without checking them against the av version Home Assistant ships. Turn it off once live video installs normally."
         }
       }
     }
@@ -175,7 +179,7 @@
       "message": "The intercom did not place the call to the guard."
     },
     "streaming_unavailable": {
-      "message": "Live video is off: its streaming libraries can't be installed on this Home Assistant version yet, so restarting won't help. Everything else keeps working; the integration's README explains when live video comes back."
+      "message": "Live video is off: its streaming libraries can't be installed on this Home Assistant version yet, so restarting won't help. Everything else keeps working; to try it anyway, turn on 'Install live video libraries without the av check' in the integration options."
     },
     "send_audio_no_input": {
       "message": "Provide either an audio file or a message to speak."

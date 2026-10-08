@@ -41,7 +41,11 @@
         "data": {
           "scan_interval": "Sorgulama aralığı (dakika)",
           "recording_retention": "Kayıt saklama süresi (gün)",
-          "auto_response_file": "Ses dosyası yolu"
+          "auto_response_file": "Ses dosyası yolu",
+          "force_streaming_deps": "Canlı video kitaplıklarını av denetimi olmadan kur"
+        },
+        "data_description": {
+          "force_streaming_deps": "Yalnızca canlı videonun kurulamadığı Home Assistant sürümleri için (uyumlu bir aiortc sürümü çıkana kadar 2026.10 ve sonrası). Test edilmiş aiortc ve pymediasoup sürümlerini, Home Assistant'ın getirdiği av sürümüyle denetlemeden kurar. Canlı video normal şekilde kurulduğunda kapatın."
         }
       }
     }
@@ -175,7 +179,7 @@
       "message": "İnterkom kapıcıyı aramadı."
     },
     "streaming_unavailable": {
-      "message": "Canlı video kapalı: yayın kitaplıkları bu Home Assistant sürümüne henüz kurulamıyor, bu yüzden yeniden başlatmak işe yaramaz. Diğer her şey çalışmaya devam ediyor; canlı videonun ne zaman geri geleceği entegrasyonun README dosyasında açıklanıyor."
+      "message": "Canlı video kapalı: yayın kitaplıkları bu Home Assistant sürümüne henüz kurulamıyor, bu yüzden yeniden başlatmak işe yaramaz. Diğer her şey çalışmaya devam ediyor; yine de denemek için entegrasyon seçeneklerinde 'Canlı video kitaplıklarını av denetimi olmadan kur' seçeneğini açın."
     },
     "send_audio_no_input": {
       "message": "Bir ses dosyası veya seslendirilecek bir mesaj belirt."
