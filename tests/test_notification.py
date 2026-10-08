@@ -631,9 +631,7 @@ async def test_start_closes_a_dead_client_first(listener):
     listener._push_client = dead
     new_client = MagicMock(start=AsyncMock())
 
-    with patch(
-        "custom_components.fermax_blue.notification.FcmPushClient", return_value=new_client
-    ):
+    with patch("custom_components.fermax_blue.notification.FcmPushClient", return_value=new_client):
         await listener.start()
 
     dead.stop.assert_awaited_once()
