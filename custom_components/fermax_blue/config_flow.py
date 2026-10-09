@@ -30,6 +30,7 @@ from .const import (
     CONF_FIREBASE_PACKAGE_NAME,
     CONF_FIREBASE_PROJECT_ID,
     CONF_FIREBASE_SENDER_ID,
+    CONF_FORCE_STREAMING_DEPS,
     CONF_RECORDING_RETENTION,
     CONF_SCAN_INTERVAL,
     DEFAULT_RECORDING_RETENTION,
@@ -205,6 +206,10 @@ class FermaxBlueOptionsFlow(OptionsFlow):
                             CONF_AUTO_RESPONSE_FILE, "/config/media/mi_mensaje.wav"
                         ),
                     ): str,
+                    vol.Optional(
+                        CONF_FORCE_STREAMING_DEPS,
+                        default=self.config_entry.options.get(CONF_FORCE_STREAMING_DEPS, False),
+                    ): bool,
                 }
             ),
         )

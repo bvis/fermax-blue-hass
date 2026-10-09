@@ -41,7 +41,11 @@
         "data": {
           "scan_interval": "Polling-interval (minuten)",
           "recording_retention": "Opnames bewaren (dagen)",
-          "auto_response_file": "Pad naar audiobestand"
+          "auto_response_file": "Pad naar audiobestand",
+          "force_streaming_deps": "Live-videobibliotheken installeren zonder av-controle"
+        },
+        "data_description": {
+          "force_streaming_deps": "Alleen voor Home Assistant-versies waarop live video niet kan worden geïnstalleerd (2026.10 en later, tot er een compatibele aiortc-versie is). Installeert de geteste versies van aiortc en pymediasoup zonder ze te controleren tegen de av-versie die Home Assistant meelevert. Zet het uit zodra live video normaal installeert."
         }
       }
     }
@@ -175,7 +179,7 @@
       "message": "De intercom heeft de portier niet gebeld."
     },
     "streaming_unavailable": {
-      "message": "Live video staat uit: de streamingbibliotheken kunnen op deze Home Assistant-versie nog niet worden geïnstalleerd, dus herstarten helpt niet. Al het andere blijft werken; de README van de integratie legt uit wanneer live video terugkomt."
+      "message": "Live video staat uit: de streamingbibliotheken kunnen op deze Home Assistant-versie nog niet worden geïnstalleerd, dus herstarten helpt niet. Al het andere blijft werken; om het toch te proberen, zet 'Live-videobibliotheken installeren zonder av-controle' aan in de opties van de integratie."
     },
     "send_audio_no_input": {
       "message": "Geef een audiobestand of een bericht op."

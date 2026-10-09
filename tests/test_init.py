@@ -35,6 +35,7 @@ from custom_components.fermax_blue.const import (
     CONF_FIREBASE_PACKAGE_NAME,
     CONF_FIREBASE_PROJECT_ID,
     CONF_FIREBASE_SENDER_ID,
+    CONF_FORCE_STREAMING_DEPS,
     CONF_RECORDING_RETENTION,
     CONF_SCAN_INTERVAL,
     DEFAULT_SCAN_INTERVAL,
@@ -42,6 +43,7 @@ from custom_components.fermax_blue.const import (
     FCM_WATCHDOG_INTERVAL,
     PLATFORMS,
     RECORDINGS_DIR,
+    STREAMING_FORCED_PACKAGES,
     STREAMING_REQUIREMENTS,
     WEBRTC_TOKENS,
 )
@@ -200,6 +202,82 @@ class TestStreamingRequirements:
         assert result is True
         assert "Live video is unavailable" in caplog.text
 
+    async def test_unresolvable_deps_point_to_the_option(self, mock_hass, entry, mock_api, caplog):
+        failure = RequirementsNotFound(DOMAIN, list(STREAMING_REQUIREMENTS))
+        with (
+            patch(f"{MODULE}.async_process_requirements", AsyncMock(side_effect=failure)),
+            patch(f"{MODULE}.asyncio.create_subprocess_exec") as spawn,
+        ):
+            await _run_setup_with_install(mock_hass, entry, mock_api)
+
+        spawn.assert_not_called()
+        assert CONF_FORCE_STREAMING_DEPS not in caplog.text  # the UI label, not the key
+        assert "integration options" in caplog.text
+
+    async def test_option_installs_pinned_deps_without_resolving(
+        self, mock_hass, entry, mock_api, caplog
+    ):
+        entry.options = {CONF_FORCE_STREAMING_DEPS: True}
+        failure = RequirementsNotFound(DOMAIN, list(STREAMING_REQUIREMENTS))
+        with (
+            patch(f"{MODULE}.async_process_requirements", AsyncMock(side_effect=failure)),
+            patch(f"{MODULE}.pip_kwargs", return_value={"constraints": "c.txt"}),
+            patch(
+                f"{MODULE}.asyncio.create_subprocess_exec", AsyncMock(return_value=_proc(0))
+            ) as spawn,
+        ):
+            assert await _run_setup_with_install(mock_hass, entry, mock_api) is True
+
+        args = spawn.call_args.args
+        assert args[1:5] == ("-m", "uv", "pip", "install")
+        assert "--no-deps" in args
+        assert "--target" not in args
+        assert args[-len(STREAMING_FORCED_PACKAGES) :] == STREAMING_FORCED_PACKAGES
+        assert "without checking" in caplog.text
+
+    async def test_option_installs_into_the_deps_dir_ha_uses(self, mock_hass, entry, mock_api):
+        entry.options = {CONF_FORCE_STREAMING_DEPS: True}
+        failure = RequirementsNotFound(DOMAIN, list(STREAMING_REQUIREMENTS))
+        with (
+            patch(f"{MODULE}.async_process_requirements", AsyncMock(side_effect=failure)),
+            patch(f"{MODULE}.pip_kwargs", return_value={"target": "/config/deps"}),
+            patch(
+                f"{MODULE}.asyncio.create_subprocess_exec", AsyncMock(return_value=_proc(0))
+            ) as spawn,
+        ):
+            await _run_setup_with_install(mock_hass, entry, mock_api)
+
+        args = spawn.call_args.args
+        assert args[args.index("--target") + 1] == "/config/deps"
+
+    async def test_failed_forced_install_logs_and_loads(self, mock_hass, entry, mock_api, caplog):
+        entry.options = {CONF_FORCE_STREAMING_DEPS: True}
+        failure = RequirementsNotFound(DOMAIN, list(STREAMING_REQUIREMENTS))
+        with (
+            patch(f"{MODULE}.async_process_requirements", AsyncMock(side_effect=failure)),
+            patch(
+                f"{MODULE}.asyncio.create_subprocess_exec",
+                AsyncMock(return_value=_proc(1, b"no wheel for pylibsrtp")),
+            ),
+        ):
+            assert await _run_setup_with_install(mock_hass, entry, mock_api) is True
+
+        assert "no wheel for pylibsrtp" in caplog.text
+
+    async def test_hung_forced_install_is_killed(self, mock_hass, entry, mock_api, caplog):
+        entry.options = {CONF_FORCE_STREAMING_DEPS: True}
+        failure = RequirementsNotFound(DOMAIN, list(STREAMING_REQUIREMENTS))
+        proc = _proc(0)
+        proc.communicate.side_effect = TimeoutError
+        with (
+            patch(f"{MODULE}.async_process_requirements", AsyncMock(side_effect=failure)),
+            patch(f"{MODULE}.asyncio.create_subprocess_exec", AsyncMock(return_value=proc)),
+        ):
+            assert await _run_setup_with_install(mock_hass, entry, mock_api) is True
+
+        proc.kill.assert_called_once()
+        assert "timed out" in caplog.text
+
     def test_manifest_does_not_require_them(self):
         manifest = json.loads(
             (
@@ -208,6 +286,14 @@ class TestStreamingRequirements:
         )
         names = {req.split(">")[0].split("=")[0] for req in manifest["requirements"]}
         assert not names & {"aiortc", "pymediasoup"}
+
+
+def _proc(returncode, stderr=b""):
+    """Return a finished subprocess mock."""
+    proc = MagicMock()
+    proc.returncode = returncode
+    proc.communicate = AsyncMock(return_value=(b"", stderr))
+    return proc
 
 
 async def _run_setup_with_install(mock_hass, entry, api):
@@ -534,6 +620,24 @@ class TestOptionsUpdated:
         await _async_options_updated(mock_hass, entry)
 
         assert coordinator._auto_response_file == "/media/greeting.mp3"
+        mock_hass.config_entries.async_reload.assert_not_awaited()
+
+    async def test_forcing_streaming_deps_reloads_when_they_are_missing(self, mock_hass, entry):
+        mock_hass.data = {DOMAIN: {entry.entry_id: [_make_coordinator()]}}
+        entry.options = {CONF_FORCE_STREAMING_DEPS: True}
+
+        with patch(f"{MODULE}.streaming_deps_available", return_value=False):
+            await _async_options_updated(mock_hass, entry)
+
+        mock_hass.config_entries.async_reload.assert_awaited_once_with(entry.entry_id)
+
+    async def test_forcing_streaming_deps_already_installed_does_not_reload(self, mock_hass, entry):
+        mock_hass.data = {DOMAIN: {entry.entry_id: [_make_coordinator()]}}
+        entry.options = {CONF_FORCE_STREAMING_DEPS: True}
+
+        with patch(f"{MODULE}.streaming_deps_available", return_value=True):
+            await _async_options_updated(mock_hass, entry)
+
         mock_hass.config_entries.async_reload.assert_not_awaited()
 
     async def test_scan_interval_change_triggers_reload(self, mock_hass, entry):

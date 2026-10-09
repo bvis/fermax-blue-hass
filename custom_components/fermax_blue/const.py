@@ -52,6 +52,20 @@ WEBRTC_PATH = "/api/fermax_blue/webrtc/{token}"
 # Live-video deps, installed at setup instead of via the manifest: when no aiortc
 # release accepts the av that HA pins, the rest of the integration still loads.
 STREAMING_REQUIREMENTS = ("pymediasoup>=1.5.0", "aiortc>=1.15.0")
+# Installed with --no-deps when the user opts in (CONF_FORCE_STREAMING_DEPS) and
+# STREAMING_REQUIREMENTS don't resolve: the tested aiortc/pymediasoup plus the deps
+# HA does not ship. Verified on HA 2026.10 (av 19, which aiortc 1.15.0 excludes).
+STREAMING_FORCED_PACKAGES = (
+    "aiortc==1.15.0",
+    "pymediasoup==1.5.0",
+    "aioice>=0.10.2,<1.0.0",
+    "pylibsrtp>=0.10.0",
+    "google-crc32c>=1.1",
+    "pyee>=13,<14",
+    "h264-profile-level-id>=1.0.0,<2",
+    "sdp-transform>=1.1.0,<2",
+)
+STREAMING_FORCED_INSTALL_TIMEOUT = 300  # seconds
 WEBRTC_TOKENS = "webrtc_tokens"  # hass.data[DOMAIN] key: token -> coordinator
 # How long a viewer waits for the intercom to answer an auto-on request
 # (a cold panel has been seen taking ~27 s to start streaming)
@@ -73,6 +87,7 @@ MIN_SCAN_INTERVAL = 1
 MAX_SCAN_INTERVAL = 30
 CONF_SCAN_INTERVAL = "scan_interval"
 CONF_RECORDING_RETENTION = "recording_retention"
+CONF_FORCE_STREAMING_DEPS = "force_streaming_deps"
 DEFAULT_RECORDING_RETENTION = 10  # days
 RECORDINGS_DIR = "fermax_recordings"
 

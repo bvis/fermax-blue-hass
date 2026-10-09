@@ -41,7 +41,11 @@
         "data": {
           "scan_interval": "Interwał odpytywania (minuty)",
           "recording_retention": "Przechowywanie nagrań (dni)",
-          "auto_response_file": "Ścieżka do pliku audio"
+          "auto_response_file": "Ścieżka do pliku audio",
+          "force_streaming_deps": "Zainstaluj biblioteki wideo na żywo bez sprawdzania av"
+        },
+        "data_description": {
+          "force_streaming_deps": "Tylko dla wersji Home Assistant, w których nie da się zainstalować wideo na żywo (2026.10 i nowsze, do czasu wydania zgodnej wersji aiortc). Instaluje przetestowane wersje aiortc i pymediasoup bez sprawdzania ich z wersją av dostarczaną z Home Assistant. Wyłącz to, gdy wideo na żywo będzie się instalować normalnie."
         }
       }
     }
@@ -175,7 +179,7 @@
       "message": "Domofon nie wykonał połączenia z portierem."
     },
     "streaming_unavailable": {
-      "message": "Wideo na żywo jest wyłączone: jego biblioteki streamingu nie dają się jeszcze zainstalować w tej wersji Home Assistant, więc ponowne uruchomienie nie pomoże. Wszystko inne działa; README integracji wyjaśnia, kiedy wideo na żywo wróci."
+      "message": "Wideo na żywo jest wyłączone: jego biblioteki streamingu nie dają się jeszcze zainstalować w tej wersji Home Assistant, więc ponowne uruchomienie nie pomoże. Wszystko inne działa; aby mimo to spróbować, włącz „Zainstaluj biblioteki wideo na żywo bez sprawdzania av” w opcjach integracji."
     },
     "send_audio_no_input": {
       "message": "Podaj plik audio albo wiadomość do odczytania."

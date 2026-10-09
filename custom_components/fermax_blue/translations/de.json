@@ -41,7 +41,11 @@
         "data": {
           "scan_interval": "Abfrageintervall (Minuten)",
           "recording_retention": "Aufbewahrung der Aufnahmen (Tage)",
-          "auto_response_file": "Pfad zur Audiodatei"
+          "auto_response_file": "Pfad zur Audiodatei",
+          "force_streaming_deps": "Live-Video-Bibliotheken ohne av-Prüfung installieren"
+        },
+        "data_description": {
+          "force_streaming_deps": "Nur für Home-Assistant-Versionen, auf denen sich Live-Video nicht installieren lässt (2026.10 und neuer, bis eine kompatible aiortc-Version erscheint). Installiert die getesteten Versionen von aiortc und pymediasoup, ohne sie gegen die av-Version von Home Assistant zu prüfen. Schalte es aus, sobald sich Live-Video normal installiert."
         }
       }
     }
@@ -175,7 +179,7 @@
       "message": "Die Türsprechanlage hat den Pförtner nicht angerufen."
     },
     "streaming_unavailable": {
-      "message": "Live-Video ist aus: Die Streaming-Bibliotheken lassen sich auf dieser Home-Assistant-Version noch nicht installieren, ein Neustart hilft also nicht. Alles andere funktioniert weiter; das README der Integration erklärt, wann Live-Video zurückkommt."
+      "message": "Live-Video ist aus: Die Streaming-Bibliotheken lassen sich auf dieser Home-Assistant-Version noch nicht installieren, ein Neustart hilft also nicht. Alles andere funktioniert weiter; um es trotzdem zu nutzen, aktiviere „Live-Video-Bibliotheken ohne av-Prüfung installieren“ in den Optionen der Integration."
     },
     "send_audio_no_input": {
       "message": "Gib eine Audiodatei oder eine Nachricht an."
