@@ -1,14 +1,12 @@
 # Changelog
 
-## [0.22.0-beta.1] - 2026-10-09
+## [0.22.0] - 2026-10-09
 
 ### Added
 - **Live video on Home Assistant 2026.10, opt-in** (#140) — a new option, *Install live video libraries without the av check*, installs the tested `aiortc` 1.15.0 and `pymediasoup` 1.5.0 without checking them against the `av 19` that 2026.10 ships. It runs again on every start where the normal install fails, so it comes back by itself after a Home Assistant update. Off by default; untick it once a compatible `aiortc` release is out. The setup warning and the camera error point to it.
 
-## [0.21.3-beta.1] - 2026-10-08
-
 ### Fixed
-- **Turning the camera on no longer says a restart installs live video when it can't** (#137) — on Home Assistant versions where the streaming libraries don't install (2026.10, see the README), the error told users to restart, which never helped. It now says a restart won't help, that everything else keeps working, and points to the README.
+- **Turning the camera on no longer says a restart installs live video when it can't** (#137) — on Home Assistant versions where the streaming libraries don't install (2026.10, see the README), the error told users to restart, which never helped. It now says a restart won't help, that everything else keeps working, and points to the option above.
 
 ## [0.21.2] - 2026-10-08
 
