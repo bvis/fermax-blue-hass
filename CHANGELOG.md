@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.23.0] - 2026-10-12
+
+### Added
+- **The camera shows the intercom waking up** (#144) — while the intercom wakes, the waiting snapshot carries a progress bar with a percentage instead of sitting frozen with no sign of activity. It's drawn on the picture, so it shows in any camera card, the companion apps and a cast MJPEG stream. The bar turns red for a few seconds if the intercom can't be woken.
+- **Send the camera to one screen or to all of them** (#146) — label your Cast screens (Nest Hub, Chromecast, a TV with Chromecast built-in) and the doorbell blueprint shows rings on every labelled screen, alongside the single display it already had. A new script blueprint sends the camera to the labelled screens from a dashboard button, waking the intercom first, and an optional dropdown picks one screen; another blueprint keeps that dropdown filled from the label. See the README, *Show the camera on a TV or a Nest Hub*.
+
+### Fixed
+- **A slow cloud no longer leaves the camera waiting on a still** (#143) — when the auto-on request took more than 10 s to answer, it was sent again; the first one had already woken the intercom, so the retry got a 409 and the viewer gave up while the session was starting. Commands that may already have reached the server are no longer repeated, and a slow auto-on keeps waiting for the intercom.
+- **A screen that is off no longer holds back the doorbell announcement** (#146) — the doorbell blueprint cast first and announced afterwards, so a screen Cast couldn't reach delayed the announcement by about 30 s or stopped it. Casting, the announcement and the auto-response now run side by side, and the announcement uses the blueprint's language instead of always Spanish.
+
 ## [0.23.0-beta.1] - 2026-10-12
 
 ### Added
