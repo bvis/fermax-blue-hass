@@ -1,0 +1,49 @@
+blueprint:
+  name: "Fermax: Keep the screen dropdown up to date"
+  description: >
+    Fills a dropdown helper with an "all screens" option plus the name of every
+    media player carrying a label, at start-up and whenever labels change. Use
+    it with the "Fermax: Send the camera to a screen" script blueprint.
+  domain: automation
+  input:
+    display_label:
+      name: Screens label
+      selector:
+        label:
+    choice_helper:
+      name: Screen dropdown
+      description: A dropdown helper (input_select); its options are replaced
+      selector:
+        entity:
+          filter:
+            domain: input_select
+    all_option:
+      name: Name of the "all screens" option
+      default: "All"
+      selector:
+        text:
+
+triggers:
+  - trigger: homeassistant
+    event: start
+  # Fires when a label is added to or removed from an entity
+  - trigger: event
+    event_type: entity_registry_updated
+  # Fires when this automation is created or edited, so the dropdown fills at once
+  - trigger: event
+    event_type: automation_reloaded
+
+variables:
+  display_label: !input display_label
+  all_option: !input all_option
+
+actions:
+  - action: input_select.set_options
+    target:
+      entity_id: !input choice_helper
+    data:
+      options: >
+        {{ [all_option] + (label_entities(display_label) | select('match', 'media_player\\.')
+           | map('state_attr', 'friendly_name') | select | unique | sort | list) }}
+
+mode: queued

@@ -1,9 +1,9 @@
 blueprint:
-  name: "Fermax: Show doorbell on Google Nest Hub + announce on speakers"
+  name: "Fermax: Show doorbell on a Cast screen + announce on speakers"
   description: >
-    When someone rings the doorbell, show the camera stream on a Nest Hub
-    and announce on Google speakers. Optionally auto-respond with a TTS message
-    to the intercom.
+    When someone rings the doorbell, show the camera stream on a Cast screen
+    (a Nest Hub, a Chromecast, a TV with Chromecast built-in) and announce on
+    Google speakers. Optionally auto-respond with a TTS message to the intercom.
   domain: automation
   input:
     doorbell_event:
@@ -30,6 +30,15 @@ blueprint:
         entity:
           filter:
             domain: media_player
+    display_label:
+      name: Screens with this label
+      description: >
+        Also show the doorbell on every available media player carrying this
+        label. Lets you add or remove screens by labelling them, without
+        editing the automation.
+      default: ""
+      selector:
+        label:
     speaker_devices:
       name: Speaker devices
       description: Google speakers for audio announcement
@@ -52,7 +61,8 @@ blueprint:
       selector:
         text:
     auto_response_language:
-      name: Auto-response language
+      name: Language
+      description: Language of the announcement and the auto-response
       default: "es"
       selector:
         text:
@@ -68,53 +78,62 @@ trigger:
       - unavailable
 
 action:
-  # Wait for stream to start (triggered by FCM notification)
-  - delay: 3
+  # The three run side by side: a screen that is off makes Cast wait about 30 s
+  # before failing, which must not hold back the announcement or the reply
+  - parallel:
+      # Cast video to the screens (if configured)
+      - choose:
+          - conditions:
+              - condition: template
+                value_template: "{{ displays | count > 0 }}"
+            sequence:
+              - delay: 6  # Wait for the stream to start (triggered by the push)
+              - action: media_player.play_media
+                continue_on_error: true
+                target:
+                  entity_id: "{{ displays }}"
+                data:
+                  # The MJPEG endpoint, not media-source://camera/...: the camera advertises a
+                  # WebRTC stream source, which the HLS path cannot open ("Protocol not found")
+                  # and then retries forever. Cast signs this relative path automatically.
+                  media_content_id: "/api/camera_proxy_stream/{{ camera_entity }}"
+                  media_content_type: "image/jpg"
 
-  # Cast video to Nest Hub (if configured)
-  - choose:
-      - conditions:
-          - condition: template
-            value_template: "{{ display_device is defined and display_device not in ['', none, 'None'] }}"
-        sequence:
-          - delay: 3  # Wait for stream to start
-          - action: media_player.play_media
-            target:
-              entity_id: !input display_device
-            data:
-              # The MJPEG endpoint, not media-source://camera/...: the camera advertises a
-              # WebRTC stream source, which the HLS path cannot open ("Protocol not found")
-              # and then retries forever. Cast signs this relative path automatically.
-              media_content_id: "/api/camera_proxy_stream/{{ camera_entity }}"
-              media_content_type: "image/jpg"
+      # Announce on speakers
+      - choose:
+          - conditions:
+              - condition: template
+                value_template: "{{ speaker_devices is defined and speaker_devices | length > 0 }}"
+            sequence:
+              - delay: 3
+              - action: tts.google_translate_say
+                continue_on_error: true
+                data:
+                  entity_id: !input speaker_devices
+                  message: !input announcement_message
+                  language: !input auto_response_language
 
-  # Announce on speakers
-  - choose:
-      - conditions:
-          - condition: template
-            value_template: "{{ speaker_devices is defined and speaker_devices | length > 0 }}"
-        sequence:
-          - action: tts.google_translate_say
-            data:
-              entity_id: !input speaker_devices
-              message: !input announcement_message
-              language: "es"
-
-  # Auto-respond to intercom
-  - choose:
-      - conditions:
-          - condition: template
-            value_template: "{{ auto_response is defined and auto_response not in ['', none, 'None'] }}"
-        sequence:
-          - delay: 5  # Wait for stream to be ready
-          - action: fermax_blue.send_audio
-            data:
-              message: !input auto_response
-              language: !input auto_response_language
+      # Auto-respond to intercom
+      - choose:
+          - conditions:
+              - condition: template
+                value_template: "{{ auto_response is defined and auto_response not in ['', none, 'None'] }}"
+            sequence:
+              - delay: 8  # Wait for the stream to be ready
+              - action: fermax_blue.send_audio
+                data:
+                  message: !input auto_response
+                  language: !input auto_response_language
 
 mode: single
 variables:
   display_device: !input display_device
+  display_label: !input display_label
+  displays: >
+    {% set chosen = [display_device] if display_device not in ['', none, 'None'] else [] %}
+    {% set labelled = label_entities(display_label) | select('match', 'media_player\\.')
+       | select('has_value') | list if display_label else [] %}
+    {{ (chosen + labelled) | unique | list }}
   camera_entity: !input camera_entity
   speaker_devices: !input speaker_devices
   auto_response: !input auto_response

@@ -337,10 +337,6 @@ data:
 
 A doorbell notification blueprint is available at [`blueprints/fermax_doorbell_notification.yaml`](blueprints/fermax_doorbell_notification.yaml). For the full see-hear-talk-open flow use [`blueprints/fermax_doorbell_answer.yaml`](blueprints/fermax_doorbell_answer.yaml) instead (see [Answer calls from your phone](#answer-calls-from-your-phone)).
 
-### Cast doorbell to Google Nest
-
-Show doorbell video on a Nest Hub and announce on speakers: [`blueprints/fermax_cast_doorbell.yaml`](blueprints/fermax_cast_doorbell.yaml). Supports optional auto-response to the intercom via TTS.
-
 **To install:**
 
 1. Copy `blueprints/fermax_doorbell_notification.yaml` to your HA `config/blueprints/automation/fermax_blue/` folder
@@ -352,6 +348,39 @@ The blueprint supports:
 - Mobile push notification on doorbell ring
 - Optional camera snapshot attachment
 - Customizable title and message
+
+### Show the camera on a TV or a Nest Hub
+
+Any Cast device with a screen can show the camera: a Nest Hub, a Chromecast, a TV with Chromecast built-in. The screen shows the last picture, the wake-up bar while the intercom wakes, then the live video. Home Assistant can't tell a Cast screen from a Cast speaker, so you pick the screens with a label:
+
+1. Create a label (e.g. *Intercom screen*) in **Settings** > **Areas, labels & zones** > **Labels**, and add it to the `media_player` of each screen. Use the entity from the Google Cast integration: a TV's remote-control or Bravia entities can't play a stream.
+2. Copy the blueprints below to `config/blueprints/automation/fermax_blue/` (automations) and `config/blueprints/script/fermax_blue/` (the script).
+
+**On every ring** — [`blueprints/fermax_cast_doorbell.yaml`](blueprints/fermax_cast_doorbell.yaml) shows the doorbell on one screen (*Display device*), on every screen with a label (*Screens with this label*), or both, and announces it on Google speakers. Optional auto-response to the intercom via TTS. Adding or removing the label changes the screens without editing the automation.
+
+**From a dashboard button** — [`blueprints/fermax_cast_camera.yaml`](blueprints/fermax_cast_camera.yaml) is a script: create it from the blueprint (**Settings** > **Automations & scenes** > **Scripts** > **Create script** > **Use blueprint**) and point a button's tap action at it. It wakes the intercom when no call is live and sends the camera to the labelled screens.
+
+To choose the screen each time, add a dropdown:
+
+1. Create a **Dropdown** helper (any placeholder option, e.g. `All`).
+2. Create an automation from [`blueprints/fermax_screen_choices.yaml`](blueprints/fermax_screen_choices.yaml) with the label and the dropdown. It fills the dropdown with *All* plus the name of every labelled screen, and keeps it current when labels change.
+3. Select the dropdown as *Screen dropdown* in the script. The selected screen gets the camera; *All* sends it to every available screen.
+
+```yaml
+# Dashboard: the dropdown and the button side by side
+type: horizontal-stack
+cards:
+  - type: tile
+    entity: input_select.intercom_screen
+    features:
+      - type: select-options
+  - type: button
+    name: Send to screen
+    icon: mdi:cast
+    tap_action:
+      action: perform-action
+      perform_action: script.intercom_send_camera
+```
 
 ## Automation Examples
 
