@@ -21,6 +21,7 @@ def mock_coordinator():
     """Return a mock coordinator."""
     coordinator = MagicMock(spec=FermaxBlueCoordinator)
     coordinator.mjpeg_clients = 0
+    coordinator.wake_progress.return_value = None
     coordinator.pairing = Pairing(
         device_id="test_dev",
         tag="Test Home",
@@ -1551,6 +1552,52 @@ class TestCameraBehavior:
 
         written = b"".join(call.args[0] for call in response.write.await_args_list)
         assert b"PHOTOJPEG" in written
+
+    @pytest.mark.asyncio
+    async def test_mjpeg_stream_draws_the_wake_up_bar(self, mock_coordinator):
+        import io
+
+        from PIL import Image
+
+        from custom_components.fermax_blue import camera as camera_module
+
+        buf = io.BytesIO()
+        Image.new("RGB", (320, 240), (0, 0, 0)).save(buf, format="JPEG")
+        mock_coordinator.stream_session = None
+        mock_coordinator.last_photo = buf.getvalue()
+        mock_coordinator.wake_progress.return_value = 50.0
+        camera = self._make(mock_coordinator)
+
+        response = MagicMock()
+        response.prepare = AsyncMock()
+        response.write = AsyncMock()
+        delays = []
+
+        async def _stop(delay):
+            delays.append(delay)
+            raise __import__("asyncio").CancelledError
+
+        with (
+            patch.object(camera_module.web, "StreamResponse", return_value=response),
+            patch.object(camera_module.asyncio, "sleep", side_effect=_stop),
+        ):
+            await camera.handle_async_mjpeg_stream(MagicMock())
+
+        written = response.write.await_args_list[0].args[0]
+        jpeg = written[written.index(b"\r\n\r\n") + 4 : -2]
+        img = Image.open(io.BytesIO(jpeg))
+        assert img.size == (320, 240)
+        # Bar filled up to the middle: blue on the left half, grey on the right
+        bar_y = 240 - 24 + 3
+        assert img.getpixel((100, bar_y))[2] > 150
+        assert img.getpixel((220, bar_y))[2] < 150
+        assert delays == [0.5]
+
+    def test_wake_up_bar_on_a_missing_photo(self):
+        from custom_components.fermax_blue.camera import _with_wake_progress
+
+        assert _with_wake_progress(None, -1.0).startswith(b"\xff\xd8")
+        assert _with_wake_progress(b"broken", 10.0).startswith(b"\xff\xd8")
 
     @pytest.mark.asyncio
     async def test_added_to_hass_subscribes_to_each_door_ring(self, mock_coordinator):

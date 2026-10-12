@@ -99,6 +99,28 @@ def _overlay_font(image_font: Any) -> Any:
     return image_font.load_default(size=16)
 
 
+def draw_wake_progress(img: Any, percent: float) -> None:
+    """Draw the intercom wake-up bar on a PIL image; a negative percent marks a failure.
+
+    No words, only a bar and a number: nothing to translate inside a picture.
+    """
+    from PIL import ImageDraw, ImageFont
+
+    draw = ImageDraw.Draw(img)
+    w, h = img.size
+    x0, x1 = w // 6, w - w // 6
+    y = h - max(h // 10, 24)
+    draw.rectangle([(0, y - 14), (w, h)], fill=(0, 0, 0))
+    draw.rectangle([(x0, y), (x1, y + 6)], fill=(90, 90, 90))
+    if percent < 0:
+        draw.rectangle([(x0, y), (x1, y + 6)], fill=(200, 30, 30))
+        label = "!"
+    else:
+        draw.rectangle([(x0, y), (x0 + (x1 - x0) * percent / 100, y + 6)], fill=(3, 169, 244))
+        label = f"{int(percent)}%"
+    draw.text((x1 + 8, y - 6), label, fill=(255, 255, 255), font=_overlay_font(ImageFont))
+
+
 def _queue_depth(track: Any) -> int | None:
     """Frames waiting in an aiortc track's internal queue (diagnostics only)."""
     queue = getattr(track, "_queue", None)

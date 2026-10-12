@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import secrets
 import time
 from collections import deque
@@ -54,6 +55,11 @@ DEFAULT_PREVIEW_TIMEOUT = 29
 # FCM re-delivers recent notifications when the listener reconnects after a
 # reload/restart, causing phantom doorbell rings. Ignore them briefly.
 NOTIFICATION_GRACE_PERIOD = 10
+# Wake-up progress drawn on the waiting image: each stage creeps towards the
+# next one, so the bar keeps moving while the cloud or the intercom is slow
+WAKE_STAGES = {"request": (2, 30), "accepted": (30, 60), "joining": (60, 95)}
+WAKE_CREEP_SECONDS = 4.0
+WAKE_FAILED_SHOWN_SECONDS = 10
 ALLOWED_SIGNALING_DOMAIN = ".fermax.io"
 
 
@@ -103,6 +109,8 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         self._doorbell_ringing: bool = False
         self._camera_active: bool = False
         self._wake_lock = asyncio.Lock()
+        # (stage, monotonic time it was reached); stage "failed" or a WAKE_STAGES key
+        self._wake: tuple[str, float] | None = None
 
         self._photo_fetch_pending: bool = False
         self._doorbell_reset_unsub: CALLBACK_TYPE | None = None
@@ -566,10 +574,14 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
             )
             return None
 
+        self._set_wake("request")
         result = await self.api.auto_on(
             self.pairing.device_id,
             self.notification_listener.fcm_token,
         )
+        # The push may already have started the session while auto-on answered
+        if self._wake and self._wake[0] == "request":
+            self._set_wake("accepted" if result else "failed")
 
         if result:
             self._camera_active = True
@@ -602,6 +614,22 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
     def has_active_stream(self) -> bool:
         """Whether a live video session is up right now."""
         return bool(self._stream_session and self._stream_session.is_active)
+
+    def _set_wake(self, stage: str | None) -> None:
+        self._wake = (stage, time.monotonic()) if stage else None
+
+    def wake_progress(self) -> float | None:
+        """Percent of the intercom wake-up, -1 if it just failed, None when nothing is waking."""
+        if self._wake is None or self.has_active_stream:
+            return None
+        stage, since = self._wake
+        elapsed = time.monotonic() - since
+        if stage == "failed":
+            return -1.0 if elapsed < WAKE_FAILED_SHOWN_SECONDS else None
+        if elapsed > WEBRTC_START_TIMEOUT:
+            return None
+        start, cap = WAKE_STAGES[stage]
+        return start + (cap - start) * (1 - math.exp(-elapsed / WAKE_CREEP_SECONDS))
 
     def _incall_context(self) -> dict[str, str | None] | None:
         """Session context for in-call actions, or None when no stream is up."""
@@ -701,6 +729,7 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         fcm_token = self.notification_listener.fcm_token
         if not fcm_token:
             return
+        self._set_wake("joining")
         oauth_token = fermax_token or await self.api.get_access_token()
 
         @callback
@@ -734,6 +763,7 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         if self._stream_session is not session:
             # A newer room replaced this one while it was starting
             return
+        self._set_wake(None if success else "failed")
         if success:
             self._camera_active = True
             _LOGGER.info("Video stream started for room %s", room_id)
@@ -801,6 +831,7 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
                 if self.has_active_stream:
                     return self._stream_session
             _LOGGER.warning("Intercom did not start a stream within %ss", WEBRTC_START_TIMEOUT)
+            self._set_wake("failed")
             return None
 
     async def _auto_respond(self) -> None:

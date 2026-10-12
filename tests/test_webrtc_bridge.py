@@ -99,6 +99,7 @@ def _coordinator(session=None, pickup=True, last_photo=None):
     coordinator.ensure_stream = AsyncMock(return_value=session)
     coordinator.stream_session = session
     coordinator.pickup = AsyncMock(return_value=pickup)
+    coordinator.wake_progress.return_value = None
     return coordinator
 
 
@@ -191,6 +192,20 @@ class TestPlaceholderVideo:
 
             track.set_source(Live())
             assert await track.recv() == "live-frame"
+
+    def test_wake_progress_is_drawn_on_the_placeholder(self):
+        plain = webrtc_bridge._placeholder_frame(None).to_ndarray()
+        barred = webrtc_bridge._placeholder_frame(None, 50.0).to_ndarray()
+        assert (plain != barred).any()
+
+    async def test_track_redraws_when_the_progress_moves(self):
+        progress = [10.0]
+        with patch.object(webrtc_bridge, "PLACEHOLDER_FPS", 1000):
+            track = webrtc_bridge._create_switchable_video_track(lambda: None, lambda: progress[0])
+            first = (await track.recv()).to_ndarray().copy()
+            assert (await track.recv()).to_ndarray().tolist() == first.tolist()
+            progress[0] = 80.0
+            assert (await track.recv()).to_ndarray().tolist() != first.tolist()
 
     async def test_ended_source_falls_back_to_placeholder(self):
         class Dead:

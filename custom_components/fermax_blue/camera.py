@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import io
 import logging
 
 from aiohttp import web
@@ -16,10 +18,24 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from .const import DOMAIN, SIGNAL_DOORBELL_RING
 from .coordinator import FermaxBlueCoordinator
 from .entity import FermaxBlueEntity
-from .streaming import streaming_deps_available
+from .streaming import draw_wake_progress, streaming_deps_available
 from .webrtc_bridge import webrtc_stream_source
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _with_wake_progress(jpeg: bytes | None, progress: float) -> bytes:
+    """The still preview (or black) as a JPEG carrying the intercom wake-up bar."""
+    from PIL import Image
+
+    img = Image.new("RGB", (640, 480))
+    if jpeg:
+        with contextlib.suppress(Exception):
+            img = Image.open(io.BytesIO(jpeg)).convert("RGB")
+    draw_wake_progress(img, progress)
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=85)
+    return buf.getvalue()
 
 
 async def async_setup_entry(
@@ -131,9 +147,12 @@ class FermaxCamera(FermaxBlueEntity, Camera):
                 stream = self.coordinator.stream_session
                 frame = None
 
+                progress = self.coordinator.wake_progress()
                 # Prefer live stream frame
                 if stream and stream.latest_frame:
                     frame = stream.latest_frame
+                elif progress is not None:
+                    frame = _with_wake_progress(self.coordinator.last_photo, progress)
                 elif self.coordinator.last_photo:
                     frame = self.coordinator.last_photo
 
@@ -151,6 +170,8 @@ class FermaxCamera(FermaxBlueEntity, Camera):
                 # Fast poll during stream, slow poll for static preview
                 if stream and stream.is_active:
                     await asyncio.sleep(0.04)  # ~25fps
+                elif progress is not None:
+                    await asyncio.sleep(0.5)  # Keep the wake-up bar moving
                 else:
                     await asyncio.sleep(2)  # Refresh preview every 2s
         except (ConnectionResetError, ConnectionError, asyncio.CancelledError):

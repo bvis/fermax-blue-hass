@@ -29,6 +29,7 @@ from custom_components.fermax_blue.const import (
     SIGNAL_CAMERA_ON,
     SIGNAL_DOOR_OPENED,
     SIGNAL_DOORBELL_RING,
+    WEBRTC_START_TIMEOUT,
 )
 from custom_components.fermax_blue.coordinator import (
     CAMERA_TIMEOUT_SECONDS,
@@ -117,6 +118,7 @@ def coordinator(mock_hass, mock_api, pairing):
         coord.async_set_updated_data = MagicMock()
         coord.async_update_listeners = MagicMock()
         coord._wake_lock = asyncio.Lock()
+        coord._wake = None
         coord._last_divert_response = None
         coord._photo_fetch_pending = False
         coord._call_mode = CALL_MODE_NOTIFY
@@ -1583,3 +1585,105 @@ class TestConversationTimeoutFromPush:
         ):
             await coordinator._start_stream("r", DEFAULT_SIGNALING_URL, conversation_timeout="x")
         assert coordinator._conversation_timeout == DEFAULT_CONVERSATION_TIMEOUT
+
+
+class TestWakeProgress:
+    """Progress of an intercom wake-up, drawn on the waiting image."""
+
+    def _at(self, seconds):
+        return patch(
+            "custom_components.fermax_blue.coordinator.time.monotonic", return_value=seconds
+        )
+
+    def test_idle_has_no_progress(self, coordinator):
+        assert coordinator.wake_progress() is None
+
+    def test_stage_creeps_towards_the_next_without_reaching_it(self, coordinator):
+        with self._at(100):
+            coordinator._set_wake("request")
+            assert coordinator.wake_progress() == 2
+        with self._at(130):
+            assert 29 < coordinator.wake_progress() < 30
+        with self._at(130):
+            coordinator._set_wake("accepted")
+            assert coordinator.wake_progress() == 30
+
+    def test_live_or_stale_wake_shows_nothing(self, coordinator):
+        with self._at(100):
+            coordinator._set_wake("joining")
+        coordinator._stream_session = MagicMock(is_active=True)
+        with self._at(101):
+            assert coordinator.wake_progress() is None
+        coordinator._stream_session = None
+        with self._at(100 + WEBRTC_START_TIMEOUT + 1):
+            assert coordinator.wake_progress() is None
+
+    def test_failure_shows_briefly(self, coordinator):
+        with self._at(100):
+            coordinator._set_wake("failed")
+        with self._at(105):
+            assert coordinator.wake_progress() == -1
+        with self._at(111):
+            assert coordinator.wake_progress() is None
+
+    async def _preview(self, coordinator, mock_api, result, push_meanwhile=False):
+        listener = MagicMock()
+        listener.fcm_token = "tok"
+        coordinator.notification_listener = listener
+        coordinator.async_set_updated_data = MagicMock()
+        coordinator.data = {}
+
+        async def _auto_on(*_args):
+            if push_meanwhile:
+                coordinator._set_wake("joining")
+            return result
+
+        mock_api.auto_on = AsyncMock(side_effect=_auto_on)
+        with (
+            patch(
+                "custom_components.fermax_blue.coordinator.streaming_deps_available",
+                return_value=True,
+            ),
+            patch("custom_components.fermax_blue.coordinator.async_call_later"),
+        ):
+            await coordinator.start_camera_preview()
+        return coordinator._wake[0]
+
+    async def test_preview_stages(self, full_coordinator, mock_api):
+        assert await self._preview(full_coordinator, mock_api, MagicMock()) == "accepted"
+        assert await self._preview(full_coordinator, mock_api, None) == "failed"
+        assert (
+            await self._preview(full_coordinator, mock_api, None, push_meanwhile=True) == "joining"
+        )
+
+    async def test_stream_start_ends_or_fails_the_wake(self, coordinator):
+        coordinator._stream_session = None
+        coordinator._stream_stop_unsub = None
+        coordinator._stream_duration = 30
+        listener = MagicMock()
+        listener.fcm_token = "tok"
+        coordinator.notification_listener = listener
+        for ok, expected in ((True, None), (False, "failed")):
+            session = MagicMock()
+            session.start = AsyncMock(return_value=ok)
+            with (
+                patch(
+                    "custom_components.fermax_blue.coordinator.streaming_deps_available",
+                    return_value=True,
+                ),
+                patch(
+                    "custom_components.fermax_blue.coordinator.FermaxStreamSession",
+                    return_value=session,
+                ),
+                patch("custom_components.fermax_blue.coordinator.async_dispatcher_send"),
+                patch("custom_components.fermax_blue.coordinator.async_call_later"),
+            ):
+                await coordinator._start_stream("room1", "https://x", "ftok")
+            assert (coordinator._wake and coordinator._wake[0]) == expected
+            coordinator._stream_session = None
+
+    async def test_viewer_timeout_marks_failure(self, coordinator):
+        coordinator.start_camera_preview = AsyncMock(return_value=MagicMock())
+        with patch("custom_components.fermax_blue.coordinator.WEBRTC_START_TIMEOUT", 0):
+            await coordinator.ensure_stream()
+        assert coordinator._wake[0] == "failed"

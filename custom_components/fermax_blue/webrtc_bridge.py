@@ -32,7 +32,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.network import NoURLAvailableError, get_url
 
 from .const import WEBRTC_PATH
-from .streaming import _create_switchable_audio_track
+from .streaming import _create_switchable_audio_track, draw_wake_progress
 
 if TYPE_CHECKING:
     from .coordinator import FermaxBlueCoordinator
@@ -121,30 +121,33 @@ def _prefer_fast_h264() -> None:
         _LOGGER.debug("Could not tune the H264 encoder; using aiortc defaults", exc_info=True)
 
 
-def _placeholder_frame(jpeg: bytes | None) -> Any:
-    """Return a yuv420p VideoFrame of the last snapshot, or a black frame."""
+def _placeholder_frame(jpeg: bytes | None, progress: float | None = None) -> Any:
+    """Return a yuv420p VideoFrame of the last snapshot (or black), with the wake-up bar."""
     import av
+    from PIL import Image
 
+    img = Image.new("RGB", PLACEHOLDER_SIZE)
     if jpeg:
         try:
-            from PIL import Image
-
             img = Image.open(io.BytesIO(jpeg)).convert("RGB")
             # yuv420p needs even dimensions
             img = img.crop((0, 0, img.width - img.width % 2, img.height - img.height % 2))
-            return av.VideoFrame.from_image(img).reformat(format="yuv420p")
         except Exception:
             _LOGGER.debug("Unusable snapshot for the placeholder frame", exc_info=True)
-    width, height = PLACEHOLDER_SIZE
-    frame = av.VideoFrame(width, height, "yuv420p")
-    frame.planes[0].update(b"\x10" * frame.planes[0].buffer_size)
-    for plane in frame.planes[1:]:
-        plane.update(b"\x80" * plane.buffer_size)
-    return frame
+    if progress is not None:
+        draw_wake_progress(img, progress)
+    return av.VideoFrame.from_image(img).reformat(format="yuv420p")
 
 
-def _create_switchable_video_track(placeholder_jpeg: Callable[[], bytes | None]) -> Any:
-    """A video track showing a still (the latest snapshot) whenever no live source is attached."""
+def _create_switchable_video_track(
+    placeholder_jpeg: Callable[[], bytes | None],
+    progress: Callable[[], float | None] = lambda: None,
+) -> Any:
+    """A video track showing a still (the latest snapshot) whenever no live source is attached.
+
+    While the intercom wakes up the still carries a progress bar; after a call
+    it is the panel's last keyframe, which cannot be drawn on.
+    """
     from fractions import Fraction
 
     from aiortc import MediaStreamTrack
@@ -157,6 +160,7 @@ def _create_switchable_video_track(placeholder_jpeg: Callable[[], bytes | None])
             self._source: Any = None
             self._placeholder_jpeg: bytes | None = None
             self._placeholder: Any = None
+            self._level: int | None = None
             # One 90 kHz timeline for both phases: a timestamp going back when
             # the call ends reads as a 13 h jump ahead downstream and the
             # viewer freezes (#98)
@@ -196,9 +200,16 @@ def _create_switchable_video_track(placeholder_jpeg: Callable[[], bytes | None])
                 self._pts += 90000 // PLACEHOLDER_FPS
                 return packet
             jpeg = placeholder_jpeg()
-            if self._placeholder is None or jpeg is not self._placeholder_jpeg:
+            percent = progress()
+            level = None if percent is None else int(percent)
+            if (
+                self._placeholder is None
+                or jpeg is not self._placeholder_jpeg
+                or level != self._level
+            ):
                 self._placeholder_jpeg = jpeg
-                self._placeholder = _placeholder_frame(jpeg)
+                self._level = level
+                self._placeholder = _placeholder_frame(jpeg, percent)
             frame = self._placeholder
             frame.pts = self._pts
             frame.time_base = Fraction(1, 90000)
@@ -282,7 +293,7 @@ class WebRtcPeer:
                         RTCSessionDescription(sdp=data["value"], type="offer")
                     )
                     self._video = _create_switchable_video_track(
-                        lambda: self._coordinator.last_photo
+                        lambda: self._coordinator.last_photo, self._coordinator.wake_progress
                     )
                     self._audio = _create_switchable_audio_track()
                     pc.addTrack(self._video)
