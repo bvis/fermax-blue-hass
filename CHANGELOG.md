@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.23.0-beta.1] - 2026-10-12
+
+### Added
+- **The camera shows the intercom waking up** (#144) — while the intercom wakes, the waiting snapshot carries a progress bar with a percentage instead of sitting frozen with no sign of activity. It's drawn on the picture, so it shows in any camera card, the companion apps and a cast MJPEG stream. The bar turns red for a few seconds if the intercom can't be woken.
+
+### Fixed
+- **A slow cloud no longer leaves the camera waiting on a still** (#143) — when the auto-on request took more than 10 s to answer, it was sent again; the first one had already woken the intercom, so the retry got a 409 and the viewer gave up while the session was starting. Commands that may already have reached the server are no longer repeated, and a slow auto-on keeps waiting for the intercom.
+
 ## [0.22.0] - 2026-10-09
 
 ### Added
