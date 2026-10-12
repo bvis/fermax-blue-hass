@@ -152,8 +152,19 @@ class OpeningRecord:
     guest_email: str | None = None
 
 
-def _is_retryable(exc: Exception) -> bool:
+def _may_have_landed(exc: Exception) -> bool:
+    """Return True if a timed-out request may have reached the server anyway."""
+    return isinstance(exc, httpx.TimeoutException) and not isinstance(
+        exc, httpx.ConnectTimeout | httpx.PoolTimeout
+    )
+
+
+def _is_retryable(exc: Exception, method: str) -> bool:
     """Return True if the exception is transient and worth retrying."""
+    # A command the server may already have run must not be repeated: a
+    # retried auto-on answers 409 while the first one is waking the intercom
+    if method != "get" and _may_have_landed(exc):
+        return False
     if isinstance(exc, httpx.ConnectError | httpx.TimeoutException):
         return True
     return isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code >= 500
@@ -349,7 +360,7 @@ class FermaxBlueApi:
                 httpx.TimeoutException,
             ) as exc:
                 last_exc = exc
-                if not _is_retryable(exc) or attempt >= MAX_RETRIES:
+                if not _is_retryable(exc, method) or attempt >= MAX_RETRIES:
                     raise
                 delay = RETRY_BACKOFF_BASE * (2**attempt)
                 _LOGGER.debug(
@@ -581,6 +592,19 @@ class FermaxBlueApi:
         except httpx.HTTPStatusError as exc:
             _LOGGER.error("autoOn failed: %s", exc)
             return None
+        except httpx.TimeoutException as exc:
+            if not _may_have_landed(exc):
+                raise
+            # The cloud is slow, not deaf: the intercom usually wakes up and
+            # its push arrives, so callers keep waiting for it
+            _LOGGER.warning("autoOn got no answer in time; waiting for the intercom")
+            return DivertResponse(
+                reason="timeout",
+                divert_service="",
+                code=0,
+                description="no answer from the server",
+                directed_to="",
+            )
 
         data = response.json()
         additional = data.get("additional_info", {})

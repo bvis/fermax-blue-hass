@@ -233,6 +233,39 @@ class TestRetryLogic:
             info = await authenticated_api.get_device_info("dev1")
         assert info.device_id == "dev1"
 
+    @pytest.mark.asyncio
+    async def test_post_not_retried_after_read_timeout(self, authenticated_api):
+        # The server may have acted on it: a retry would repeat the command
+        post = AsyncMock(side_effect=httpx.ReadTimeout("slow"))
+        with (
+            patch("httpx.AsyncClient.post", post),
+            patch("asyncio.sleep", new_callable=AsyncMock),
+            pytest.raises(httpx.ReadTimeout),
+        ):
+            await authenticated_api._api_post("/x")
+        assert post.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_post_retried_after_connect_timeout(self, authenticated_api):
+        ok_resp = _mock_response(200, json={})
+        post = AsyncMock(side_effect=[httpx.ConnectTimeout("down"), ok_resp])
+        with (
+            patch("httpx.AsyncClient.post", post),
+            patch("asyncio.sleep", new_callable=AsyncMock),
+        ):
+            await authenticated_api._api_post("/x")
+        assert post.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_get_retried_after_read_timeout(self, authenticated_api):
+        ok_resp = _mock_response(200, json=_DEVICE_INFO_JSON)
+        with (
+            patch("httpx.AsyncClient.get", side_effect=[httpx.ReadTimeout("slow"), ok_resp]),
+            patch("asyncio.sleep", new_callable=AsyncMock),
+        ):
+            info = await authenticated_api.get_device_info("dev1")
+        assert info.device_id == "dev1"
+
 
 class TestPairings:
     """Test pairing retrieval."""
@@ -503,6 +536,17 @@ class TestAutoOn:
             result = await authenticated_api.auto_on("device_123", "fcm_token_123")
 
         assert result is None
+
+    @pytest.mark.asyncio
+    async def test_auto_on_read_timeout_is_pending(self, authenticated_api):
+        """A slow answer may still wake the intercom: report it as pending, sent once."""
+        post = AsyncMock(side_effect=httpx.ReadTimeout("slow"))
+        with patch("httpx.AsyncClient.post", post):
+            result = await authenticated_api.auto_on("device_123", "fcm_token_123")
+
+        assert post.call_count == 1
+        assert result is not None
+        assert result.reason == "timeout"
 
     @pytest.mark.asyncio
     async def test_change_video_source(self, authenticated_api):
