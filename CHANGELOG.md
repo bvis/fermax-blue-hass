@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.23.1-beta.1] - 2026-10-18
+
+### Fixed
+- **The integration loads even when Google refuses the push registration** (#150) — a `PHONE_REGISTRATION_ERROR` from Google during setup left the whole integration unloaded, although doors, camera and sensors work without push. It now loads with doorbell notifications off and tries the registration again every 15 minutes; turning the *Notifications* switch on tries it at once and says so if it still fails.
+
 ## [0.23.0] - 2026-10-12
 
 ### Added
