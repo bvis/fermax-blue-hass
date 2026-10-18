@@ -189,6 +189,9 @@
     },
     "send_audio_tts_failed": {
       "message": "Non è stato possibile generare il messaggio vocale."
+    },
+    "push_registration_failed": {
+      "message": "Non è stato possibile registrare le notifiche del campanello presso Google. L'integrazione riprova ogni 15 minuti; riprova più tardi."
     }
   }
 }

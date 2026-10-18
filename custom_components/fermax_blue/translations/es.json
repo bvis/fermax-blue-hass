@@ -189,6 +189,9 @@
     },
     "send_audio_tts_failed": {
       "message": "No se pudo generar el mensaje de voz."
+    },
+    "push_registration_failed": {
+      "message": "No se pudieron registrar las notificaciones del timbre en Google. La integración lo reintenta cada 15 minutos; vuelve a probar más tarde."
     }
   }
 }

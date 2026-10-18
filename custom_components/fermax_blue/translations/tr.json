@@ -189,6 +189,9 @@
     },
     "send_audio_tts_failed": {
       "message": "Sesli mesaj oluşturulamadı."
+    },
+    "push_registration_failed": {
+      "message": "Kapı zili bildirimleri Google'a kaydedilemedi. Entegrasyon her 15 dakikada bir yeniden deniyor; daha sonra tekrar deneyin."
     }
   }
 }

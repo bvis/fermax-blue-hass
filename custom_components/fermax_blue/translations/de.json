@@ -189,6 +189,9 @@
     },
     "send_audio_tts_failed": {
       "message": "Die Sprachnachricht konnte nicht erzeugt werden."
+    },
+    "push_registration_failed": {
+      "message": "Die Klingelbenachrichtigungen konnten nicht bei Google registriert werden. Die Integration versucht es alle 15 Minuten erneut; versuche es später noch einmal."
     }
   }
 }

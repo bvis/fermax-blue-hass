@@ -189,6 +189,9 @@
     },
     "send_audio_tts_failed": {
       "message": "Nie udało się wygenerować wiadomości głosowej."
+    },
+    "push_registration_failed": {
+      "message": "Nie udało się zarejestrować powiadomień o dzwonku w Google. Integracja ponawia próbę co 15 minut; spróbuj ponownie później."
     }
   }
 }

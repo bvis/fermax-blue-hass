@@ -35,6 +35,7 @@ from .const import (
     DEFAULT_CONVERSATION_TIMEOUT,
     DEFAULT_STREAM_DURATION,
     DOMAIN,
+    FCM_REGISTER_RETRY_INTERVAL,
     RECORDINGS_DIR,
     SIGNAL_CALL_ENDED,
     SIGNAL_CAMERA_ON,
@@ -134,6 +135,8 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         self._firebase_config = firebase_config or {}
         self._processed_notifications: deque[str] = deque(maxlen=100)
         self._notification_start_time: float | None = None
+        # Set while push registration is failing: when the watchdog tries again
+        self._push_retry_at: float | None = None
 
     @property
     def call_mode(self) -> str:
@@ -376,16 +379,47 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
 
         # Load persisted last photo for camera preview
         await self._load_last_photo()
+        await self._register_notifications()
 
-        fcm_token = await self.notification_listener.register()
+    async def _register_notifications(self) -> bool:
+        """Register for push and start the listener; on failure schedule a retry.
+
+        Google can refuse the registration for a while (PHONE_REGISTRATION_ERROR,
+        #150). The rest of the integration works without push, so it must not
+        keep the entry from loading.
+        """
+        assert self.notification_listener is not None
+        try:
+            fcm_token = await self.notification_listener.register()
+            if fcm_token:
+                await self.api.register_app_token(fcm_token, active=True)
+        except Exception as err:
+            self._push_retry_at = time.monotonic() + FCM_REGISTER_RETRY_INTERVAL
+            _LOGGER.warning(
+                "Push registration failed for device %s (%s): doorbell notifications "
+                "are off, retrying in %d minutes",
+                self.pairing.device_id,
+                err,
+                FCM_REGISTER_RETRY_INTERVAL // 60,
+            )
+            return False
+        self._push_retry_at = None
         if fcm_token:
-            await self.api.register_app_token(fcm_token, active=True)
             self._notification_start_time = time.monotonic()
             await self.notification_listener.start()
             _LOGGER.info(
                 "Notification listener started for device %s",
                 self.pairing.device_id,
             )
+        return True
+
+    async def start_notifications(self) -> bool:
+        """Notifications switch: start the listener, registering first if that failed."""
+        if self._push_retry_at is not None:
+            return await self._register_notifications()
+        assert self.notification_listener is not None
+        await self.notification_listener.start()
+        return True
 
     async def stop_notifications(self) -> None:
         """Stop the notification listener."""
@@ -398,10 +432,14 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
 
     async def ensure_notifications_running(self) -> None:
         """Watchdog hook: revive the FCM listener if it died."""
-        if self.notification_listener:
-            was_started = self.notification_listener.is_started
-            await self.notification_listener.ensure_running()
-            if self.notification_listener.is_started != was_started:
+        listener = self.notification_listener
+        if listener:
+            was_started = listener.is_started
+            if self._push_retry_at is None:
+                await listener.ensure_running()
+            elif time.monotonic() >= self._push_retry_at and not listener.is_stopped:
+                await self._register_notifications()
+            if listener.is_started != was_started:
                 # The notifications switch shows the connection: refresh it
                 self.async_update_listeners()
 

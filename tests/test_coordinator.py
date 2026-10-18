@@ -129,6 +129,7 @@ def coordinator(mock_hass, mock_api, pairing):
         coord._dnd_enabled = None
         coord._last_opening = None
         coord._notification_start_time = None
+        coord._push_retry_at = None
         coord._processed_notifications = []
         coord.update_interval = None
     return coord
@@ -891,6 +892,94 @@ class TestNotificationLifecycle:
         mock_api.register_app_token.assert_not_called()
         listener.start.assert_not_awaited()
         assert full_coordinator._notification_start_time is None
+
+    async def test_setup_survives_a_failed_registration(self, full_coordinator, mock_api, tmp_path):
+        """Google can refuse the registration: load without push, retry later (#150)."""
+        listener = MagicMock()
+        listener.register = AsyncMock(side_effect=RuntimeError("PHONE_REGISTRATION_ERROR"))
+        listener.start = AsyncMock()
+        with patch(
+            "custom_components.fermax_blue.coordinator.FermaxNotificationListener",
+            return_value=listener,
+        ):
+            await full_coordinator.setup_notifications(tmp_path)
+
+        mock_api.register_app_token.assert_not_called()
+        listener.start.assert_not_awaited()
+        assert full_coordinator._push_retry_at > time.monotonic()
+
+    @staticmethod
+    def _unregistered(coordinator, *, register_error=None):
+        listener = MagicMock(is_started=False, is_stopped=False)
+        listener.register = AsyncMock(return_value="fcm_tok", side_effect=register_error)
+        listener.ensure_running = AsyncMock()
+
+        async def start():
+            listener.is_started = True
+
+        listener.start = AsyncMock(side_effect=start)
+        coordinator.notification_listener = listener
+        coordinator.async_update_listeners = MagicMock()
+        return listener
+
+    async def test_watchdog_retries_the_registration_when_due(self, full_coordinator, mock_api):
+        listener = self._unregistered(full_coordinator)
+        full_coordinator._push_retry_at = time.monotonic() - 1
+
+        await full_coordinator.ensure_notifications_running()
+
+        mock_api.register_app_token.assert_awaited_once_with("fcm_tok", active=True)
+        listener.start.assert_awaited_once()
+        assert full_coordinator._push_retry_at is None
+        full_coordinator.async_update_listeners.assert_called_once()
+
+    async def test_watchdog_waits_for_the_retry_time(self, full_coordinator):
+        listener = self._unregistered(full_coordinator)
+        full_coordinator._push_retry_at = time.monotonic() + 60
+
+        await full_coordinator.ensure_notifications_running()
+
+        listener.register.assert_not_awaited()
+        listener.ensure_running.assert_not_awaited()
+
+    async def test_watchdog_leaves_a_stopped_listener_alone(self, full_coordinator):
+        listener = self._unregistered(full_coordinator)
+        listener.is_stopped = True
+        full_coordinator._push_retry_at = time.monotonic() - 1
+
+        await full_coordinator.ensure_notifications_running()
+
+        listener.register.assert_not_awaited()
+
+    async def test_failed_retry_is_rescheduled(self, full_coordinator, mock_api):
+        self._unregistered(full_coordinator, register_error=RuntimeError("boom"))
+        full_coordinator._push_retry_at = time.monotonic() - 1
+
+        await full_coordinator.ensure_notifications_running()
+
+        mock_api.register_app_token.assert_not_called()
+        assert full_coordinator._push_retry_at > time.monotonic()
+
+    async def test_start_notifications_registers_now_when_pending(self, full_coordinator):
+        listener = self._unregistered(full_coordinator)
+        full_coordinator._push_retry_at = time.monotonic() + 600
+
+        assert await full_coordinator.start_notifications() is True
+        listener.register.assert_awaited_once()
+        listener.start.assert_awaited_once()
+
+    async def test_start_notifications_reports_a_failed_registration(self, full_coordinator):
+        self._unregistered(full_coordinator, register_error=RuntimeError("boom"))
+        full_coordinator._push_retry_at = time.monotonic() + 600
+
+        assert await full_coordinator.start_notifications() is False
+
+    async def test_start_notifications_starts_a_registered_listener(self, full_coordinator):
+        listener = self._unregistered(full_coordinator)
+
+        assert await full_coordinator.start_notifications() is True
+        listener.register.assert_not_awaited()
+        listener.start.assert_awaited_once()
 
     async def test_stop_unregisters_token(self, full_coordinator, mock_api):
         listener = MagicMock()

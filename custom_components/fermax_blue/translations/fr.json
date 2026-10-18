@@ -189,6 +189,9 @@
     },
     "send_audio_tts_failed": {
       "message": "Le message vocal n'a pas pu être généré."
+    },
+    "push_registration_failed": {
+      "message": "Impossible d'enregistrer les notifications de sonnette auprès de Google. L'intégration réessaie toutes les 15 minutes ; réessayez plus tard."
     }
   }
 }

@@ -189,6 +189,9 @@
     },
     "send_audio_tts_failed": {
       "message": "Het gesproken bericht kon niet worden gegenereerd."
+    },
+    "push_registration_failed": {
+      "message": "De deurbelmeldingen konden niet bij Google worden geregistreerd. De integratie probeert het elke 15 minuten opnieuw; probeer het later nog eens."
     }
   }
 }

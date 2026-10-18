@@ -330,6 +330,11 @@ class FermaxNotificationListener:
         """Return True if the listener is running."""
         return self._push_client is not None and self._push_client.is_started()
 
+    @property
+    def is_stopped(self) -> bool:
+        """Return True if the listener was stopped on purpose (switch off, unload)."""
+        return self._stopped
+
     async def wait_started(self) -> None:
         """Return once the client has connected and logged in."""
         # The client has no state callback to hang an Event on, so poll it

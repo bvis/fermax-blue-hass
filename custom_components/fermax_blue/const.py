@@ -95,3 +95,6 @@ RECORDINGS_DIR = "fermax_recordings"
 # The upstream firebase_messaging client aborts the receiver after repeated
 # transport errors and never reconnects on its own; the watchdog revives it.
 FCM_WATCHDOG_INTERVAL = 60
+# Google can refuse a push registration (PHONE_REGISTRATION_ERROR, #150): the
+# integration loads without push and the watchdog tries again this often (seconds)
+FCM_REGISTER_RETRY_INTERVAL = 900

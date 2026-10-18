@@ -560,6 +560,7 @@ async def test_ensure_running_leaves_a_stopped_listener_alone(listener, caplog):
 
     fcm_cls.assert_not_called()
     assert "restart scheduled" not in caplog.text
+    assert listener.is_stopped is True
 
 
 async def test_start_after_stop_rearms_the_watchdog(listener):

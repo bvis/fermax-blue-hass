@@ -1180,7 +1180,9 @@ class TestNotificationSwitch:
         """The switch must not read the listener while it is still connecting."""
         calls = []
         listener = mock_coordinator.notification_listener
-        listener.start = AsyncMock(side_effect=lambda: calls.append("start"))
+        mock_coordinator.start_notifications = AsyncMock(
+            side_effect=lambda: calls.append("start") or True
+        )
         listener.wait_started = AsyncMock(side_effect=lambda: calls.append("connected"))
         switch = self._make(mock_coordinator)
         switch.async_write_ha_state.side_effect = lambda: calls.append("write")
@@ -1190,14 +1192,27 @@ class TestNotificationSwitch:
         assert calls == ["start", "connected", "write"]
 
     @pytest.mark.asyncio
+    async def test_turn_on_raises_when_registration_fails(self, mock_coordinator):
+        from homeassistant.exceptions import HomeAssistantError
+
+        mock_coordinator.start_notifications = AsyncMock(return_value=False)
+        switch = self._make(mock_coordinator)
+
+        with pytest.raises(HomeAssistantError) as err:
+            await switch.async_turn_on()
+
+        assert err.value.translation_key == "push_registration_failed"
+        switch.async_write_ha_state.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_turn_on_starts_the_listener(self, mock_coordinator):
-        mock_coordinator.notification_listener.start = AsyncMock()
+        mock_coordinator.start_notifications = AsyncMock(return_value=True)
         mock_coordinator.notification_listener.wait_started = AsyncMock()
         switch = self._make(mock_coordinator)
 
         await switch.async_turn_on()
 
-        mock_coordinator.notification_listener.start.assert_awaited_once()
+        mock_coordinator.start_notifications.assert_awaited_once()
         assert switch._is_on is True
 
     @pytest.mark.asyncio

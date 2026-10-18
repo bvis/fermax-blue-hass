@@ -11,6 +11,7 @@ from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import STATE_ON
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
 
@@ -64,7 +65,10 @@ class FermaxNotificationSwitch(FermaxBlueEntity, SwitchEntity):
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Enable notifications."""
         if self.coordinator.notification_listener:
-            await self.coordinator.notification_listener.start()
+            if not await self.coordinator.start_notifications():
+                raise HomeAssistantError(
+                    translation_domain=DOMAIN, translation_key="push_registration_failed"
+                )
             with contextlib.suppress(TimeoutError):
                 async with asyncio.timeout(NOTIFICATION_START_TIMEOUT):
                     await self.coordinator.notification_listener.wait_started()
