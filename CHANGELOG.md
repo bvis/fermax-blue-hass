@@ -1,5 +1,13 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+- **Sending audio no longer stalls Home Assistant** — `fermax_blue.send_audio` and the auto-response decoded the whole audio file on Home Assistant's event loop, so a long file or a slow disk (SD card, network share) froze everything else while it ran. Decoding now runs in a worker thread, and so does creating the recordings folder when a session starts.
+
+### Removed
+- **The Home Assistant TTS fallback of `send_audio`** — when the built-in text-to-speech failed, `send_audio` tried `tts.google_translate_say` on a placeholder player and picked the newest file in `/config/tts/`, which never produced the message. A failed text message now raises the usual error straight away.
+
 ## [0.23.1-beta.1] - 2026-10-18
 
 ### Fixed

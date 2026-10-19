@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import threading
 import time
 from datetime import timedelta
 from pathlib import Path
@@ -504,7 +505,7 @@ class TestSendAudioService:
         ) as generate:
             await handler(_service_call(message="hello", language="en"))
 
-        generate.assert_awaited_once_with(mock_hass, "hello", "en")
+        generate.assert_awaited_once_with("hello", "en")
         session.send_audio.assert_awaited_once_with(str(tts_file))
         assert not tts_file.exists()  # generated temp file is removed after use
 
@@ -661,16 +662,16 @@ class TestOptionsUpdated:
 
 
 class TestGenerateTtsAudio:
-    """_generate_tts_audio: gTTS first, HA TTS service as fallback."""
+    """_generate_tts_audio: gTTS writes a temp MP3, off the event loop."""
 
-    async def test_gtts_generates_a_file(self, mock_hass):
+    async def test_gtts_generates_a_file(self):
         tts_instance = MagicMock()
         tts_instance.save = MagicMock(side_effect=lambda name: Path(name).write_bytes(b"mp3"))
         gtts_module = MagicMock()
         gtts_module.gTTS = MagicMock(return_value=tts_instance)
 
         with patch.dict(sys.modules, {"gtts": gtts_module}):
-            result = await _generate_tts_audio(mock_hass, "hola", "es")
+            result = await _generate_tts_audio("hola", "es")
 
         gtts_module.gTTS.assert_called_once_with(text="hola", lang="es")
         assert result is not None
@@ -678,49 +679,30 @@ class TestGenerateTtsAudio:
         tts_instance.save.assert_called_once_with(result)
         # unlink raises FileNotFoundError if the file was not actually created
         os.unlink(result)
-        mock_hass.services.async_call.assert_not_awaited()
 
-    async def test_missing_gtts_falls_back_to_ha_service(self, mock_hass, tmp_path):
-        older = tmp_path / "older.mp3"
-        newer = tmp_path / "newer.mp3"
-        older.write_bytes(b"1")
-        newer.write_bytes(b"2")
-        past = time.time() - 100
-        os.utime(older, (past, past))
-
-        with (
-            # None in sys.modules makes `from gtts import gTTS` raise ImportError
-            patch.dict(sys.modules, {"gtts": None}),
-            patch("glob.glob", return_value=[str(older), str(newer)]),
-        ):
-            result = await _generate_tts_audio(mock_hass, "hello", "en")
-
-        assert result == str(newer)  # most recent TTS output wins
-        call = mock_hass.services.async_call.call_args
-        assert call.args[0] == "tts"
-        assert call.args[1] == "google_translate_say"
-        assert call.kwargs["blocking"] is True
-
-    async def test_gtts_error_falls_back_then_none_without_files(self, mock_hass):
+    async def test_returns_none_when_gtts_fails(self):
         gtts_module = MagicMock()
         gtts_module.gTTS = MagicMock(side_effect=ValueError("bad language"))
 
-        with (
-            patch.dict(sys.modules, {"gtts": gtts_module}),
-            patch("glob.glob", return_value=[]),
-        ):
-            result = await _generate_tts_audio(mock_hass, "hello", "xx")
+        with patch.dict(sys.modules, {"gtts": gtts_module}):
+            assert await _generate_tts_audio("hello", "xx") is None
 
-        assert result is None
-        mock_hass.services.async_call.assert_awaited_once()
+    async def test_file_is_written_in_a_worker_thread(self):
+        loop_thread = threading.get_ident()
+        save_threads: list[int] = []
+        tts_instance = MagicMock()
+        tts_instance.save = MagicMock(
+            side_effect=lambda name: (save_threads.append(threading.get_ident()), os.unlink(name))
+        )
+        gtts_module = MagicMock()
+        gtts_module.gTTS = MagicMock(return_value=tts_instance)
 
-    async def test_returns_none_when_everything_fails(self, mock_hass):
-        mock_hass.services.async_call.side_effect = RuntimeError("tts unavailable")
+        with patch.dict(sys.modules, {"gtts": gtts_module}):
+            await _generate_tts_audio("hola", "es")
 
-        with patch.dict(sys.modules, {"gtts": None}):
-            result = await _generate_tts_audio(mock_hass, "hello", "en")
+        assert len(save_threads) == 1
 
-        assert result is None
+        assert save_threads[0] != loop_thread
 
 
 class TestUnloadEntry:

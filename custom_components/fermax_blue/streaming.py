@@ -172,6 +172,44 @@ def _parameter_sets(data: bytes) -> tuple[bytes, bytes]:
     return sps, pps
 
 
+def _decode_audio_file(audio_path: str) -> tuple[list[Any], list[bytes]]:
+    """Decode an audio file into 960-sample 48 kHz mono s16 frames (blocking).
+
+    Returns the frames for the producer track and the same PCM chunks as bytes
+    for the recording mix; both empty when the file holds no audio.
+    """
+    import av
+    import numpy as np
+
+    resampler = av.AudioResampler(format="s16", layout="mono", rate=48000)
+    all_samples: list[Any] = []
+    with av.open(audio_path) as container:
+        for packet in container.demux(audio=0):
+            for decoded in packet.decode():
+                for resampled in resampler.resample(decoded):  # type: ignore[arg-type]
+                    all_samples.append(resampled.to_ndarray().flatten())
+    if not all_samples:
+        return [], []
+
+    # Chunk into 960-sample frames (matching silence track)
+    raw = np.concatenate(all_samples)
+    chunk_size = 960
+    frames: list[Any] = []
+    pcm_chunks: list[bytes] = []
+    for pts in range(0, len(raw), chunk_size):
+        chunk = raw[pts : pts + chunk_size]
+        if len(chunk) < chunk_size:
+            chunk = np.pad(chunk, (0, chunk_size - len(chunk)))
+        pcm = chunk.astype(np.int16).tobytes()
+        frame = av.AudioFrame(format="s16", layout="mono", samples=chunk_size)
+        frame.planes[0].update(pcm)
+        frame.sample_rate = 48000
+        frame.pts = pts
+        frames.append(frame)
+        pcm_chunks.append(pcm)
+    return frames, pcm_chunks
+
+
 def _write_mp4(
     path: str,
     access_units: list[tuple[bytes, int]],
@@ -1171,7 +1209,7 @@ class FermaxStreamSession:
             return False
 
         # 8. Initialize recording (frames collected in _grab_frames)
-        self._init_recording()
+        await self._init_recording()
 
         # 9. Start frame grabber + audio recorder
         self._active = True
@@ -1181,7 +1219,7 @@ class FermaxStreamSession:
         _LOGGER.info("Stream session started for room %s", self._room_id)
         return True
 
-    def _init_recording(self) -> None:
+    async def _init_recording(self) -> None:
         """Initialize frame collection for recording."""
         try:
             from datetime import datetime
@@ -1191,7 +1229,7 @@ class FermaxStreamSession:
                 if hasattr(self, "_media_root")
                 else "/media/fermax_recordings"
             )
-            os.makedirs(recordings_dir, exist_ok=True)
+            await asyncio.to_thread(os.makedirs, recordings_dir, exist_ok=True)
 
             timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
             self._recording_path = f"{recordings_dir}/{timestamp}.mp4"
@@ -1478,40 +1516,10 @@ class FermaxStreamSession:
             return False
 
         try:
-            import av
-
-            # Read and resample audio to match the producer format (48kHz mono s16)
-            container = av.open(audio_path)
-            resampler = av.AudioResampler(format="s16", layout="mono", rate=48000)
-
-            import numpy as np
-
-            all_samples: list[Any] = []
-            for packet in container.demux(audio=0):
-                for decoded in packet.decode():
-                    for resampled in resampler.resample(decoded):  # type: ignore[arg-type]
-                        all_samples.append(resampled.to_ndarray().flatten())
-            container.close()
-
-            if not all_samples:
+            frames, pcm_chunks = await asyncio.to_thread(_decode_audio_file, audio_path)
+            if not frames:
                 _LOGGER.error("No audio in %s", audio_path)
                 return False
-
-            # Chunk into 960-sample frames (matching silence track)
-            raw = np.concatenate(all_samples)
-            chunk_size = 960
-            frames: list[Any] = []
-            pts = 0
-            for i in range(0, len(raw), chunk_size):
-                chunk = raw[i : i + chunk_size]
-                if len(chunk) < chunk_size:
-                    chunk = np.pad(chunk, (0, chunk_size - len(chunk)))
-                frame = av.AudioFrame(format="s16", layout="mono", samples=chunk_size)
-                frame.planes[0].update(chunk.astype(np.int16).tobytes())
-                frame.sample_rate = 48000
-                frame.pts = pts
-                pts += chunk_size
-                frames.append(frame)
 
             frame_queue: asyncio.Queue[Any] = asyncio.Queue()
             for f in frames:
@@ -1525,11 +1533,7 @@ class FermaxStreamSession:
 
             # Save sent audio PCM for recording mix
             if hasattr(self, "_recording_sent_audio"):
-                for i in range(0, len(raw), chunk_size):
-                    chunk = raw[i : i + chunk_size]
-                    if len(chunk) < chunk_size:
-                        chunk = np.pad(chunk, (0, chunk_size - len(chunk)))
-                    self._recording_sent_audio.append(chunk.astype(np.int16).tobytes())
+                self._recording_sent_audio.extend(pcm_chunks)
 
             self._switchable_track.set_source(_FileAudioSource())
             _LOGGER.info("Audio playing: %s (%d frames)", audio_path, len(frames))

@@ -6,6 +6,7 @@ import io
 import json
 import logging
 import os
+import threading
 import wave
 from pathlib import Path
 from types import SimpleNamespace
@@ -1144,10 +1145,10 @@ def _strict_decode(path):
 class TestRecording:
     """Recording init and MP4 muxing of the panel's own H264 (or JPEG frames)."""
 
-    def test_init_recording_prepares_buffers(self, tmp_path):
+    async def test_init_recording_prepares_buffers(self, tmp_path):
         session = _bare_session(str(tmp_path))
 
-        session._init_recording()
+        await session._init_recording()
 
         assert (tmp_path / "fermax_recordings").is_dir()
         assert session._recording_path.endswith(".mp4")
@@ -1157,14 +1158,31 @@ class TestRecording:
         assert session._recording_sent_audio == []
         assert session._audio_sample_rate == 48000
 
-    def test_init_recording_failure_disables_recording(self, tmp_path):
+    async def test_init_recording_failure_disables_recording(self, tmp_path):
         blocker = tmp_path / "blocker"
         blocker.write_text("not a directory")
         session = _bare_session(str(blocker))
 
-        session._init_recording()
+        await session._init_recording()
 
         assert session._recording_path is None
+
+    async def test_init_recording_creates_the_dir_off_the_loop(self, tmp_path):
+        loop_thread = threading.get_ident()
+        makedirs_threads: list[int] = []
+        real_makedirs = os.makedirs
+
+        def _makedirs(*args, **kwargs):
+            makedirs_threads.append(threading.get_ident())
+            real_makedirs(*args, **kwargs)
+
+        session = _bare_session(str(tmp_path))
+        with patch("custom_components.fermax_blue.streaming.os.makedirs", _makedirs):
+            await session._init_recording()
+
+        assert len(makedirs_threads) == 1
+
+        assert makedirs_threads[0] != loop_thread
 
     def test_parameter_sets(self):
         from custom_components.fermax_blue.streaming import _parameter_sets
@@ -1362,6 +1380,27 @@ class TestSendAudio:
                 break
 
         assert session._switchable_track._source is None
+
+    async def test_file_is_decoded_off_the_loop(self, tmp_path):
+        from custom_components.fermax_blue import streaming
+
+        clip = tmp_path / "clip.wav"
+        _write_wav(clip, num_samples=800, rate=8000)
+        session = self._live_session()
+        loop_thread = threading.get_ident()
+        decode_threads: list[int] = []
+        real_decode = streaming._decode_audio_file
+
+        def _decode(path):
+            decode_threads.append(threading.get_ident())
+            return real_decode(path)
+
+        with patch.object(streaming, "_decode_audio_file", _decode):
+            assert await session.send_audio(str(clip)) is True
+
+        assert len(decode_threads) == 1
+
+        assert decode_threads[0] != loop_thread
 
     async def test_requires_active_producer(self, tmp_path):
         session = _bare_session()
@@ -1867,9 +1906,9 @@ class TestEncodedVideo:
         watching[0] = False
         assert session._forward_encoded(self.P, 6) is False  # leave at once
 
-    def test_recording_starts_at_the_first_keyframe(self, tmp_path):
+    async def test_recording_starts_at_the_first_keyframe(self, tmp_path):
         session = _bare_session(str(tmp_path))
-        session._init_recording()
+        await session._init_recording()
 
         session._forward_encoded(self.P, 0)
         assert session._recording_video == []
@@ -1879,10 +1918,10 @@ class TestEncodedVideo:
         assert session._recording_video_wall is not None
         assert session._recording_video_wall_last >= session._recording_video_wall
 
-    def test_panel_clock_is_rebased_to_90khz(self, tmp_path):
+    async def test_panel_clock_is_rebased_to_90khz(self, tmp_path):
         # 1 kHz stamps (40 ticks per frame at 25 fps) come out as 90 kHz ones
         session = _bare_session(str(tmp_path))
-        session._init_recording()
+        await session._init_recording()
         session._forward_encoded(self.IDR, 1000)
         session._forward_encoded(self.P, 1040)
         session._forward_encoded(self.P, 1080)
@@ -1890,7 +1929,7 @@ class TestEncodedVideo:
 
         # a real 90 kHz clock is left alone
         session = _bare_session(str(tmp_path))
-        session._init_recording()
+        await session._init_recording()
         session._forward_encoded(self.IDR, 5000)
         session._forward_encoded(self.P, 5000)  # duplicate stamp: still undecided
         session._forward_encoded(self.P, 8600)

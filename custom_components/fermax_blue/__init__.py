@@ -275,7 +275,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: FermaxBlueConfigEntry) -
 
         # If message provided, generate TTS audio file
         if message and not audio_file:
-            audio_file = await _generate_tts_audio(hass, message, language)
+            audio_file = await _generate_tts_audio(message, language)
             if not audio_file:
                 raise HomeAssistantError(
                     translation_domain=DOMAIN, translation_key="send_audio_tts_failed"
@@ -381,58 +381,23 @@ async def _async_options_updated(hass: HomeAssistant, entry: FermaxBlueConfigEnt
         _LOGGER.info("Options updated (hot reload, no restart needed)")
 
 
-async def _generate_tts_audio(hass: HomeAssistant, message: str, language: str) -> str | None:
-    """Generate a WAV file from text using Google Translate TTS."""
+async def _generate_tts_audio(message: str, language: str) -> str | None:
+    """Generate an MP3 file from text using Google Translate TTS."""
+    from gtts import gTTS
+
+    def _generate_sync() -> str:
+        tts = gTTS(text=message, lang=language)
+        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
+            tts.save(f.name)
+            return f.name
+
     try:
-        from gtts import gTTS
-
-        def _generate_sync() -> str:
-            tts = gTTS(text=message, lang=language)
-            with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
-                tts.save(f.name)
-                return f.name
-
         path = await asyncio.to_thread(_generate_sync)
-        _LOGGER.info("TTS audio generated: %s", path)
-        return path
-    except ImportError:
-        _LOGGER.debug("gtts not available, trying HA tts service")
     except Exception:
         _LOGGER.exception("Failed to generate TTS audio")
-
-    # Fallback: try using HA's built-in TTS
-    try:
-        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tts_file:
-            tts_file.close()
-
-        await hass.services.async_call(
-            "tts",
-            "google_translate_say",
-            {
-                "message": message,
-                "language": language,
-                "entity_id": "media_player.none",  # Dummy, we just want the file
-            },
-            blocking=True,
-        )
-        # HA TTS generates files in /config/tts/
-        import glob
-
-        def _find_latest_tts() -> str | None:
-            files = sorted(
-                glob.glob("/config/tts/*.mp3"),
-                key=lambda f: Path(f).stat().st_mtime,
-                reverse=True,
-            )
-            return files[0] if files else None
-
-        result = await asyncio.to_thread(_find_latest_tts)
-        if result:
-            return result
-    except Exception:
-        _LOGGER.debug("HA TTS fallback failed", exc_info=True)
-
-    return None
+        return None
+    _LOGGER.info("TTS audio generated: %s", path)
+    return path
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: FermaxBlueConfigEntry) -> bool:
