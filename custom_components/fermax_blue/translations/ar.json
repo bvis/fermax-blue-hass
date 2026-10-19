@@ -22,6 +22,27 @@
           "firebase_project_id": "Firebase Project ID",
           "firebase_package_name": "Firebase Package Name"
         }
+      },
+      "reauth_confirm": {
+        "title": "إعادة المصادقة",
+        "description": "رفضت Fermax كلمة المرور لـ {username}. أدخل كلمة المرور الحالية لحساب Fermax Blue.",
+        "data": {
+          "password": "كلمة المرور"
+        }
+      },
+      "reconfigure": {
+        "title": "بيانات اعتماد واجهة البرمجة",
+        "description": "حدّث بيانات اعتماد واجهة البرمجة وFirebase لهذا الحساب. يُعاد تحميل التكامل بها.",
+        "data": {
+          "fermax_auth_url": "Fermax Auth URL",
+          "fermax_base_url": "Fermax Base URL",
+          "fermax_auth_basic": "Fermax Auth Basic header",
+          "firebase_api_key": "Firebase API Key",
+          "firebase_sender_id": "Firebase Sender ID",
+          "firebase_app_id": "Firebase App ID",
+          "firebase_project_id": "Firebase Project ID",
+          "firebase_package_name": "Firebase Package Name"
+        }
       }
     },
     "error": {
@@ -31,7 +52,9 @@
       "no_devices": "لم يتم العثور على أجهزة مقترنة."
     },
     "abort": {
-      "already_configured": "هذا الحساب مهيأ بالفعل."
+      "already_configured": "هذا الحساب مهيأ بالفعل.",
+      "reauth_successful": "تم تحديث كلمة المرور.",
+      "reconfigure_successful": "تم تحديث بيانات الاعتماد."
     }
   },
   "options": {
@@ -45,9 +68,13 @@
           "force_streaming_deps": "تثبيت مكتبات الفيديو المباشر دون التحقق من av"
         },
         "data_description": {
-          "force_streaming_deps": "فقط لإصدارات Home Assistant التي لا يمكن فيها تثبيت الفيديو المباشر (2026.10 وما بعده، حتى يصدر إصدار متوافق من aiortc). يثبّت الإصدارات المختبرة من aiortc وpymediasoup دون التحقق منها مقابل إصدار av المرفق مع Home Assistant. أوقفه بمجرد أن يُثبَّت الفيديو المباشر بشكل طبيعي."
+          "force_streaming_deps": "فقط لإصدارات Home Assistant التي لا يمكن فيها تثبيت الفيديو المباشر (2026.10 وما بعده، حتى يصدر إصدار متوافق من aiortc). يثبّت الإصدارات المختبرة من aiortc وpymediasoup دون التحقق منها مقابل إصدار av المرفق مع Home Assistant. أوقفه بمجرد أن يُثبَّت الفيديو المباشر بشكل طبيعي.",
+          "auto_response_file": "يُشغَّل عبر الإنتركم عندما يكون وضع المكالمة هو الرد التلقائي. اتركه فارغًا لإيقاف الرد التلقائي."
         }
       }
+    },
+    "error": {
+      "invalid_path": "يجب أن يكون الملف داخل مجلدات الوسائط (/media أو /config/media)."
     }
   },
   "entity": {
@@ -129,7 +156,7 @@
     },
     "button": {
       "open_door": {
-        "name": "فتح الباب"
+        "name": "فتح {door}"
       },
       "camera_preview": {
         "name": "معاينة الكاميرا"
@@ -192,6 +219,39 @@
     },
     "push_registration_failed": {
       "message": "تعذّر تسجيل إشعارات جرس الباب لدى Google. تعيد التكاملة المحاولة كل 15 دقيقة؛ حاول مرة أخرى لاحقًا."
+    },
+    "unknown_entity": {
+      "message": "{entity_id} ليس كيانًا من Fermax Blue."
+    }
+  },
+  "issues": {
+    "streaming_unavailable": {
+      "title": "الفيديو المباشر متوقف",
+      "description": "لا يمكن تثبيت مكتبات الفيديو المباشر (aiortc وpymediasoup) على هذا الإصدار من Home Assistant لأنها لا تدعم إصدار av المرفق به. كل شيء آخر يستمر في العمل. يعود الفيديو المباشر تلقائيًا عند صدور إصدار متوافق من aiortc؛ وحتى ذلك الحين يمكنك تفعيل 'تثبيت مكتبات الفيديو المباشر دون التحقق من av' في خيارات التكامل."
+    }
+  },
+  "services": {
+    "send_audio": {
+      "name": "إرسال صوت إلى الإنتركم",
+      "description": "يشغّل ملفًا صوتيًا أو رسالة منطوقة عبر سماعة الإنتركم أثناء جلسة مباشرة.",
+      "fields": {
+        "entity_id": {
+          "name": "الإنتركم",
+          "description": "كيان من Fermax Blue للإنتركم المراد التحدث عبره. الافتراضي: الإنتركم الذي لديه جلسة مباشرة."
+        },
+        "audio_file": {
+          "name": "ملف صوتي",
+          "description": "مسار ملف WAV أو MP3 أو OGG داخل /media أو /config/media."
+        },
+        "message": {
+          "name": "رسالة",
+          "description": "نص يُنطق عبر الإنتركم (تحويل النص إلى كلام من ترجمة Google). أدخل هذا أو ملفًا صوتيًا."
+        },
+        "language": {
+          "name": "اللغة",
+          "description": "لغة الرسالة المنطوقة، مثل ar أو en."
+        }
+      }
     }
   }
 }

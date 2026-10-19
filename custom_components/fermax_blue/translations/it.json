@@ -22,6 +22,27 @@
           "firebase_project_id": "Firebase Project ID",
           "firebase_package_name": "Firebase Package Name"
         }
+      },
+      "reauth_confirm": {
+        "title": "Autenticati di nuovo",
+        "description": "Fermax ha rifiutato la password di {username}. Inserisci la password attuale del tuo account Fermax Blue.",
+        "data": {
+          "password": "Password"
+        }
+      },
+      "reconfigure": {
+        "title": "Credenziali API",
+        "description": "Aggiorna le credenziali API e Firebase di questo account. L'integrazione si ricarica con esse.",
+        "data": {
+          "fermax_auth_url": "Fermax Auth URL",
+          "fermax_base_url": "Fermax Base URL",
+          "fermax_auth_basic": "Fermax Auth Basic header",
+          "firebase_api_key": "Firebase API Key",
+          "firebase_sender_id": "Firebase Sender ID",
+          "firebase_app_id": "Firebase App ID",
+          "firebase_project_id": "Firebase Project ID",
+          "firebase_package_name": "Firebase Package Name"
+        }
       }
     },
     "error": {
@@ -31,7 +52,9 @@
       "no_devices": "Nessun dispositivo associato trovato su questo account."
     },
     "abort": {
-      "already_configured": "Questo account è già configurato."
+      "already_configured": "Questo account è già configurato.",
+      "reauth_successful": "La password è stata aggiornata.",
+      "reconfigure_successful": "Le credenziali sono state aggiornate."
     }
   },
   "options": {
@@ -45,9 +68,13 @@
           "force_streaming_deps": "Installa le librerie del video in diretta senza controllare av"
         },
         "data_description": {
-          "force_streaming_deps": "Solo per le versioni di Home Assistant in cui il video in diretta non si può installare (2026.10 e successive, finché non esce una versione compatibile di aiortc). Installa le versioni testate di aiortc e pymediasoup senza verificarle rispetto alla versione di av fornita da Home Assistant. Disattivalo quando il video in diretta si installa normalmente."
+          "force_streaming_deps": "Solo per le versioni di Home Assistant in cui il video in diretta non si può installare (2026.10 e successive, finché non esce una versione compatibile di aiortc). Installa le versioni testate di aiortc e pymediasoup senza verificarle rispetto alla versione di av fornita da Home Assistant. Disattivalo quando il video in diretta si installa normalmente.",
+          "auto_response_file": "Riprodotto dal videocitofono quando la modalità di chiamata è Risposta automatica. Lascia vuoto per disattivare la risposta automatica."
         }
       }
+    },
+    "error": {
+      "invalid_path": "Il file deve trovarsi nelle cartelle multimediali (/media o /config/media)."
     }
   },
   "entity": {
@@ -129,7 +156,7 @@
     },
     "button": {
       "open_door": {
-        "name": "Apri porta"
+        "name": "Apri {door}"
       },
       "camera_preview": {
         "name": "Anteprima telecamera"
@@ -192,6 +219,39 @@
     },
     "push_registration_failed": {
       "message": "Non è stato possibile registrare le notifiche del campanello presso Google. L'integrazione riprova ogni 15 minuti; riprova più tardi."
+    },
+    "unknown_entity": {
+      "message": "{entity_id} non è un'entità Fermax Blue."
+    }
+  },
+  "issues": {
+    "streaming_unavailable": {
+      "title": "Il video in diretta è disattivato",
+      "description": "Le librerie del video in diretta (aiortc, pymediasoup) non possono essere installate su questa versione di Home Assistant perché non supportano la versione di av inclusa. Tutto il resto continua a funzionare. Il video in diretta torna da solo quando uscirà una versione compatibile di aiortc; nel frattempo puoi attivare 'Installa le librerie del video in diretta senza controllare av' nelle opzioni dell'integrazione."
+    }
+  },
+  "services": {
+    "send_audio": {
+      "name": "Invia audio al videocitofono",
+      "description": "Riproduce un file audio o un messaggio parlato dall'altoparlante del videocitofono durante una sessione in diretta.",
+      "fields": {
+        "entity_id": {
+          "name": "Videocitofono",
+          "description": "Un'entità Fermax Blue del videocitofono da usare. Per impostazione predefinita, quello con una sessione in diretta."
+        },
+        "audio_file": {
+          "name": "File audio",
+          "description": "Percorso di un file WAV, MP3 o OGG in /media o /config/media."
+        },
+        "message": {
+          "name": "Messaggio",
+          "description": "Testo da pronunciare dal videocitofono (TTS di Google Traduttore). Indica questo o un file audio."
+        },
+        "language": {
+          "name": "Lingua",
+          "description": "Lingua del messaggio parlato, ad esempio it o en."
+        }
+      }
     }
   }
 }

@@ -5,25 +5,28 @@ from __future__ import annotations
 import logging
 
 from homeassistant.components.select import SelectEntity
-from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
 
-from .const import CALL_MODES, DOMAIN
-from .coordinator import FermaxBlueCoordinator
+from .const import CALL_MODES
+from .coordinator import FermaxBlueConfigEntry, FermaxBlueCoordinator
 from .entity import FermaxBlueEntity
 
 _LOGGER = logging.getLogger(__name__)
 
+# Coordinator-driven or local: no per-entity update calls
+PARALLEL_UPDATES = 0
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
+    entry: FermaxBlueConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Fermax Blue select entities."""
-    coordinators: list[FermaxBlueCoordinator] = hass.data[DOMAIN][entry.entry_id]
+    coordinators = entry.runtime_data
     async_add_entities(FermaxCallModeSelect(c) for c in coordinators)
 
 
@@ -31,6 +34,7 @@ class FermaxCallModeSelect(FermaxBlueEntity, SelectEntity, RestoreEntity):
     """Select entity to control doorbell call behavior."""
 
     _attr_translation_key = "call_mode"
+    _attr_entity_category = EntityCategory.CONFIG
     _attr_options = CALL_MODES
 
     def __init__(self, coordinator: FermaxBlueCoordinator) -> None:

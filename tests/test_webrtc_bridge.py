@@ -207,6 +207,27 @@ class TestPlaceholderVideo:
             progress[0] = 80.0
             assert (await track.recv()).to_ndarray().tolist() != first.tolist()
 
+    async def test_placeholder_is_drawn_off_the_loop(self):
+        import threading
+
+        loop_thread = threading.get_ident()
+        threads = []
+        real = webrtc_bridge._placeholder_frame
+
+        def draw(jpeg, progress=None):
+            threads.append(threading.get_ident())
+            return real(jpeg, progress)
+
+        with (
+            patch.object(webrtc_bridge, "PLACEHOLDER_FPS", 1000),
+            patch.object(webrtc_bridge, "_placeholder_frame", side_effect=draw),
+        ):
+            track = webrtc_bridge._create_switchable_video_track(lambda: None, lambda: 40.0)
+            await track.recv()
+
+        assert threads
+        assert loop_thread not in threads
+
     async def test_ended_source_falls_back_to_placeholder(self):
         class Dead:
             async def recv(self):

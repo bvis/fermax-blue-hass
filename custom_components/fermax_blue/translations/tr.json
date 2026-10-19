@@ -22,6 +22,27 @@
           "firebase_project_id": "Firebase Project ID",
           "firebase_package_name": "Firebase Package Name"
         }
+      },
+      "reauth_confirm": {
+        "title": "Yeniden kimlik doğrula",
+        "description": "Fermax, {username} için parolayı reddetti. Fermax Blue hesabının geçerli parolasını gir.",
+        "data": {
+          "password": "Parola"
+        }
+      },
+      "reconfigure": {
+        "title": "API kimlik bilgileri",
+        "description": "Bu hesabın API ve Firebase kimlik bilgilerini güncelle. Entegrasyon bunlarla yeniden yüklenir.",
+        "data": {
+          "fermax_auth_url": "Fermax Auth URL",
+          "fermax_base_url": "Fermax Base URL",
+          "fermax_auth_basic": "Fermax Auth Basic header",
+          "firebase_api_key": "Firebase API Key",
+          "firebase_sender_id": "Firebase Sender ID",
+          "firebase_app_id": "Firebase App ID",
+          "firebase_project_id": "Firebase Project ID",
+          "firebase_package_name": "Firebase Package Name"
+        }
       }
     },
     "error": {
@@ -31,7 +52,9 @@
       "no_devices": "Bu hesapta eşleştirilmiş cihaz bulunamadı."
     },
     "abort": {
-      "already_configured": "Bu hesap zaten yapılandırılmış."
+      "already_configured": "Bu hesap zaten yapılandırılmış.",
+      "reauth_successful": "Parola güncellendi.",
+      "reconfigure_successful": "Kimlik bilgileri güncellendi."
     }
   },
   "options": {
@@ -45,9 +68,13 @@
           "force_streaming_deps": "Canlı video kitaplıklarını av denetimi olmadan kur"
         },
         "data_description": {
-          "force_streaming_deps": "Yalnızca canlı videonun kurulamadığı Home Assistant sürümleri için (uyumlu bir aiortc sürümü çıkana kadar 2026.10 ve sonrası). Test edilmiş aiortc ve pymediasoup sürümlerini, Home Assistant'ın getirdiği av sürümüyle denetlemeden kurar. Canlı video normal şekilde kurulduğunda kapatın."
+          "force_streaming_deps": "Yalnızca canlı videonun kurulamadığı Home Assistant sürümleri için (uyumlu bir aiortc sürümü çıkana kadar 2026.10 ve sonrası). Test edilmiş aiortc ve pymediasoup sürümlerini, Home Assistant'ın getirdiği av sürümüyle denetlemeden kurar. Canlı video normal şekilde kurulduğunda kapatın.",
+          "auto_response_file": "Arama modu Otomatik yanıt olduğunda interkomdan çalınır. Otomatik yanıtı kapatmak için boş bırak."
         }
       }
+    },
+    "error": {
+      "invalid_path": "Dosya medya klasörlerinde olmalı (/media veya /config/media)."
     }
   },
   "entity": {
@@ -129,7 +156,7 @@
     },
     "button": {
       "open_door": {
-        "name": "Kapıyı aç"
+        "name": "{door} aç"
       },
       "camera_preview": {
         "name": "Kamera önizleme"
@@ -192,6 +219,39 @@
     },
     "push_registration_failed": {
       "message": "Kapı zili bildirimleri Google'a kaydedilemedi. Entegrasyon her 15 dakikada bir yeniden deniyor; daha sonra tekrar deneyin."
+    },
+    "unknown_entity": {
+      "message": "{entity_id} bir Fermax Blue varlığı değil."
+    }
+  },
+  "issues": {
+    "streaming_unavailable": {
+      "title": "Canlı video kapalı",
+      "description": "Canlı video kitaplıkları (aiortc, pymediasoup) bu Home Assistant sürümüne kurulamıyor, çünkü birlikte gelen av sürümünü desteklemiyorlar. Diğer her şey çalışmaya devam ediyor. Uyumlu bir aiortc sürümü çıktığında canlı video kendiliğinden geri gelir; o zamana kadar entegrasyon seçeneklerinde 'Canlı video kitaplıklarını av denetimi olmadan kur' seçeneğini açabilirsin."
+    }
+  },
+  "services": {
+    "send_audio": {
+      "name": "İnterkoma ses gönder",
+      "description": "Canlı oturum sırasında interkom hoparlöründen bir ses dosyası veya sesli mesaj çalar.",
+      "fields": {
+        "entity_id": {
+          "name": "İnterkom",
+          "description": "Konuşulacak interkomun bir Fermax Blue varlığı. Varsayılan: canlı oturumu olan interkom."
+        },
+        "audio_file": {
+          "name": "Ses dosyası",
+          "description": "/media veya /config/media içindeki bir WAV, MP3 ya da OGG dosyasının yolu."
+        },
+        "message": {
+          "name": "Mesaj",
+          "description": "İnterkomdan söylenecek metin (Google Çeviri TTS). Bunu ya da bir ses dosyasını ver."
+        },
+        "language": {
+          "name": "Dil",
+          "description": "Sesli mesajın dili, örneğin tr veya en."
+        }
+      }
     }
   }
 }

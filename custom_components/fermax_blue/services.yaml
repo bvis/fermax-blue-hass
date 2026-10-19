@@ -1,33 +1,23 @@
 send_audio:
-  name: Send audio to intercom
-  description: Play an audio file through the intercom speaker during an active video stream.
   fields:
     entity_id:
-      name: Camera entity
-      description: The Fermax camera entity with an active stream
-      required: true
+      required: false
       selector:
         entity:
           filter:
             domain: camera
             integration: fermax_blue
     audio_file:
-      name: Audio file path
-      description: "Path to the audio file (WAV, MP3, OGG) in /config/media/ or /media/"
       required: false
       example: "/config/media/doorbell_response.wav"
       selector:
         text:
     message:
-      name: TTS message
-      description: "Text to speak through the intercom (uses Google Translate TTS). Either audio_file or message is required."
       required: false
       example: "Hola, ahora bajo"
       selector:
         text:
     language:
-      name: TTS language
-      description: "Language for TTS message (default: es)"
       required: false
       default: "es"
       selector:

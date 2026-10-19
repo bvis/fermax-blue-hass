@@ -22,6 +22,27 @@
           "firebase_project_id": "Firebase Project ID",
           "firebase_package_name": "Firebase Package Name"
         }
+      },
+      "reauth_confirm": {
+        "title": "Autenticar novamente",
+        "description": "A Fermax recusou a senha de {username}. Introduz a senha atual da tua conta Fermax Blue.",
+        "data": {
+          "password": "Senha"
+        }
+      },
+      "reconfigure": {
+        "title": "Credenciais da API",
+        "description": "Atualiza as credenciais da API e do Firebase desta conta. A integração é recarregada com elas.",
+        "data": {
+          "fermax_auth_url": "Fermax Auth URL",
+          "fermax_base_url": "Fermax Base URL",
+          "fermax_auth_basic": "Fermax Auth Basic header",
+          "firebase_api_key": "Firebase API Key",
+          "firebase_sender_id": "Firebase Sender ID",
+          "firebase_app_id": "Firebase App ID",
+          "firebase_project_id": "Firebase Project ID",
+          "firebase_package_name": "Firebase Package Name"
+        }
       }
     },
     "error": {
@@ -31,7 +52,9 @@
       "no_devices": "Nenhum dispositivo vinculado encontrado nesta conta."
     },
     "abort": {
-      "already_configured": "Esta conta já está configurada."
+      "already_configured": "Esta conta já está configurada.",
+      "reauth_successful": "A senha foi atualizada.",
+      "reconfigure_successful": "As credenciais foram atualizadas."
     }
   },
   "options": {
@@ -45,9 +68,13 @@
           "force_streaming_deps": "Instalar as bibliotecas de vídeo em direto sem verificar o av"
         },
         "data_description": {
-          "force_streaming_deps": "Apenas para versões do Home Assistant em que o vídeo em direto não pode ser instalado (2026.10 e posteriores, até sair uma versão compatível do aiortc). Instala as versões testadas do aiortc e do pymediasoup sem as verificar contra a versão do av que o Home Assistant inclui. Desativa-o quando o vídeo em direto se instalar normalmente."
+          "force_streaming_deps": "Apenas para versões do Home Assistant em que o vídeo em direto não pode ser instalado (2026.10 e posteriores, até sair uma versão compatível do aiortc). Instala as versões testadas do aiortc e do pymediasoup sem as verificar contra a versão do av que o Home Assistant inclui. Desativa-o quando o vídeo em direto se instalar normalmente.",
+          "auto_response_file": "Reproduzido pelo videoporteiro quando o modo de chamada é Resposta automática. Deixa vazio para desativar a resposta automática."
         }
       }
+    },
+    "error": {
+      "invalid_path": "O arquivo tem de estar dentro das pastas de multimédia (/media ou /config/media)."
     }
   },
   "entity": {
@@ -129,7 +156,7 @@
     },
     "button": {
       "open_door": {
-        "name": "Abrir porta"
+        "name": "Abrir {door}"
       },
       "camera_preview": {
         "name": "Pré-visualização da câmera"
@@ -192,6 +219,39 @@
     },
     "push_registration_failed": {
       "message": "Não foi possível registar as notificações da campainha na Google. A integração tenta novamente a cada 15 minutos; tente mais tarde."
+    },
+    "unknown_entity": {
+      "message": "{entity_id} não é uma entidade Fermax Blue."
+    }
+  },
+  "issues": {
+    "streaming_unavailable": {
+      "title": "O vídeo em direto está desativado",
+      "description": "As bibliotecas de vídeo em direto (aiortc, pymediasoup) não podem ser instaladas nesta versão do Home Assistant porque não suportam a versão de av que ela inclui. Tudo o resto continua a funcionar. O vídeo em direto volta sozinho quando sair uma versão compatível do aiortc; até lá podes ativar 'Instalar as bibliotecas de vídeo em direto sem verificar o av' nas opções da integração."
+    }
+  },
+  "services": {
+    "send_audio": {
+      "name": "Enviar áudio ao videoporteiro",
+      "description": "Reproduz um arquivo de áudio ou uma mensagem falada pelo altifalante do videoporteiro durante uma sessão em direto.",
+      "fields": {
+        "entity_id": {
+          "name": "Videoporteiro",
+          "description": "Uma entidade Fermax Blue do videoporteiro a usar. Por omissão, o que tiver uma sessão em direto."
+        },
+        "audio_file": {
+          "name": "Arquivo de áudio",
+          "description": "Caminho para um arquivo WAV, MP3 ou OGG em /media ou /config/media."
+        },
+        "message": {
+          "name": "Mensagem",
+          "description": "Texto a dizer pelo videoporteiro (TTS do Google Tradutor). Indica isto ou um arquivo de áudio."
+        },
+        "language": {
+          "name": "Idioma",
+          "description": "Idioma da mensagem falada, por exemplo pt ou en."
+        }
+      }
     }
   }
 }

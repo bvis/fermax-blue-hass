@@ -14,6 +14,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, EVENT_HOMEASSISTANT_STOP
 from homeassistant.exceptions import (
+    ConfigEntryAuthFailed,
     ConfigEntryNotReady,
     HomeAssistantError,
     ServiceValidationError,
@@ -24,9 +25,12 @@ from custom_components.fermax_blue import (
     _async_options_updated,
     _generate_tts_audio,
     async_migrate_entry,
+    async_remove_config_entry_device,
+    async_setup,
     async_setup_entry,
     async_unload_entry,
 )
+from custom_components.fermax_blue.api import FermaxAuthError
 from custom_components.fermax_blue.const import (
     CONF_FERMAX_AUTH_BASIC,
     CONF_FERMAX_AUTH_URL,
@@ -68,10 +72,17 @@ def mock_hass(tmp_path):
     hass.services.has_service = MagicMock(return_value=False)
     hass.services.async_register = MagicMock()
     hass.services.async_call = AsyncMock()
+    hass.config_entries.async_schedule_reload = MagicMock()
+    hass.config_entries.async_loaded_entries = MagicMock(return_value=[])
     hass.bus.async_listen_once = MagicMock(return_value=MagicMock())
-    # Setup fires a one-off cleanup coroutine; close it to avoid warnings.
-    hass.async_create_task = MagicMock(side_effect=lambda coro: coro.close())
     return hass
+
+
+@pytest.fixture(autouse=True)
+def issue_registry():
+    """The repairs registry needs a real hass; record the calls instead."""
+    with patch(f"{MODULE}.ir") as ir:
+        yield ir
 
 
 @pytest.fixture
@@ -95,6 +106,10 @@ def entry():
     entry.options = {}
     entry.async_on_unload = MagicMock()
     entry.add_update_listener = MagicMock(return_value=MagicMock())
+    # Setup fires a one-off cleanup coroutine; close it to avoid warnings.
+    entry.async_create_background_task = MagicMock(
+        side_effect=lambda hass, coro, name, eager_start=True: coro.close()
+    )
     return entry
 
 
@@ -104,6 +119,7 @@ def _make_coordinator():
     coordinator.async_config_entry_first_refresh = AsyncMock()
     coordinator.setup_notifications = AsyncMock()
     coordinator.stop_notifications = AsyncMock()
+    coordinator.stop_stream = AsyncMock()
     coordinator.ensure_notifications_running = AsyncMock()
     coordinator.api = AsyncMock()
     coordinator.stream_session = None
@@ -115,7 +131,7 @@ def _make_coordinator():
 async def _run_setup(mock_hass, entry, api, coordinators):
     """Run async_setup_entry with the module boundaries patched out."""
     with (
-        patch(f"{MODULE}.create_async_httpx_client", return_value=MagicMock()),
+        patch(f"{MODULE}.get_async_client", return_value=MagicMock()),
         patch(f"{MODULE}.FermaxBlueApi", return_value=api) as api_cls,
         patch(f"{MODULE}.FermaxBlueCoordinator", side_effect=list(coordinators)) as coord_cls,
         patch(f"{MODULE}.async_track_time_interval", return_value=MagicMock()) as track,
@@ -151,12 +167,29 @@ def _activate_stream(coordinator):
 
 
 async def _registered_service_handler(mock_hass, entry, mock_api, coordinator):
-    """Run setup and return the registered send_audio service handler."""
+    """Load the entry and return the send_audio handler registered by async_setup."""
+    await async_setup(mock_hass, {})
     await _run_setup(mock_hass, entry, mock_api, [coordinator])
+    mock_hass.config_entries.async_loaded_entries.return_value = [entry]
     call = mock_hass.services.async_register.call_args
     assert call.args[0] == DOMAIN
     assert call.args[1] == "send_audio"
-    return call.args[2]
+    handler = call.args[2]
+
+    async def _call(service_call):
+        service_call.hass = mock_hass
+        return await handler(service_call)
+
+    return _call
+
+
+def _media_clip(mock_hass):
+    """An audio file inside the configured media folder."""
+    folder = Path(mock_hass.config.media_dirs["local"])
+    folder.mkdir(parents=True, exist_ok=True)
+    clip = folder / "clip.mp3"
+    clip.write_bytes(b"audio")
+    return clip
 
 
 class TestMigration:
@@ -300,7 +333,7 @@ def _proc(returncode, stderr=b""):
 async def _run_setup_with_install(mock_hass, entry, api):
     """Run async_setup_entry leaving async_process_requirements to the caller's patch."""
     with (
-        patch(f"{MODULE}.create_async_httpx_client", return_value=MagicMock()),
+        patch(f"{MODULE}.get_async_client", return_value=MagicMock()),
         patch(f"{MODULE}.FermaxBlueApi", return_value=api),
         patch(f"{MODULE}.FermaxBlueCoordinator", side_effect=[_make_coordinator()]),
         patch(f"{MODULE}.async_track_time_interval", return_value=MagicMock()),
@@ -354,7 +387,7 @@ class TestSetupEntry:
         await _run_setup(mock_hass, entry, mock_api, [coordinator])
 
         assert entry.runtime_data == [coordinator]
-        assert mock_hass.data[DOMAIN][entry.entry_id] == [coordinator]
+        assert entry.entry_id not in mock_hass.data[DOMAIN]  # runtime_data only
         mock_hass.config_entries.async_forward_entry_setups.assert_awaited_once_with(
             entry, PLATFORMS
         )
@@ -370,19 +403,17 @@ class TestSetupEntry:
         assert args.args[3] == 15
         assert args.args[4] == "/media/hello.mp3"
 
-    async def test_send_audio_service_registered_once(self, mock_hass, entry, mock_api):
+    async def test_send_audio_is_registered_by_async_setup_not_per_entry(
+        self, mock_hass, entry, mock_api
+    ):
         await _run_setup(mock_hass, entry, mock_api, [_make_coordinator()])
+        mock_hass.services.async_register.assert_not_called()
+
+        assert await async_setup(mock_hass, {}) is True
 
         call = mock_hass.services.async_register.call_args
         assert call.args[0] == DOMAIN
         assert call.args[1] == "send_audio"
-
-    async def test_send_audio_not_reregistered(self, mock_hass, entry, mock_api):
-        mock_hass.services.has_service.return_value = True
-
-        await _run_setup(mock_hass, entry, mock_api, [_make_coordinator()])
-
-        mock_hass.services.async_register.assert_not_called()
 
     async def test_listeners_and_timers_registered_for_unload(self, mock_hass, entry, mock_api):
         _, _, _, track = await _run_setup(mock_hass, entry, mock_api, [_make_coordinator()])
@@ -392,9 +423,10 @@ class TestSetupEntry:
         assert timedelta(seconds=FCM_WATCHDOG_INTERVAL) in intervals  # FCM watchdog
         assert mock_hass.bus.async_listen_once.call_args.args[0] == EVENT_HOMEASSISTANT_STOP
         entry.add_update_listener.assert_called_once_with(_async_options_updated)
-        # cleanup timer + watchdog timer + stop listener + update listener
-        assert entry.async_on_unload.call_count == 4
-        mock_hass.async_create_task.assert_called_once()  # startup cleanup pass
+        assert timedelta(hours=24) in intervals  # new pairings
+        # cleanup timer + pairings timer + watchdog timer + stop listener + update listener
+        assert entry.async_on_unload.call_count == 5
+        entry.async_create_background_task.assert_called_once()  # startup cleanup pass
 
 
 class TestSetupEntryFailure:
@@ -404,7 +436,7 @@ class TestSetupEntryFailure:
         mock_api.authenticate.side_effect = OSError("network down")
 
         with (
-            patch(f"{MODULE}.create_async_httpx_client", return_value=MagicMock()),
+            patch(f"{MODULE}.get_async_client", return_value=MagicMock()),
             patch(f"{MODULE}.FermaxBlueApi", return_value=mock_api),
             pytest.raises(ConfigEntryNotReady, match="Failed to connect"),
         ):
@@ -414,13 +446,25 @@ class TestSetupEntryFailure:
         assert DOMAIN not in mock_hass.data
         mock_hass.config_entries.async_forward_entry_setups.assert_not_awaited()
 
+    async def test_rejected_password_starts_reauth(self, mock_hass, entry, mock_api):
+        mock_api.authenticate.side_effect = FermaxAuthError("invalid_grant")
+
+        with (
+            patch(f"{MODULE}.get_async_client", return_value=MagicMock()),
+            patch(f"{MODULE}.FermaxBlueApi", return_value=mock_api),
+            pytest.raises(ConfigEntryAuthFailed),
+        ):
+            await async_setup_entry(mock_hass, entry)
+
+        mock_api.close.assert_awaited_once()
+
     async def test_pairing_failure_raises_not_ready_and_closes_api(
         self, mock_hass, entry, mock_api
     ):
         mock_api.get_pairings.side_effect = RuntimeError("api 500")
 
         with (
-            patch(f"{MODULE}.create_async_httpx_client", return_value=MagicMock()),
+            patch(f"{MODULE}.get_async_client", return_value=MagicMock()),
             patch(f"{MODULE}.FermaxBlueApi", return_value=mock_api),
             pytest.raises(ConfigEntryNotReady),
         ):
@@ -508,6 +552,61 @@ class TestSendAudioService:
         generate.assert_awaited_once_with("hello", "en")
         session.send_audio.assert_awaited_once_with(str(tts_file))
         assert not tts_file.exists()  # generated temp file is removed after use
+
+    async def test_survives_a_reload(self, mock_hass, entry, mock_api):
+        """The action reads the loaded entries at call time, not the first setup's."""
+        stale = _make_coordinator()
+        handler = await _registered_service_handler(mock_hass, entry, mock_api, stale)
+        fresh = _make_coordinator()
+        entry.runtime_data = [fresh]  # what a reload leaves behind
+        session = _activate_stream(fresh)
+
+        await handler(_service_call(audio_file=str(_media_clip(mock_hass))))
+
+        session.send_audio.assert_awaited_once()
+
+    async def test_entity_id_picks_that_intercom(self, mock_hass, entry, mock_api):
+        first, second = _make_coordinator(), _make_coordinator()
+        first.pairing.device_id, second.pairing.device_id = "dev-a", "dev-b"
+        mock_api.get_pairings.return_value = [MagicMock(), MagicMock()]
+        await async_setup(mock_hass, {})
+        await _run_setup(mock_hass, entry, mock_api, [first, second])
+        mock_hass.config_entries.async_loaded_entries.return_value = [entry]
+        handler = mock_hass.services.async_register.call_args.args[2]
+        first_session, second_session = _activate_stream(first), _activate_stream(second)
+        entity = MagicMock(platform=DOMAIN, device_id="device-b")
+        device = MagicMock(identifiers={(DOMAIN, "dev-b")})
+        call = _service_call(entity_id="camera.b", audio_file=str(_media_clip(mock_hass)))
+        call.hass = mock_hass
+
+        with (
+            patch(f"{MODULE}.er.async_get") as entities,
+            patch(f"{MODULE}.dr.async_get") as devices,
+        ):
+            entities.return_value.async_get.return_value = entity
+            devices.return_value.async_get.return_value = device
+            await handler(call)
+
+        entities.return_value.async_get.assert_called_once_with("camera.b")
+        second_session.send_audio.assert_awaited_once()
+        first_session.send_audio.assert_not_awaited()
+
+    async def test_foreign_entity_is_rejected(self, mock_hass, entry, mock_api):
+        coordinator = _make_coordinator()
+        handler = await _registered_service_handler(mock_hass, entry, mock_api, coordinator)
+        session = _activate_stream(coordinator)
+
+        with (
+            patch(f"{MODULE}.er.async_get") as entities,
+            pytest.raises(ServiceValidationError) as err,
+        ):
+            entities.return_value.async_get.return_value = MagicMock(platform="other")
+            await handler(
+                _service_call(entity_id="camera.other", audio_file=str(_media_clip(mock_hass)))
+            )
+
+        assert err.value.translation_key == "unknown_entity"
+        session.send_audio.assert_not_awaited()
 
     async def test_tts_failure_sends_nothing(self, mock_hass, entry, mock_api):
         coordinator = _make_coordinator()
@@ -615,7 +714,7 @@ class TestOptionsUpdated:
 
     async def test_auto_response_file_hot_reloads(self, mock_hass, entry):
         coordinator = _make_coordinator()
-        mock_hass.data = {DOMAIN: {entry.entry_id: [coordinator]}}
+        entry.runtime_data = [coordinator]
         entry.options = {"auto_response_file": "/media/greeting.mp3"}
 
         await _async_options_updated(mock_hass, entry)
@@ -624,7 +723,7 @@ class TestOptionsUpdated:
         mock_hass.config_entries.async_reload.assert_not_awaited()
 
     async def test_forcing_streaming_deps_reloads_when_they_are_missing(self, mock_hass, entry):
-        mock_hass.data = {DOMAIN: {entry.entry_id: [_make_coordinator()]}}
+        entry.runtime_data = [_make_coordinator()]
         entry.options = {CONF_FORCE_STREAMING_DEPS: True}
 
         with patch(f"{MODULE}.streaming_deps_available", return_value=False):
@@ -633,7 +732,7 @@ class TestOptionsUpdated:
         mock_hass.config_entries.async_reload.assert_awaited_once_with(entry.entry_id)
 
     async def test_forcing_streaming_deps_already_installed_does_not_reload(self, mock_hass, entry):
-        mock_hass.data = {DOMAIN: {entry.entry_id: [_make_coordinator()]}}
+        entry.runtime_data = [_make_coordinator()]
         entry.options = {CONF_FORCE_STREAMING_DEPS: True}
 
         with patch(f"{MODULE}.streaming_deps_available", return_value=True):
@@ -643,7 +742,7 @@ class TestOptionsUpdated:
 
     async def test_scan_interval_change_triggers_reload(self, mock_hass, entry):
         coordinator = _make_coordinator()  # currently at DEFAULT_SCAN_INTERVAL minutes
-        mock_hass.data = {DOMAIN: {entry.entry_id: [coordinator]}}
+        entry.runtime_data = [coordinator]
         entry.options = {CONF_SCAN_INTERVAL: DEFAULT_SCAN_INTERVAL + 5}
 
         await _async_options_updated(mock_hass, entry)
@@ -653,7 +752,7 @@ class TestOptionsUpdated:
     async def test_no_update_interval_never_reloads(self, mock_hass, entry):
         coordinator = _make_coordinator()
         coordinator.update_interval = None
-        mock_hass.data = {DOMAIN: {entry.entry_id: [coordinator]}}
+        entry.runtime_data = [coordinator]
         entry.options = {CONF_SCAN_INTERVAL: DEFAULT_SCAN_INTERVAL + 5}
 
         await _async_options_updated(mock_hass, entry)
@@ -710,29 +809,29 @@ class TestUnloadEntry:
 
     async def test_unload_stops_everything_and_clears_data(self, mock_hass, entry):
         coordinators = [_make_coordinator(), _make_coordinator()]
-        mock_hass.data = {DOMAIN: {entry.entry_id: coordinators}}
+        entry.runtime_data = coordinators
 
         assert await async_unload_entry(mock_hass, entry) is True
 
         for coordinator in coordinators:
+            coordinator.stop_stream.assert_awaited_once()  # no session outlives the entry
             coordinator.stop_notifications.assert_awaited_once()
             coordinator.api.close.assert_awaited_once()
         mock_hass.config_entries.async_unload_platforms.assert_awaited_once_with(entry, PLATFORMS)
-        assert entry.entry_id not in mock_hass.data[DOMAIN]
 
-    async def test_failed_platform_unload_keeps_data(self, mock_hass, entry):
+    async def test_failed_platform_unload_leaves_push_and_api_up(self, mock_hass, entry):
         coordinator = _make_coordinator()
-        mock_hass.data = {DOMAIN: {entry.entry_id: [coordinator]}}
+        entry.runtime_data = [coordinator]
         mock_hass.config_entries.async_unload_platforms.return_value = False
 
         assert await async_unload_entry(mock_hass, entry) is False
 
-        # coordinators are still shut down, but the entry stays registered
-        coordinator.stop_notifications.assert_awaited_once()
-        assert mock_hass.data[DOMAIN][entry.entry_id] == [coordinator]
+        # The entry stays loaded, so it must keep working
+        coordinator.stop_notifications.assert_not_awaited()
+        coordinator.api.close.assert_not_awaited()
 
     async def test_unload_without_coordinators_succeeds(self, mock_hass, entry):
-        mock_hass.data = {DOMAIN: {}}
+        entry.runtime_data = []
 
         assert await async_unload_entry(mock_hass, entry) is True
 
@@ -751,6 +850,7 @@ class TestWebRtcEndpoint:
         second_entry.options = {}
         second_entry.async_on_unload = MagicMock()
         second_entry.add_update_listener = MagicMock(return_value=MagicMock())
+        second_entry.async_create_background_task = entry.async_create_background_task
         second = _make_coordinator()
         second.webrtc_token = "tok-b"
         await _run_setup(mock_hass, second_entry, mock_api, [second])
@@ -764,11 +864,111 @@ class TestWebRtcEndpoint:
         coordinator = _make_coordinator()
         coordinator.webrtc_token = "tok-a"
         other = _make_coordinator()
-        mock_hass.data[DOMAIN] = {
-            entry.entry_id: [coordinator],
-            WEBRTC_TOKENS: {"tok-a": coordinator, "tok-z": other},
-        }
+        entry.runtime_data = [coordinator]
+        mock_hass.data[DOMAIN] = {WEBRTC_TOKENS: {"tok-a": coordinator, "tok-z": other}}
 
         assert await async_unload_entry(mock_hass, entry) is True
 
         assert mock_hass.data[DOMAIN][WEBRTC_TOKENS] == {"tok-z": other}
+
+
+class TestDevices:
+    """Stale devices can be deleted; new intercoms show up without a manual reload."""
+
+    async def test_only_devices_gone_from_the_account_can_be_deleted(self, mock_hass, entry):
+        coordinator = _make_coordinator()
+        coordinator.pairing.device_id = "dev-a"
+        entry.runtime_data = [coordinator]
+
+        assert not await async_remove_config_entry_device(
+            mock_hass, entry, MagicMock(identifiers={(DOMAIN, "dev-a")})
+        )
+        assert await async_remove_config_entry_device(
+            mock_hass, entry, MagicMock(identifiers={(DOMAIN, "dev-gone")})
+        )
+
+    async def _pairing_check(self, mock_hass, entry, mock_api, coordinator):
+        _, _, _, track = await _run_setup(mock_hass, entry, mock_api, [coordinator])
+        return [c.args[1] for c in track.call_args_list if c.args[2] == timedelta(hours=24)][1]
+
+    async def test_a_new_pairing_reloads_the_entry(self, mock_hass, entry, mock_api):
+        coordinator = _make_coordinator()
+        coordinator.pairing.device_id = "dev-a"
+        check = await self._pairing_check(mock_hass, entry, mock_api, coordinator)
+        mock_api.get_pairings.return_value = [
+            MagicMock(device_id="dev-a"),
+            MagicMock(device_id="dev-new"),
+        ]
+
+        await check()
+
+        mock_hass.config_entries.async_schedule_reload.assert_called_once_with(entry.entry_id)
+
+    async def test_same_or_fewer_pairings_do_nothing(self, mock_hass, entry, mock_api):
+        coordinator = _make_coordinator()
+        coordinator.pairing.device_id = "dev-a"
+        check = await self._pairing_check(mock_hass, entry, mock_api, coordinator)
+
+        mock_api.get_pairings.return_value = [MagicMock(device_id="dev-a")]
+        await check()
+        mock_api.get_pairings.return_value = []  # a bad answer must not touch devices
+        await check()
+        mock_api.get_pairings.side_effect = OSError("down")
+        await check()
+
+        mock_hass.config_entries.async_schedule_reload.assert_not_called()
+
+
+class TestRepairs:
+    """Live video being off is a repair, not just a log line."""
+
+    async def test_issue_raised_when_live_video_cannot_install(
+        self, mock_hass, entry, mock_api, issue_registry
+    ):
+        failure = RequirementsNotFound(DOMAIN, list(STREAMING_REQUIREMENTS))
+        with (
+            patch(f"{MODULE}.async_process_requirements", AsyncMock(side_effect=failure)),
+            patch(f"{MODULE}.streaming_deps_available", return_value=False),
+        ):
+            await _run_setup_with_install(mock_hass, entry, mock_api)
+
+        issue_registry.async_create_issue.assert_called_once()
+        assert issue_registry.async_create_issue.call_args.args[2] == "streaming_unavailable"
+        issue_registry.async_delete_issue.assert_not_called()
+
+    async def test_issue_cleared_once_live_video_installs(
+        self, mock_hass, entry, mock_api, issue_registry
+    ):
+        with (
+            patch(f"{MODULE}.async_process_requirements", AsyncMock()),
+            patch(f"{MODULE}.streaming_deps_available", return_value=True),
+        ):
+            await _run_setup_with_install(mock_hass, entry, mock_api)
+
+        issue_registry.async_delete_issue.assert_called_once_with(
+            mock_hass, DOMAIN, "streaming_unavailable"
+        )
+        issue_registry.async_create_issue.assert_not_called()
+
+
+class TestModulePreload:
+    """Modules imported inside coroutines are loaded once at setup, off the loop."""
+
+    async def test_preload_runs_in_a_worker_thread(self, mock_hass, entry, mock_api):
+        loop_thread = threading.get_ident()
+        calls: list[tuple[int, tuple[str, ...]]] = []
+        with patch(
+            f"{MODULE}._import_modules",
+            side_effect=lambda names: calls.append((threading.get_ident(), names)),
+        ):
+            await _run_setup(mock_hass, entry, mock_api, [_make_coordinator()])
+
+        assert len(calls) == 1
+        thread, names = calls[0]
+        assert thread != loop_thread
+        assert "PIL.Image" in names
+
+    def test_missing_modules_are_skipped(self):
+        from custom_components.fermax_blue import _import_modules
+
+        _import_modules(("json", "no_such_module_here"))  # must not raise

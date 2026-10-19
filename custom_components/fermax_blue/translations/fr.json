@@ -22,6 +22,27 @@
           "firebase_project_id": "Firebase Project ID",
           "firebase_package_name": "Firebase Package Name"
         }
+      },
+      "reauth_confirm": {
+        "title": "Se reconnecter",
+        "description": "Fermax a refusé le mot de passe de {username}. Saisissez le mot de passe actuel de votre compte Fermax Blue.",
+        "data": {
+          "password": "Mot de passe"
+        }
+      },
+      "reconfigure": {
+        "title": "Identifiants de l'API",
+        "description": "Mettez à jour les identifiants de l'API et de Firebase de ce compte. L'intégration se recharge avec eux.",
+        "data": {
+          "fermax_auth_url": "Fermax Auth URL",
+          "fermax_base_url": "Fermax Base URL",
+          "fermax_auth_basic": "Fermax Auth Basic header",
+          "firebase_api_key": "Firebase API Key",
+          "firebase_sender_id": "Firebase Sender ID",
+          "firebase_app_id": "Firebase App ID",
+          "firebase_project_id": "Firebase Project ID",
+          "firebase_package_name": "Firebase Package Name"
+        }
       }
     },
     "error": {
@@ -31,7 +52,9 @@
       "no_devices": "Aucun appareil associé trouvé sur ce compte."
     },
     "abort": {
-      "already_configured": "Ce compte est déjà configuré."
+      "already_configured": "Ce compte est déjà configuré.",
+      "reauth_successful": "Le mot de passe a été mis à jour.",
+      "reconfigure_successful": "Les identifiants ont été mis à jour."
     }
   },
   "options": {
@@ -45,9 +68,13 @@
           "force_streaming_deps": "Installer les bibliothèques de vidéo en direct sans vérifier av"
         },
         "data_description": {
-          "force_streaming_deps": "Uniquement pour les versions de Home Assistant où la vidéo en direct ne peut pas être installée (2026.10 et suivantes, jusqu'à une version compatible d'aiortc). Installe les versions testées d'aiortc et de pymediasoup sans les vérifier par rapport à la version d'av fournie par Home Assistant. Désactivez-le dès que la vidéo en direct s'installe normalement."
+          "force_streaming_deps": "Uniquement pour les versions de Home Assistant où la vidéo en direct ne peut pas être installée (2026.10 et suivantes, jusqu'à une version compatible d'aiortc). Installe les versions testées d'aiortc et de pymediasoup sans les vérifier par rapport à la version d'av fournie par Home Assistant. Désactivez-le dès que la vidéo en direct s'installe normalement.",
+          "auto_response_file": "Diffusé par l'interphone quand le mode d'appel est Réponse automatique. Laissez vide pour désactiver la réponse automatique."
         }
       }
+    },
+    "error": {
+      "invalid_path": "Le fichier doit se trouver dans les dossiers multimédias (/media ou /config/media)."
     }
   },
   "entity": {
@@ -129,7 +156,7 @@
     },
     "button": {
       "open_door": {
-        "name": "Ouvrir la porte"
+        "name": "Ouvrir {door}"
       },
       "camera_preview": {
         "name": "Aperçu caméra"
@@ -192,6 +219,39 @@
     },
     "push_registration_failed": {
       "message": "Impossible d'enregistrer les notifications de sonnette auprès de Google. L'intégration réessaie toutes les 15 minutes ; réessayez plus tard."
+    },
+    "unknown_entity": {
+      "message": "{entity_id} n'est pas une entité Fermax Blue."
+    }
+  },
+  "issues": {
+    "streaming_unavailable": {
+      "title": "La vidéo en direct est désactivée",
+      "description": "Les bibliothèques de vidéo en direct (aiortc, pymediasoup) ne peuvent pas être installées sur cette version de Home Assistant, car elles ne prennent pas en charge la version de av qu'elle fournit. Tout le reste fonctionne. La vidéo en direct revient d'elle-même dès qu'une version compatible d'aiortc sort ; d'ici là, vous pouvez activer « Installer les bibliothèques de vidéo en direct sans vérifier av » dans les options de l'intégration."
+    }
+  },
+  "services": {
+    "send_audio": {
+      "name": "Envoyer de l'audio à l'interphone",
+      "description": "Diffuse un fichier audio ou un message parlé par le haut-parleur de l'interphone pendant une session en direct.",
+      "fields": {
+        "entity_id": {
+          "name": "Interphone",
+          "description": "Une entité Fermax Blue de l'interphone à utiliser. Par défaut, celui qui a une session en direct."
+        },
+        "audio_file": {
+          "name": "Fichier audio",
+          "description": "Chemin d'un fichier WAV, MP3 ou OGG dans /media ou /config/media."
+        },
+        "message": {
+          "name": "Message",
+          "description": "Texte à prononcer par l'interphone (TTS de Google Traduction). Indiquez ceci ou un fichier audio."
+        },
+        "language": {
+          "name": "Langue",
+          "description": "Langue du message parlé, par exemple fr ou en."
+        }
+      }
     }
   }
 }

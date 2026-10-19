@@ -6,25 +6,27 @@ import logging
 
 import httpx
 from homeassistant.components.button import ButtonEntity
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
-from .coordinator import FermaxBlueCoordinator
+from .coordinator import FermaxBlueConfigEntry, FermaxBlueCoordinator
 from .entity import FermaxBlueEntity
 
 _LOGGER = logging.getLogger(__name__)
 
+# Actions go to the Fermax cloud one at a time
+PARALLEL_UPDATES = 1
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
+    entry: FermaxBlueConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Fermax Blue buttons."""
-    coordinators: list[FermaxBlueCoordinator] = hass.data[DOMAIN][entry.entry_id]
+    coordinators = entry.runtime_data
     entities: list[ButtonEntity] = []
 
     for coordinator in coordinators:
@@ -53,7 +55,7 @@ class FermaxOpenDoorButton(FermaxBlueEntity, ButtonEntity):
         self._door_name = door_name
         self._door_title = door_title or door_name
         self._attr_unique_id = f"{self._device_id}_{door_name}_open"
-        self._attr_name = f"Open {self._door_title}"
+        self._attr_translation_placeholders = {"door": self._door_title}
 
     async def async_press(self) -> None:
         """Open the door."""

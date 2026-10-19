@@ -22,6 +22,27 @@
           "firebase_project_id": "Firebase Project ID",
           "firebase_package_name": "Firebase Package Name"
         }
+      },
+      "reauth_confirm": {
+        "title": "Erneut anmelden",
+        "description": "Fermax hat das Passwort für {username} abgelehnt. Gib das aktuelle Passwort deines Fermax-Blue-Kontos ein.",
+        "data": {
+          "password": "Passwort"
+        }
+      },
+      "reconfigure": {
+        "title": "API-Zugangsdaten",
+        "description": "Aktualisiere die API- und Firebase-Zugangsdaten dieses Kontos. Die Integration wird damit neu geladen.",
+        "data": {
+          "fermax_auth_url": "Fermax Auth URL",
+          "fermax_base_url": "Fermax Base URL",
+          "fermax_auth_basic": "Fermax Auth Basic header",
+          "firebase_api_key": "Firebase API Key",
+          "firebase_sender_id": "Firebase Sender ID",
+          "firebase_app_id": "Firebase App ID",
+          "firebase_project_id": "Firebase Project ID",
+          "firebase_package_name": "Firebase Package Name"
+        }
       }
     },
     "error": {
@@ -31,7 +52,9 @@
       "no_devices": "Keine verknüpften Geräte in diesem Konto gefunden."
     },
     "abort": {
-      "already_configured": "Dieses Konto ist bereits konfiguriert."
+      "already_configured": "Dieses Konto ist bereits konfiguriert.",
+      "reauth_successful": "Das Passwort wurde aktualisiert.",
+      "reconfigure_successful": "Die Zugangsdaten wurden aktualisiert."
     }
   },
   "options": {
@@ -45,9 +68,13 @@
           "force_streaming_deps": "Live-Video-Bibliotheken ohne av-Prüfung installieren"
         },
         "data_description": {
-          "force_streaming_deps": "Nur für Home-Assistant-Versionen, auf denen sich Live-Video nicht installieren lässt (2026.10 und neuer, bis eine kompatible aiortc-Version erscheint). Installiert die getesteten Versionen von aiortc und pymediasoup, ohne sie gegen die av-Version von Home Assistant zu prüfen. Schalte es aus, sobald sich Live-Video normal installiert."
+          "force_streaming_deps": "Nur für Home-Assistant-Versionen, auf denen sich Live-Video nicht installieren lässt (2026.10 und neuer, bis eine kompatible aiortc-Version erscheint). Installiert die getesteten Versionen von aiortc und pymediasoup, ohne sie gegen die av-Version von Home Assistant zu prüfen. Schalte es aus, sobald sich Live-Video normal installiert.",
+          "auto_response_file": "Wird über die Türsprechanlage abgespielt, wenn der Anrufmodus Automatische Antwort ist. Leer lassen, um die automatische Antwort auszuschalten."
         }
       }
+    },
+    "error": {
+      "invalid_path": "Die Datei muss in den Medienordnern liegen (/media oder /config/media)."
     }
   },
   "entity": {
@@ -129,7 +156,7 @@
     },
     "button": {
       "open_door": {
-        "name": "Tür öffnen"
+        "name": "{door} öffnen"
       },
       "camera_preview": {
         "name": "Kameravorschau"
@@ -192,6 +219,39 @@
     },
     "push_registration_failed": {
       "message": "Die Klingelbenachrichtigungen konnten nicht bei Google registriert werden. Die Integration versucht es alle 15 Minuten erneut; versuche es später noch einmal."
+    },
+    "unknown_entity": {
+      "message": "{entity_id} ist keine Fermax-Blue-Entität."
+    }
+  },
+  "issues": {
+    "streaming_unavailable": {
+      "title": "Live-Video ist aus",
+      "description": "Die Live-Video-Bibliotheken (aiortc, pymediasoup) lassen sich auf dieser Home-Assistant-Version nicht installieren, weil sie die mitgelieferte av-Version nicht unterstützen. Alles andere funktioniert weiter. Live-Video kommt von selbst zurück, sobald eine kompatible aiortc-Version erscheint; bis dahin kannst du in den Optionen der Integration „Live-Video-Bibliotheken ohne av-Prüfung installieren“ einschalten."
+    }
+  },
+  "services": {
+    "send_audio": {
+      "name": "Audio an Türsprechanlage senden",
+      "description": "Spielt während einer Live-Sitzung eine Audiodatei oder eine gesprochene Nachricht über den Lautsprecher der Türsprechanlage ab.",
+      "fields": {
+        "entity_id": {
+          "name": "Türsprechanlage",
+          "description": "Eine Fermax-Blue-Entität der Türsprechanlage, über die gesprochen wird. Standard: die mit einer Live-Sitzung."
+        },
+        "audio_file": {
+          "name": "Audiodatei",
+          "description": "Pfad zu einer WAV-, MP3- oder OGG-Datei in /media oder /config/media."
+        },
+        "message": {
+          "name": "Nachricht",
+          "description": "Text, der über die Türsprechanlage gesprochen wird (Google-Übersetzer-TTS). Gib dies oder eine Audiodatei an."
+        },
+        "language": {
+          "name": "Sprache",
+          "description": "Sprache der gesprochenen Nachricht, z. B. de oder en."
+        }
+      }
     }
   }
 }

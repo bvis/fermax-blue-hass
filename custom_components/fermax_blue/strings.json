@@ -22,6 +22,27 @@
           "firebase_project_id": "Firebase Project ID",
           "firebase_package_name": "Firebase Package Name"
         }
+      },
+      "reauth_confirm": {
+        "title": "Re-authenticate",
+        "description": "Fermax rejected the password for {username}. Enter the current password of your Fermax Blue account.",
+        "data": {
+          "password": "Password"
+        }
+      },
+      "reconfigure": {
+        "title": "API Credentials",
+        "description": "Update the API and Firebase credentials of this account. The integration reloads with them.",
+        "data": {
+          "fermax_auth_url": "Fermax Auth URL",
+          "fermax_base_url": "Fermax Base URL",
+          "fermax_auth_basic": "Fermax Auth Basic header",
+          "firebase_api_key": "Firebase API Key",
+          "firebase_sender_id": "Firebase Sender ID",
+          "firebase_app_id": "Firebase App ID",
+          "firebase_project_id": "Firebase Project ID",
+          "firebase_package_name": "Firebase Package Name"
+        }
       }
     },
     "error": {
@@ -31,7 +52,9 @@
       "no_devices": "No paired devices found on this account."
     },
     "abort": {
-      "already_configured": "This account is already configured."
+      "already_configured": "This account is already configured.",
+      "reauth_successful": "The password was updated.",
+      "reconfigure_successful": "The credentials were updated."
     }
   },
   "options": {
@@ -45,9 +68,13 @@
           "force_streaming_deps": "Install live video libraries without the av check"
         },
         "data_description": {
-          "force_streaming_deps": "Only for Home Assistant versions where live video can't be installed (2026.10 and later, until a compatible aiortc release is out). Installs the tested aiortc and pymediasoup versions without checking them against the av version Home Assistant ships. Turn it off once live video installs normally."
+          "force_streaming_deps": "Only for Home Assistant versions where live video can't be installed (2026.10 and later, until a compatible aiortc release is out). Installs the tested aiortc and pymediasoup versions without checking them against the av version Home Assistant ships. Turn it off once live video installs normally.",
+          "auto_response_file": "Played through the intercom when the call mode is Auto-respond. Leave it empty to turn auto-response off."
         }
       }
+    },
+    "error": {
+      "invalid_path": "The file must be inside the media folders (/media or /config/media)."
     }
   },
   "entity": {
@@ -129,7 +156,7 @@
     },
     "button": {
       "open_door": {
-        "name": "Open door"
+        "name": "Open {door}"
       },
       "camera_preview": {
         "name": "Camera preview"
@@ -192,6 +219,39 @@
     },
     "push_registration_failed": {
       "message": "Doorbell notifications could not be registered with Google. The integration retries every 15 minutes; try again later."
+    },
+    "unknown_entity": {
+      "message": "{entity_id} is not a Fermax Blue entity."
+    }
+  },
+  "issues": {
+    "streaming_unavailable": {
+      "title": "Live video is off",
+      "description": "The live video libraries (aiortc, pymediasoup) can't be installed on this Home Assistant version because they don't support the av version it ships. Everything else keeps working. Live video comes back on its own once a compatible aiortc release is out; until then you can turn on 'Install live video libraries without the av check' in the integration options."
+    }
+  },
+  "services": {
+    "send_audio": {
+      "name": "Send audio to intercom",
+      "description": "Plays an audio file or a spoken message through the intercom speaker during a live session.",
+      "fields": {
+        "entity_id": {
+          "name": "Intercom",
+          "description": "A Fermax Blue entity of the intercom to talk through. Defaults to the intercom with a live session."
+        },
+        "audio_file": {
+          "name": "Audio file",
+          "description": "Path to a WAV, MP3 or OGG file inside /media or /config/media."
+        },
+        "message": {
+          "name": "Message",
+          "description": "Text to speak through the intercom (Google Translate TTS). Provide this or an audio file."
+        },
+        "language": {
+          "name": "Language",
+          "description": "Language of the spoken message, for example es or en."
+        }
+      }
     }
   }
 }

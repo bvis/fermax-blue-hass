@@ -1,11 +1,13 @@
 """Tests for the Fermax Blue coordinator."""
 
 import asyncio
+import threading
 import time
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import UpdateFailed
 
 from custom_components.fermax_blue.api import (
@@ -14,6 +16,7 @@ from custom_components.fermax_blue.api import (
     DeviceInfo,
     DivertResponse,
     FermaxApiError,
+    FermaxAuthError,
     FermaxBlueApi,
     OpeningRecord,
     Pairing,
@@ -47,6 +50,15 @@ def mock_hass():
     hass = MagicMock()
     hass.async_create_task = MagicMock()
     return hass
+
+
+def _entry(hass):
+    """A config entry whose background tasks go through hass.async_create_task."""
+    entry = MagicMock()
+    entry.async_create_background_task = MagicMock(
+        side_effect=lambda hass_, target, name, eager_start=True: hass.async_create_task(target)
+    )
+    return entry
 
 
 @pytest.fixture
@@ -107,6 +119,7 @@ def coordinator(mock_hass, mock_api, pairing):
         coord.api = mock_api
         coord.pairing = pairing
         coord.hass = mock_hass
+        coord.config_entry = _entry(mock_hass)
         coord.device_info = None
         coord.notification_listener = None
         coord._stream_session = None
@@ -539,7 +552,7 @@ class TestCoordinatorScanInterval:
         with patch(
             "homeassistant.helpers.update_coordinator.DataUpdateCoordinator.__init__"
         ) as mock_init:
-            FermaxBlueCoordinator(mock_hass, mock_api, pairing)
+            FermaxBlueCoordinator(mock_hass, mock_api, pairing, config_entry=_entry(mock_hass))
             call_kwargs = mock_init.call_args
             assert call_kwargs.kwargs["update_interval"].total_seconds() == 300
 
@@ -547,7 +560,9 @@ class TestCoordinatorScanInterval:
         with patch(
             "homeassistant.helpers.update_coordinator.DataUpdateCoordinator.__init__"
         ) as mock_init:
-            FermaxBlueCoordinator(mock_hass, mock_api, pairing, scan_interval=10)
+            FermaxBlueCoordinator(
+                mock_hass, mock_api, pairing, scan_interval=10, config_entry=_entry(mock_hass)
+            )
             call_kwargs = mock_init.call_args
             assert call_kwargs.kwargs["update_interval"].total_seconds() == 600
 
@@ -643,6 +658,28 @@ class TestPersistedPreviewIsUnbadged:
         assert coordinator._last_photo != raw
 
     @pytest.mark.asyncio
+    async def test_stop_stream_draws_the_badge_off_the_loop(self, coordinator):
+        session = MagicMock()
+        session.latest_frame = b"display"
+        session.latest_frame_raw = TestSnapshotOverlay._jpeg()
+        session.stop = AsyncMock()
+        coordinator._stream_session = session
+        coordinator._save_last_photo = MagicMock(return_value=None)
+        threads = []
+
+        def overlay(jpeg):
+            threads.append(threading.get_ident())
+            return jpeg
+
+        with patch.object(
+            FermaxBlueCoordinator, "_overlay_snapshot_indicator", staticmethod(overlay)
+        ):
+            await coordinator.stop_stream()
+
+        assert threads
+        assert threading.get_ident() not in threads
+
+    @pytest.mark.asyncio
     async def test_save_last_photo_prefers_explicit_photo(self, coordinator, tmp_path):
         coordinator._storage_path = tmp_path
         coordinator._last_photo = b"stamped"
@@ -669,8 +706,9 @@ def full_coordinator(mock_hass, mock_api, pairing):
         "homeassistant.helpers.update_coordinator.DataUpdateCoordinator.__init__",
         return_value=None,
     ):
-        coord = FermaxBlueCoordinator(mock_hass, mock_api, pairing)
+        coord = FermaxBlueCoordinator(mock_hass, mock_api, pairing, config_entry=_entry(mock_hass))
     coord.hass = mock_hass  # normally set by the patched-out base __init__
+    coord.config_entry = _entry(mock_hass)
     coord.data = {}
     coord.async_set_updated_data = MagicMock()
     return coord
@@ -778,6 +816,33 @@ class TestAsyncUpdateData:
         mock_api.get_device_info.side_effect = FermaxApiError("boom")
         with pytest.raises(UpdateFailed, match="Error fetching device info"):
             await full_coordinator._async_update_data()
+
+    async def test_rejected_credentials_start_reauth(self, full_coordinator, mock_api):
+        mock_api.get_device_info.side_effect = FermaxAuthError("invalid_grant")
+        with pytest.raises(ConfigEntryAuthFailed):
+            await full_coordinator._async_update_data()
+
+    async def test_call_photo_badge_is_drawn_off_the_loop(self, full_coordinator, mock_api):
+        self._attach_listener(full_coordinator)
+        _close_coro_tasks(full_coordinator)
+        mock_api.get_call_log = AsyncMock(
+            return_value=[CallLogEntry("c1", "dev1", datetime(2026, 8, 9), photo_id="p1")]
+        )
+        mock_api.get_call_photo = AsyncMock(return_value=b"photo")
+        full_coordinator._photo_fetch_pending = True
+        threads = []
+
+        def overlay(jpeg):
+            threads.append(threading.get_ident())
+            return jpeg
+
+        with patch.object(
+            FermaxBlueCoordinator, "_overlay_snapshot_indicator", staticmethod(overlay)
+        ):
+            await full_coordinator._async_update_data()
+
+        assert threads
+        assert threading.get_ident() not in threads
 
     async def test_unexpected_error_raises_update_failed(self, full_coordinator, mock_api):
         mock_api.get_device_info.side_effect = ValueError("weird")
@@ -1482,6 +1547,7 @@ class TestStreamLifecycle:
         full_coordinator.data = {}
         full_coordinator._save_last_photo = MagicMock(return_value=None)
         full_coordinator.hass.async_create_task = MagicMock()
+        full_coordinator.async_update_listeners = MagicMock()
         on_end = session_cls.call_args.kwargs["on_end"]
 
         on_end()
@@ -1490,10 +1556,13 @@ class TestStreamLifecycle:
         assert full_coordinator._stream_stop_unsub is None
         assert full_coordinator.stream_session is None
         assert full_coordinator.camera_active is False
+        full_coordinator.async_set_updated_data.assert_called_once_with({})
+        # The badge is drawn by an entry task, off the callback
+        await full_coordinator.hass.async_create_task.call_args.args[0]
         # Overlay is a no-op on non-JPEG bytes, and the raw frame is persisted
         assert full_coordinator.last_photo == b"raw-frame"
         full_coordinator._save_last_photo.assert_called_once_with(b"raw-frame")
-        full_coordinator.async_set_updated_data.assert_called_once_with({})
+        full_coordinator.async_update_listeners.assert_called_once()
 
 
 class TestAutoRespond:

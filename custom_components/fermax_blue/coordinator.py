@@ -8,13 +8,16 @@ import math
 import secrets
 import time
 from collections import deque
+from collections.abc import Coroutine
 from dataclasses import replace
 from datetime import timedelta
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
+from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
@@ -94,10 +97,13 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         scan_interval: int = 5,
         auto_response_file: str = "",
         firebase_config: dict[str, str | int] | None = None,
+        *,
+        config_entry: FermaxBlueConfigEntry,
     ) -> None:
         super().__init__(
             hass,
             _LOGGER,
+            config_entry=config_entry,
             name=f"{DOMAIN}_{pairing.device_id}",
             update_interval=timedelta(minutes=scan_interval),
         )
@@ -137,6 +143,13 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         self._notification_start_time: float | None = None
         # Set while push registration is failing: when the watchdog tries again
         self._push_retry_at: float | None = None
+
+    def _background(self, target: Coroutine[Any, Any, Any], name: str) -> None:
+        """Run a task tied to the entry: unloading it cancels the task."""
+        assert self.config_entry is not None
+        self.config_entry.async_create_background_task(
+            self.hass, target, f"{DOMAIN} {name}", eager_start=False
+        )
 
     @property
     def call_mode(self) -> str:
@@ -229,6 +242,13 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         if path and data:
             await asyncio.to_thread(path.write_bytes, data)
 
+    async def _keep_preview(self, raw: bytes | None, notify: bool = False) -> None:
+        """Show a stream's last frame as the badged preview and persist it unbadged."""
+        self._last_photo = await asyncio.to_thread(self._overlay_snapshot_indicator, raw)
+        if notify:
+            self.async_update_listeners()
+        self._background(self._save_last_photo(raw), "preview save")
+
     async def _save_call_photo(self, photo: bytes) -> None:
         """Save a doorbell call photo to the recordings directory."""
         from datetime import datetime
@@ -300,7 +320,9 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         """
         try:
             device_info = await self.api.get_device_info(self.pairing.device_id)
-        except (FermaxAuthError, FermaxApiError) as err:
+        except FermaxAuthError as err:
+            raise ConfigEntryAuthFailed(f"Fermax rejected the credentials: {err}") from err
+        except FermaxApiError as err:
             raise UpdateFailed(f"Error fetching device info: {err}") from err
         except Exception as err:
             raise UpdateFailed(f"Unexpected error: {err}") from err
@@ -324,9 +346,11 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
                             if photo:
                                 # Badge only the preview; the call photo saved
                                 # to /media stays clean
-                                self._last_photo = self._overlay_snapshot_indicator(photo)
+                                self._last_photo = await asyncio.to_thread(
+                                    self._overlay_snapshot_indicator, photo
+                                )
                                 self._last_photo_id = latest.photo_id
-                                self.hass.async_create_task(self._save_call_photo(photo))
+                                self._background(self._save_call_photo(photo), "call photo")
             except Exception:
                 _LOGGER.debug("Failed to fetch call log/photo", exc_info=True)
 
@@ -479,7 +503,7 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         )
         notification_type = data.get("FermaxNotificationType", "")
         is_call = notification_type in ("Call", "CallAttend", "CallEnd")
-        self.hass.async_create_task(self.api.ack_notification(fcm_message_id, is_call=is_call))
+        self._background(self.api.ack_notification(fcm_message_id, is_call=is_call), "push ack")
 
         # Start video stream based on call mode:
         # - Autoon (camera preview button): always start stream
@@ -506,7 +530,7 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
                 socket_url = DEFAULT_SIGNALING_URL
             fermax_token = data.get("FermaxToken", "")
             receive_only = notification_type == "Call" and not attend
-            self.hass.async_create_task(
+            self._background(
                 self._start_stream(
                     room_id,
                     socket_url,
@@ -514,14 +538,15 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
                     receive_only=receive_only,
                     preview_timeout=data.get("PreviewTimeout"),
                     conversation_timeout=data.get("ConversationTimeout"),
-                )
+                ),
+                "stream start",
             )
             if (
                 notification_type == "Call"
                 and self._call_mode == CALL_MODE_AUTO_RESPOND
                 and self._auto_response_file
             ):
-                self.hass.async_create_task(self._auto_respond())
+                self._background(self._auto_respond(), "auto-response")
 
         # Only trigger doorbell ring for actual calls, not auto-on
         if notification_type == "Call":
@@ -557,7 +582,7 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
             )
 
             # Trigger a data refresh to get any new photos
-            self.hass.async_create_task(self.async_request_refresh())
+            self._background(self.async_request_refresh(), "refresh after ring")
 
     async def open_door(self, door_name: str = "GENERAL") -> bool:
         """Open a specific door. Uses in-call endpoint if stream is active."""
@@ -779,8 +804,7 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
             # Save last frame as photo preview before releasing the session
             if self._stream_session and self._stream_session.latest_frame:
                 raw = self._stream_session.latest_frame_raw
-                self._last_photo = self._overlay_snapshot_indicator(raw)
-                self.hass.async_create_task(self._save_last_photo(raw))
+                self._background(self._keep_preview(raw, notify=True), "stream preview")
             self._stream_session = None
             self._camera_active = False
             self.async_set_updated_data(self.data)
@@ -833,7 +857,7 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         def _auto_stop_stream(_now: Any) -> None:
             _LOGGER.info("Stream auto-stop after %ds", seconds)
             self._stream_stop_unsub = None
-            self.hass.async_create_task(self.stop_stream())
+            self._background(self.stop_stream(), "stream auto-stop")
 
         self._stream_stop_unsub = async_call_later(self.hass, seconds, _auto_stop_stream)
 
@@ -889,9 +913,10 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         if self._stream_session:
             # Save last frame before stopping (stop() may clear internal state)
             if self._stream_session.latest_frame:
-                raw = self._stream_session.latest_frame_raw
-                self._last_photo = self._overlay_snapshot_indicator(raw)
-                self.hass.async_create_task(self._save_last_photo(raw))
+                await self._keep_preview(self._stream_session.latest_frame_raw)
             await self._stream_session.stop()
             self._stream_session = None
             self._camera_active = False
+
+
+type FermaxBlueConfigEntry = ConfigEntry[list[FermaxBlueCoordinator]]

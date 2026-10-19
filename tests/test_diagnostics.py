@@ -20,6 +20,12 @@ class TestDiagnostics:
         assert "fcm_token" in TO_REDACT
         assert "fermax_auth_basic" in TO_REDACT
         assert "firebase_api_key" in TO_REDACT
+        assert {
+            "firebase_app_id",
+            "firebase_project_id",
+            "firebase_sender_id",
+            "firebase_package_name",
+        } <= TO_REDACT
 
     @pytest.mark.asyncio
     async def test_diagnostics_includes_operational_data(self):
@@ -40,7 +46,7 @@ class TestDiagnostics:
         mock_coordinator.data = {"status": "ok"}
         mock_coordinator.stream_session = None
 
-        mock_hass.data = {"fermax_blue": {"test_entry": [mock_coordinator]}}
+        mock_entry.runtime_data = [mock_coordinator]
 
         result = await async_get_config_entry_diagnostics(mock_hass, mock_entry)
 
@@ -52,3 +58,4 @@ class TestDiagnostics:
         assert device["device_id"] == "dev1"
         assert device["notification_listener"] == "running"
         assert device["fcm_token"] == "**REDACTED**"
+        assert device["tag"] == "**REDACTED**"  # home names are often addresses

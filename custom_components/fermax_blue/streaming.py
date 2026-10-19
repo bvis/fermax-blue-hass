@@ -790,6 +790,33 @@ class FermaxSignalingClient:
                 self._room_join_result = None
 
 
+def _mix_pcm(
+    recv_frames: list[bytes], sent_frames: list[bytes], recv_rate: int
+) -> tuple[bytes, int]:
+    """Received and sent PCM summed into one mono buffer at the received rate (CPU-bound)."""
+    import numpy as np
+
+    recv_pcm = b"".join(recv_frames)
+    sent_pcm = b"".join(sent_frames)
+
+    # Resample sent audio (48kHz) to match received (8kHz) if needed
+    if sent_pcm and recv_rate != 48000:
+        sent_arr = np.frombuffer(sent_pcm, dtype=np.int16)
+        ratio = recv_rate / 48000
+        indices = np.arange(0, len(sent_arr), 1 / ratio).astype(int)
+        indices = indices[indices < len(sent_arr)]
+        sent_pcm = sent_arr[indices].tobytes()
+
+    # Mix: pad shorter to match longer, then add
+    recv_arr = np.frombuffer(recv_pcm, dtype=np.int16)
+    sent_arr = np.frombuffer(sent_pcm, dtype=np.int16) if sent_pcm else np.zeros(0, np.int16)
+    max_len = max(len(recv_arr), len(sent_arr))
+    recv_arr = np.pad(recv_arr, (0, max_len - len(recv_arr)))
+    sent_arr = np.pad(sent_arr, (0, max_len - len(sent_arr)))
+    mixed = np.clip(recv_arr.astype(np.int32) + sent_arr.astype(np.int32), -32768, 32767)
+    return mixed.astype(np.int16).tobytes(), recv_rate
+
+
 class FermaxStreamSession:
     """Full streaming session: signaling + mediasoup consumer + frame grabber.
 
@@ -1245,41 +1272,24 @@ class FermaxStreamSession:
             _LOGGER.debug("Recording not started", exc_info=True)
             self._recording_path = None
 
-    def _mixed_audio(self) -> tuple[bytes, int]:
-        """Received and sent audio summed into one mono PCM buffer at the received rate."""
-        import numpy as np
-
-        recv_rate = getattr(self, "_audio_sample_rate", 8000)
-        recv_pcm = b"".join(getattr(self, "_recording_audio_frames", []))
-        sent_pcm = b"".join(getattr(self, "_recording_sent_audio", []))
-
-        # Resample sent audio (48kHz) to match received (8kHz) if needed
-        if sent_pcm and recv_rate != 48000:
-            sent_arr = np.frombuffer(sent_pcm, dtype=np.int16)
-            ratio = recv_rate / 48000
-            indices = np.arange(0, len(sent_arr), 1 / ratio).astype(int)
-            indices = indices[indices < len(sent_arr)]
-            sent_pcm = sent_arr[indices].tobytes()
-
-        # Mix: pad shorter to match longer, then add
-        recv_arr = np.frombuffer(recv_pcm, dtype=np.int16)
-        sent_arr = np.frombuffer(sent_pcm, dtype=np.int16) if sent_pcm else np.zeros(0, np.int16)
-        max_len = max(len(recv_arr), len(sent_arr))
-        recv_arr = np.pad(recv_arr, (0, max_len - len(recv_arr)))
-        sent_arr = np.pad(sent_arr, (0, max_len - len(sent_arr)))
-        mixed = np.clip(recv_arr.astype(np.int32) + sent_arr.astype(np.int32), -32768, 32767)
-        return mixed.astype(np.int16).tobytes(), recv_rate
-
     async def _save_recording(self) -> None:
         """Mux the collected video and audio into the MP4."""
         access_units = getattr(self, "_recording_video", [])
         jpegs = getattr(self, "_recording_frames", [])
-        if not self._recording_path or not (access_units or jpegs):
+        path = self._recording_path
+        if not path or not (access_units or jpegs):
             return
 
-        pcm, rate = (b"", 0)
-        if getattr(self, "_recording_audio_frames", None):
-            pcm, rate = self._mixed_audio()
+        # Copies taken on the loop: the mix runs in a worker thread
+        audio = (
+            (
+                list(self._recording_audio_frames),
+                list(getattr(self, "_recording_sent_audio", [])),
+                getattr(self, "_audio_sample_rate", 8000),
+            )
+            if getattr(self, "_recording_audio_frames", None)
+            else None
+        )
         video_wall = getattr(self, "_recording_video_wall", None)
         video_wall_last = getattr(self, "_recording_video_wall_last", None)
         audio_wall = getattr(self, "_recording_audio_wall", None)
@@ -1289,20 +1299,24 @@ class FermaxStreamSession:
         if video_wall is not None and video_wall_last is not None:
             span = video_wall_last - video_wall
         try:
-            await asyncio.to_thread(
-                _write_mp4, self._recording_path, access_units, jpegs, pcm, rate, offset, span
-            )
-            size = await asyncio.to_thread(os.path.getsize, self._recording_path)
+
+            def _mix_and_write() -> bool:
+                pcm, rate = _mix_pcm(*audio) if audio else (b"", 0)
+                _write_mp4(path, access_units, jpegs, pcm, rate, offset, span)
+                return bool(pcm)
+
+            has_audio = await asyncio.to_thread(_mix_and_write)
+            size = await asyncio.to_thread(os.path.getsize, path)
             _LOGGER.info(
                 "Recording saved: %s (%d KB, audio=%s)",
                 self._recording_path,
                 size // 1024,
-                bool(pcm),
+                has_audio,
             )
         except Exception:
             _LOGGER.warning("Could not save recording %s", self._recording_path, exc_info=True)
             with contextlib.suppress(OSError):
-                os.unlink(self._recording_path)
+                await asyncio.to_thread(os.unlink, path)
         finally:
             self._recording_video = []
             self._recording_frames = []

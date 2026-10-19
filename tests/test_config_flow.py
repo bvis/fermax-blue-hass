@@ -322,7 +322,108 @@ def _make_flow():
     flow.async_create_entry = MagicMock(
         side_effect=lambda **kwargs: {"type": "create_entry", **kwargs}
     )
+    flow.async_update_reload_and_abort = MagicMock(
+        side_effect=lambda entry, **kwargs: {"type": "abort", **kwargs}
+    )
     return flow
+
+
+def _fake_login(monkeypatch, *, error=None, pairings=1):
+    """Make FermaxBlueApi log in (or fail with error); return the API mock."""
+    from custom_components.fermax_blue import config_flow
+
+    api = MagicMock()
+    api.authenticate = AsyncMock(side_effect=error)
+    api.get_pairings = AsyncMock(return_value=[MagicMock(tag="Home")] * pairings)
+    monkeypatch.setattr(config_flow, "FermaxBlueApi", MagicMock(return_value=api))
+    return config_flow.FermaxBlueApi
+
+
+class TestReauthFlow:
+    """A rejected password asks for the new one instead of retrying for ever."""
+
+    def _flow(self):
+        flow = _make_flow()
+        entry = MagicMock()
+        entry.data = {**_credentials_payload()}
+        flow._get_reauth_entry = MagicMock(return_value=entry)
+        return flow, entry
+
+    @pytest.mark.asyncio
+    async def test_reauth_shows_the_password_form(self):
+        flow, _ = self._flow()
+
+        result = await flow.async_step_reauth({})
+
+        assert result["step_id"] == "reauth_confirm"
+        assert result["description_placeholders"] == {"username": "User@Example.com"}
+
+    @pytest.mark.asyncio
+    async def test_new_password_is_checked_and_saved(self, monkeypatch):
+        api_cls = _fake_login(monkeypatch)
+        flow, entry = self._flow()
+
+        result = await flow.async_step_reauth_confirm({CONF_PASSWORD: "new-secret"})
+
+        assert api_cls.call_args.args[1] == "new-secret"
+        assert result["type"] == "abort"
+        flow.async_update_reload_and_abort.assert_called_once_with(
+            entry, data_updates={CONF_PASSWORD: "new-secret"}
+        )
+
+    @pytest.mark.asyncio
+    async def test_wrong_password_shows_the_form_again(self, monkeypatch):
+        _fake_login(monkeypatch, error=FermaxAuthError("invalid_grant"))
+        flow, _ = self._flow()
+
+        result = await flow.async_step_reauth_confirm({CONF_PASSWORD: "still-wrong"})
+
+        assert result["step_id"] == "reauth_confirm"
+        assert result["errors"] == {"base": "invalid_auth"}
+        flow.async_update_reload_and_abort.assert_not_called()
+
+
+class TestReconfigureFlow:
+    """API and Firebase credentials can change without deleting the entry."""
+
+    def _flow(self):
+        flow = _make_flow()
+        entry = MagicMock()
+        entry.data = {**_credentials_payload()}
+        flow._get_reconfigure_entry = MagicMock(return_value=entry)
+        flow.add_suggested_values_to_schema = MagicMock(side_effect=lambda schema, values: schema)
+        return flow, entry
+
+    @pytest.mark.asyncio
+    async def test_shows_the_current_values(self):
+        flow, entry = self._flow()
+
+        result = await flow.async_step_reconfigure()
+
+        assert result["step_id"] == "reconfigure"
+        flow.add_suggested_values_to_schema.assert_called_once()
+        assert flow.add_suggested_values_to_schema.call_args.args[1] == entry.data
+
+    @pytest.mark.asyncio
+    async def test_valid_credentials_update_the_entry(self, monkeypatch):
+        _fake_login(monkeypatch)
+        flow, entry = self._flow()
+        changes = {CONF_FIREBASE_API_KEY: "AIza-new"}
+
+        result = await flow.async_step_reconfigure(changes)
+
+        assert result["type"] == "abort"
+        flow.async_update_reload_and_abort.assert_called_once_with(entry, data_updates=changes)
+
+    @pytest.mark.asyncio
+    async def test_http_url_is_rejected(self, monkeypatch):
+        api_cls = _fake_login(monkeypatch)
+        flow, _ = self._flow()
+
+        result = await flow.async_step_reconfigure({CONF_FERMAX_BASE_URL: "http://api.example"})
+
+        assert result["errors"] == {CONF_FERMAX_BASE_URL: "invalid_url"}
+        api_cls.assert_not_called()
 
 
 class TestConfigFlowSteps:
@@ -464,3 +565,45 @@ class TestOptionsFlow:
         result = await flow.async_step_init({"scan_interval": 10})
 
         assert result["data"] == {"scan_interval": 10}
+
+    def _options_flow(self, tmp_path):
+        from custom_components.fermax_blue.config_flow import FermaxBlueOptionsFlow
+
+        flow = FermaxBlueOptionsFlow()
+        flow.hass = MagicMock()
+        flow.hass.config.media_dirs = {"local": str(tmp_path / "media")}
+        flow.hass.config.config_dir = str(tmp_path)
+        flow.handler = "entry_1"
+        flow.hass.config_entries.async_get_entry.return_value = MagicMock(options={})
+        flow.async_show_form = MagicMock(side_effect=lambda **kwargs: {"type": "form", **kwargs})
+        flow.async_create_entry = MagicMock(
+            side_effect=lambda **kwargs: {"type": "create_entry", **kwargs}
+        )
+        return flow
+
+    @pytest.mark.asyncio
+    async def test_auto_response_outside_the_media_folders_is_rejected(self, tmp_path):
+        flow = self._options_flow(tmp_path)
+
+        result = await flow.async_step_init({"auto_response_file": "/etc/passwd"})
+
+        assert result["type"] == "form"
+        assert result["errors"] == {"auto_response_file": "invalid_path"}
+
+    @pytest.mark.asyncio
+    async def test_auto_response_in_the_media_folder_is_saved(self, tmp_path):
+        flow = self._options_flow(tmp_path)
+        clip = str(tmp_path / "media" / "hello.wav")
+
+        result = await flow.async_step_init({"auto_response_file": clip})
+
+        assert result["data"] == {"auto_response_file": clip}
+
+    @pytest.mark.asyncio
+    async def test_auto_response_defaults_to_off(self, tmp_path):
+        flow = self._options_flow(tmp_path)
+
+        result = await flow.async_step_init()
+
+        defaults = {str(key): key.default() for key in result["data_schema"].schema}
+        assert defaults["auto_response_file"] == ""

@@ -9,19 +9,21 @@ import logging
 
 from aiohttp import web
 from homeassistant.components.camera import Camera, CameraEntityFeature
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN, SIGNAL_DOORBELL_RING
-from .coordinator import FermaxBlueCoordinator
+from .coordinator import FermaxBlueConfigEntry, FermaxBlueCoordinator
 from .entity import FermaxBlueEntity
 from .streaming import draw_wake_progress, streaming_deps_available
 from .webrtc_bridge import webrtc_stream_source
 
 _LOGGER = logging.getLogger(__name__)
+
+# Actions go to the Fermax cloud one at a time
+PARALLEL_UPDATES = 1
 
 
 def _with_wake_progress(jpeg: bytes | None, progress: float) -> bytes:
@@ -40,11 +42,11 @@ def _with_wake_progress(jpeg: bytes | None, progress: float) -> bytes:
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
+    entry: FermaxBlueConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Fermax Blue cameras."""
-    coordinators: list[FermaxBlueCoordinator] = hass.data[DOMAIN][entry.entry_id]
+    coordinators = entry.runtime_data
     entities: list[Camera] = []
 
     for coordinator in coordinators:
@@ -142,6 +144,8 @@ class FermaxCamera(FermaxBlueEntity, Camera):
 
         # While someone watches the MJPEG, the session decodes every frame
         self.coordinator.mjpeg_clients += 1
+        # The wake-up frame is redrawn (in a worker thread) only when the bar moves
+        wake_frame: tuple[int, bytes | None, bytes] | None = None
         try:
             while True:
                 stream = self.coordinator.stream_session
@@ -152,7 +156,11 @@ class FermaxCamera(FermaxBlueEntity, Camera):
                 if stream and stream.latest_frame:
                     frame = stream.latest_frame
                 elif progress is not None:
-                    frame = _with_wake_progress(self.coordinator.last_photo, progress)
+                    still = self.coordinator.last_photo
+                    if wake_frame is None or wake_frame[:2] != (int(progress), still):
+                        drawn = await asyncio.to_thread(_with_wake_progress, still, progress)
+                        wake_frame = (int(progress), still, drawn)
+                    frame = wake_frame[2]
                 elif self.coordinator.last_photo:
                     frame = self.coordinator.last_photo
 
@@ -174,8 +182,8 @@ class FermaxCamera(FermaxBlueEntity, Camera):
                     await asyncio.sleep(0.5)  # Keep the wake-up bar moving
                 else:
                     await asyncio.sleep(2)  # Refresh preview every 2s
-        except (ConnectionResetError, ConnectionError, asyncio.CancelledError):
-            pass
+        except ConnectionError:
+            pass  # the viewer went away
         finally:
             self.coordinator.mjpeg_clients -= 1
 

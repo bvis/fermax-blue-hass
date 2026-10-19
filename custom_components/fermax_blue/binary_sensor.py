@@ -8,13 +8,15 @@ from homeassistant.components.binary_sensor import (
     BinarySensorDeviceClass,
     BinarySensorEntity,
 )
-from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN
-from .coordinator import FermaxBlueCoordinator
+from .coordinator import FermaxBlueConfigEntry, FermaxBlueCoordinator
 from .entity import FermaxBlueEntity
+
+# Coordinator-driven or local: no per-entity update calls
+PARALLEL_UPDATES = 0
 
 
 @dataclass(frozen=True)
@@ -23,23 +25,25 @@ class BinarySensorTypeInfo:
 
     translation_key: str
     device_class: BinarySensorDeviceClass | None = None
+    entity_category: EntityCategory | None = None
 
 
 BINARY_SENSOR_TYPES: dict[str, BinarySensorTypeInfo] = {
     "connection": BinarySensorTypeInfo(
         translation_key="connection",
         device_class=BinarySensorDeviceClass.CONNECTIVITY,
+        entity_category=EntityCategory.DIAGNOSTIC,
     ),
 }
 
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
+    entry: FermaxBlueConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Fermax Blue binary sensors."""
-    coordinators: list[FermaxBlueCoordinator] = hass.data[DOMAIN][entry.entry_id]
+    coordinators = entry.runtime_data
     entities: list[BinarySensorEntity] = []
 
     for coordinator in coordinators:
@@ -59,6 +63,12 @@ class FermaxBinarySensor(FermaxBlueEntity, BinarySensorEntity):
         self._attr_unique_id = f"{self._device_id}_{key}"
         self._attr_translation_key = descriptor.translation_key
         self._attr_device_class = descriptor.device_class
+        self._attr_entity_category = descriptor.entity_category
+
+    @property
+    def available(self) -> bool:
+        """Available while the cloud answers: a disconnected intercom reads as off."""
+        return self.coordinator.last_update_success and bool(self.coordinator.data)
 
     @property
     def is_on(self) -> bool | None:

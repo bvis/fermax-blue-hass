@@ -209,7 +209,7 @@ def _create_switchable_video_track(
             ):
                 self._placeholder_jpeg = jpeg
                 self._level = level
-                self._placeholder = _placeholder_frame(jpeg, percent)
+                self._placeholder = await asyncio.to_thread(_placeholder_frame, jpeg, percent)
             frame = self._placeholder
             frame.pts = self._pts
             frame.time_base = Fraction(1, 90000)

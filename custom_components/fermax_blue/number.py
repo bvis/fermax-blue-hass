@@ -5,28 +5,30 @@ from __future__ import annotations
 import logging
 
 from homeassistant.components.number import NumberMode, RestoreNumber
-from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import (
-    DOMAIN,
     MAX_STREAM_DURATION,
     MIN_STREAM_DURATION,
 )
-from .coordinator import FermaxBlueCoordinator
+from .coordinator import FermaxBlueConfigEntry, FermaxBlueCoordinator
 from .entity import FermaxBlueEntity
 
 _LOGGER = logging.getLogger(__name__)
 
+# Coordinator-driven or local: no per-entity update calls
+PARALLEL_UPDATES = 0
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
+    entry: FermaxBlueConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Fermax Blue number entities."""
-    coordinators: list[FermaxBlueCoordinator] = hass.data[DOMAIN][entry.entry_id]
+    coordinators = entry.runtime_data
     async_add_entities(FermaxStreamDurationNumber(c) for c in coordinators)
 
 
@@ -34,6 +36,7 @@ class FermaxStreamDurationNumber(FermaxBlueEntity, RestoreNumber):
     """Number entity to control stream duration."""
 
     _attr_translation_key = "stream_duration"
+    _attr_entity_category = EntityCategory.CONFIG
     _attr_native_min_value = MIN_STREAM_DURATION
     _attr_native_max_value = MAX_STREAM_DURATION
     _attr_native_step = 5

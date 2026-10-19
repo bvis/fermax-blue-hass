@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 from homeassistant.components.event import EventEntity
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN, SIGNAL_CAMERA_ON, SIGNAL_DOOR_OPENED, SIGNAL_DOORBELL_RING
-from .coordinator import FermaxBlueCoordinator
+from .const import SIGNAL_CAMERA_ON, SIGNAL_DOOR_OPENED, SIGNAL_DOORBELL_RING
+from .coordinator import FermaxBlueConfigEntry, FermaxBlueCoordinator
 from .entity import FermaxBlueEntity
+
+# Coordinator-driven or local: no per-entity update calls
+PARALLEL_UPDATES = 0
 
 
 class FermaxBlueEventEntity(FermaxBlueEntity, EventEntity):
@@ -34,11 +36,11 @@ class FermaxBlueEventEntity(FermaxBlueEntity, EventEntity):
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
+    entry: FermaxBlueConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Fermax Blue event entities."""
-    coordinators: list[FermaxBlueCoordinator] = hass.data[DOMAIN][entry.entry_id]
+    coordinators = entry.runtime_data
     entities: list[EventEntity] = []
 
     for coordinator in coordinators:

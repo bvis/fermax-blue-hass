@@ -99,5 +99,10 @@
         "default": "mdi:phone-settings"
       }
     }
+  },
+  "services": {
+    "send_audio": {
+      "service": "mdi:account-voice"
+    }
   }
 }

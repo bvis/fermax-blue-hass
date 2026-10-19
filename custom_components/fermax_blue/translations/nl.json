@@ -22,6 +22,27 @@
           "firebase_project_id": "Firebase Project ID",
           "firebase_package_name": "Firebase Package Name"
         }
+      },
+      "reauth_confirm": {
+        "title": "Opnieuw aanmelden",
+        "description": "Fermax heeft het wachtwoord van {username} geweigerd. Voer het huidige wachtwoord van je Fermax Blue-account in.",
+        "data": {
+          "password": "Wachtwoord"
+        }
+      },
+      "reconfigure": {
+        "title": "API-gegevens",
+        "description": "Werk de API- en Firebase-gegevens van dit account bij. De integratie wordt ermee opnieuw geladen.",
+        "data": {
+          "fermax_auth_url": "Fermax Auth URL",
+          "fermax_base_url": "Fermax Base URL",
+          "fermax_auth_basic": "Fermax Auth Basic header",
+          "firebase_api_key": "Firebase API Key",
+          "firebase_sender_id": "Firebase Sender ID",
+          "firebase_app_id": "Firebase App ID",
+          "firebase_project_id": "Firebase Project ID",
+          "firebase_package_name": "Firebase Package Name"
+        }
       }
     },
     "error": {
@@ -31,7 +52,9 @@
       "no_devices": "Geen gekoppelde apparaten gevonden op dit account."
     },
     "abort": {
-      "already_configured": "Dit account is al geconfigureerd."
+      "already_configured": "Dit account is al geconfigureerd.",
+      "reauth_successful": "Het wachtwoord is bijgewerkt.",
+      "reconfigure_successful": "De gegevens zijn bijgewerkt."
     }
   },
   "options": {
@@ -45,9 +68,13 @@
           "force_streaming_deps": "Live-videobibliotheken installeren zonder av-controle"
         },
         "data_description": {
-          "force_streaming_deps": "Alleen voor Home Assistant-versies waarop live video niet kan worden geïnstalleerd (2026.10 en later, tot er een compatibele aiortc-versie is). Installeert de geteste versies van aiortc en pymediasoup zonder ze te controleren tegen de av-versie die Home Assistant meelevert. Zet het uit zodra live video normaal installeert."
+          "force_streaming_deps": "Alleen voor Home Assistant-versies waarop live video niet kan worden geïnstalleerd (2026.10 en later, tot er een compatibele aiortc-versie is). Installeert de geteste versies van aiortc en pymediasoup zonder ze te controleren tegen de av-versie die Home Assistant meelevert. Zet het uit zodra live video normaal installeert.",
+          "auto_response_file": "Wordt via de intercom afgespeeld als de belmodus Automatisch antwoorden is. Laat leeg om automatisch antwoorden uit te zetten."
         }
       }
+    },
+    "error": {
+      "invalid_path": "Het bestand moet in de mediamappen staan (/media of /config/media)."
     }
   },
   "entity": {
@@ -129,7 +156,7 @@
     },
     "button": {
       "open_door": {
-        "name": "Deur openen"
+        "name": "{door} openen"
       },
       "camera_preview": {
         "name": "Camera voorbeeld"
@@ -192,6 +219,39 @@
     },
     "push_registration_failed": {
       "message": "De deurbelmeldingen konden niet bij Google worden geregistreerd. De integratie probeert het elke 15 minuten opnieuw; probeer het later nog eens."
+    },
+    "unknown_entity": {
+      "message": "{entity_id} is geen Fermax Blue-entiteit."
+    }
+  },
+  "issues": {
+    "streaming_unavailable": {
+      "title": "Live video staat uit",
+      "description": "De live-videobibliotheken (aiortc, pymediasoup) kunnen niet op deze Home Assistant-versie worden geïnstalleerd, omdat ze de meegeleverde av-versie niet ondersteunen. Al het andere blijft werken. Live video komt vanzelf terug zodra er een compatibele aiortc-versie is; tot die tijd kun je 'Live-videobibliotheken installeren zonder av-controle' aanzetten in de opties van de integratie."
+    }
+  },
+  "services": {
+    "send_audio": {
+      "name": "Audio naar intercom sturen",
+      "description": "Speelt tijdens een livesessie een audiobestand of gesproken bericht af via de luidspreker van de intercom.",
+      "fields": {
+        "entity_id": {
+          "name": "Intercom",
+          "description": "Een Fermax Blue-entiteit van de intercom om via te praten. Standaard de intercom met een livesessie."
+        },
+        "audio_file": {
+          "name": "Audiobestand",
+          "description": "Pad naar een WAV-, MP3- of OGG-bestand in /media of /config/media."
+        },
+        "message": {
+          "name": "Bericht",
+          "description": "Tekst die via de intercom wordt uitgesproken (Google Translate-TTS). Geef dit of een audiobestand op."
+        },
+        "language": {
+          "name": "Taal",
+          "description": "Taal van het gesproken bericht, bijvoorbeeld nl of en."
+        }
+      }
     }
   }
 }

@@ -25,6 +25,7 @@ from custom_components.fermax_blue.streaming import (
     RoomJoinResult,
     TransportData,
     _create_switchable_audio_track,
+    _mix_pcm,
     _patch_pymediasoup_audio_channels,
     streaming_deps_available,
 )
@@ -1244,7 +1245,7 @@ class TestRecording:
         session._recording_video_wall = 10.0
         session._recording_audio_wall = 10.5  # the panel audio arrived half a second in
 
-        pcm, rate = session._mixed_audio()
+        pcm, rate = _mix_pcm([recv], [sent], 8000)
         mixed = np.frombuffer(pcm, dtype=np.int16)
         assert rate == 8000
         assert len(mixed) == 8000  # sent audio resampled 6:1 onto the received rate
@@ -1292,6 +1293,37 @@ class TestRecording:
 
         assert not _exists(session._recording_path)
         assert session._recording_video == []
+
+    async def test_mix_mux_and_cleanup_run_off_the_loop(self, tmp_path):
+        loop_thread = threading.get_ident()
+        threads = []
+        session = _recording_session(
+            tmp_path,
+            access_units=_annexb_stream(frames=2),
+            audio_frames=[b"\x00\x01" * 80],
+            sent=[b"\x00\x02" * 480],
+            rate=8000,
+        )
+
+        def mix(*args):
+            threads.append(("mix", threading.get_ident()))
+            return b"", 0
+
+        def unlink(path):
+            threads.append(("unlink", threading.get_ident()))
+
+        with (
+            patch("custom_components.fermax_blue.streaming._mix_pcm", side_effect=mix),
+            patch(
+                "custom_components.fermax_blue.streaming._write_mp4",
+                side_effect=RuntimeError("muxer exploded"),
+            ),
+            patch("custom_components.fermax_blue.streaming.os.unlink", side_effect=unlink),
+        ):
+            await session._save_recording()
+
+        assert [name for name, _ in threads] == ["mix", "unlink"]
+        assert loop_thread not in {thread for _, thread in threads}
 
 
 @pytest.mark.skipif(

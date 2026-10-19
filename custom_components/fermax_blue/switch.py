@@ -8,18 +8,20 @@ import logging
 from typing import Any
 
 from homeassistant.components.switch import SwitchEntity
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import STATE_ON
+from homeassistant.const import STATE_ON, EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
 
 from .const import DOMAIN
-from .coordinator import FermaxBlueCoordinator
+from .coordinator import FermaxBlueConfigEntry, FermaxBlueCoordinator
 from .entity import FermaxBlueEntity
 
 _LOGGER = logging.getLogger(__name__)
+
+# Actions go to the Fermax cloud one at a time
+PARALLEL_UPDATES = 1
 
 # How long turning notifications on waits for the push connection before
 # writing its state; a slower connection is picked up by the watchdog tick.
@@ -28,11 +30,11 @@ NOTIFICATION_START_TIMEOUT = 15
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
+    entry: FermaxBlueConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Fermax Blue switches."""
-    coordinators: list[FermaxBlueCoordinator] = hass.data[DOMAIN][entry.entry_id]
+    coordinators = entry.runtime_data
     entities: list[SwitchEntity] = []
 
     for coordinator in coordinators:
@@ -49,6 +51,7 @@ class FermaxNotificationSwitch(FermaxBlueEntity, SwitchEntity):
     """Switch to enable/disable doorbell notifications."""
 
     _attr_translation_key = "notifications"
+    _attr_entity_category = EntityCategory.CONFIG
 
     def __init__(self, coordinator: FermaxBlueCoordinator) -> None:
         super().__init__(coordinator)
@@ -92,6 +95,7 @@ class FermaxRingPreviewSwitch(FermaxBlueEntity, SwitchEntity, RestoreEntity):
     """
 
     _attr_translation_key = "ring_preview"
+    _attr_entity_category = EntityCategory.CONFIG
 
     def __init__(self, coordinator: FermaxBlueCoordinator) -> None:
         super().__init__(coordinator)
@@ -161,6 +165,7 @@ class FermaxPhotoCallerSwitch(FermaxBlueEntity, SwitchEntity):
     """Switch to enable/disable photo caller."""
 
     _attr_translation_key = "photo_caller"
+    _attr_entity_category = EntityCategory.CONFIG
 
     def __init__(self, coordinator: FermaxBlueCoordinator) -> None:
         super().__init__(coordinator)

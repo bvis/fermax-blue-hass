@@ -17,6 +17,19 @@ from homeassistant.core import HomeAssistant
 from .const import DOMAIN, RECORDINGS_DIR
 
 
+def is_allowed_media_path(hass: HomeAssistant, path: str) -> bool:
+    """Whether path lies inside HA's media folders (blocking: resolves symlinks)."""
+    allowed_dirs = [
+        Path(str(d)).resolve()
+        for d in [*hass.config.media_dirs.values(), Path(hass.config.config_dir) / "media"]
+    ]
+    try:
+        resolved = Path(path).resolve()
+    except (OSError, ValueError):
+        return False
+    return any(resolved == d or d in resolved.parents for d in allowed_dirs)
+
+
 async def async_get_media_source(hass: HomeAssistant) -> FermaxMediaSource:
     """Set up Fermax Blue media source."""
     return FermaxMediaSource(hass)

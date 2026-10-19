@@ -20,10 +20,12 @@ class FermaxBlueEntity(CoordinatorEntity[FermaxBlueCoordinator]):
 
     @property
     def available(self) -> bool:
-        """Return True if entity is available."""
-        if not self.coordinator.data:
-            return False
-        return self.coordinator.data.get("connection_state") == "Connected"
+        """Available while the cloud answers and reports the intercom connected."""
+        return (
+            super().available
+            and bool(self.coordinator.data)
+            and self.coordinator.data.get("connection_state") == "Connected"
+        )
 
     @property
     def device_info(self) -> DeviceInfo:

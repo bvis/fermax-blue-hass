@@ -11,7 +11,7 @@ from homeassistant.components.sensor import (
     SensorEntity,
     SensorStateClass,
 )
-from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -19,8 +19,11 @@ from homeassistant.util import dt as dt_util
 
 from .api import redact_email
 from .const import DOMAIN
-from .coordinator import FermaxBlueCoordinator
+from .coordinator import FermaxBlueConfigEntry, FermaxBlueCoordinator
 from .entity import FermaxBlueEntity
+
+# Coordinator-driven or local: no per-entity update calls
+PARALLEL_UPDATES = 0
 
 
 @dataclass(frozen=True)
@@ -33,15 +36,18 @@ class SensorTypeInfo:
     state_class: SensorStateClass | None = None
     unit: str | None = None
     entity_registry_enabled_default: bool = True
+    entity_category: EntityCategory | None = None
 
 
 SENSOR_TYPES: dict[str, SensorTypeInfo] = {
     "wifi_signal": SensorTypeInfo(
         translation_key="wifi_signal",
         state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
     ),
     "device_status": SensorTypeInfo(
         translation_key="status",
+        entity_category=EntityCategory.DIAGNOSTIC,
     ),
     "last_opening": SensorTypeInfo(
         translation_key="last_opening",
@@ -56,11 +62,11 @@ SENSOR_TYPES: dict[str, SensorTypeInfo] = {
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
+    entry: FermaxBlueConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Fermax Blue sensors."""
-    coordinators: list[FermaxBlueCoordinator] = hass.data[DOMAIN][entry.entry_id]
+    coordinators = entry.runtime_data
     entities: list[SensorEntity] = []
     registry = er.async_get(hass)
 
@@ -100,6 +106,7 @@ class FermaxSensor(FermaxBlueEntity, SensorEntity):
         self._attr_state_class = descriptor.state_class
         self._attr_native_unit_of_measurement = descriptor.unit
         self._attr_entity_registry_enabled_default = descriptor.entity_registry_enabled_default
+        self._attr_entity_category = descriptor.entity_category
 
     @property
     def native_value(self) -> Any:

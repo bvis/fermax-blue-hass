@@ -22,6 +22,27 @@
           "firebase_project_id": "Firebase Project ID",
           "firebase_package_name": "Firebase Package Name"
         }
+      },
+      "reauth_confirm": {
+        "title": "Zaloguj się ponownie",
+        "description": "Fermax odrzucił hasło dla {username}. Wpisz aktualne hasło do konta Fermax Blue.",
+        "data": {
+          "password": "Hasło"
+        }
+      },
+      "reconfigure": {
+        "title": "Dane uwierzytelniające API",
+        "description": "Zaktualizuj dane API i Firebase tego konta. Integracja zostanie z nimi przeładowana.",
+        "data": {
+          "fermax_auth_url": "Fermax Auth URL",
+          "fermax_base_url": "Fermax Base URL",
+          "fermax_auth_basic": "Fermax Auth Basic header",
+          "firebase_api_key": "Firebase API Key",
+          "firebase_sender_id": "Firebase Sender ID",
+          "firebase_app_id": "Firebase App ID",
+          "firebase_project_id": "Firebase Project ID",
+          "firebase_package_name": "Firebase Package Name"
+        }
       }
     },
     "error": {
@@ -31,7 +52,9 @@
       "no_devices": "Nie znaleziono sparowanych urządzeń na tym koncie."
     },
     "abort": {
-      "already_configured": "To konto jest już skonfigurowane."
+      "already_configured": "To konto jest już skonfigurowane.",
+      "reauth_successful": "Hasło zostało zaktualizowane.",
+      "reconfigure_successful": "Dane uwierzytelniające zostały zaktualizowane."
     }
   },
   "options": {
@@ -45,9 +68,13 @@
           "force_streaming_deps": "Zainstaluj biblioteki wideo na żywo bez sprawdzania av"
         },
         "data_description": {
-          "force_streaming_deps": "Tylko dla wersji Home Assistant, w których nie da się zainstalować wideo na żywo (2026.10 i nowsze, do czasu wydania zgodnej wersji aiortc). Instaluje przetestowane wersje aiortc i pymediasoup bez sprawdzania ich z wersją av dostarczaną z Home Assistant. Wyłącz to, gdy wideo na żywo będzie się instalować normalnie."
+          "force_streaming_deps": "Tylko dla wersji Home Assistant, w których nie da się zainstalować wideo na żywo (2026.10 i nowsze, do czasu wydania zgodnej wersji aiortc). Instaluje przetestowane wersje aiortc i pymediasoup bez sprawdzania ich z wersją av dostarczaną z Home Assistant. Wyłącz to, gdy wideo na żywo będzie się instalować normalnie.",
+          "auto_response_file": "Odtwarzany przez domofon, gdy tryb połączenia to Automatyczna odpowiedź. Zostaw puste, aby wyłączyć automatyczną odpowiedź."
         }
       }
+    },
+    "error": {
+      "invalid_path": "Plik musi znajdować się w folderach multimediów (/media lub /config/media)."
     }
   },
   "entity": {
@@ -129,7 +156,7 @@
     },
     "button": {
       "open_door": {
-        "name": "Otwórz drzwi"
+        "name": "Otwórz {door}"
       },
       "camera_preview": {
         "name": "Podgląd kamery"
@@ -192,6 +219,39 @@
     },
     "push_registration_failed": {
       "message": "Nie udało się zarejestrować powiadomień o dzwonku w Google. Integracja ponawia próbę co 15 minut; spróbuj ponownie później."
+    },
+    "unknown_entity": {
+      "message": "{entity_id} nie jest encją Fermax Blue."
+    }
+  },
+  "issues": {
+    "streaming_unavailable": {
+      "title": "Wideo na żywo jest wyłączone",
+      "description": "Bibliotek wideo na żywo (aiortc, pymediasoup) nie da się zainstalować w tej wersji Home Assistant, bo nie obsługują dołączonej wersji av. Wszystko inne działa dalej. Wideo na żywo wróci samo, gdy pojawi się zgodna wersja aiortc; do tego czasu możesz włączyć „Zainstaluj biblioteki wideo na żywo bez sprawdzania av” w opcjach integracji."
+    }
+  },
+  "services": {
+    "send_audio": {
+      "name": "Wyślij dźwięk do domofonu",
+      "description": "Odtwarza plik audio lub wypowiadaną wiadomość przez głośnik domofonu podczas sesji na żywo.",
+      "fields": {
+        "entity_id": {
+          "name": "Domofon",
+          "description": "Encja Fermax Blue domofonu, przez który mówić. Domyślnie ten z sesją na żywo."
+        },
+        "audio_file": {
+          "name": "Plik audio",
+          "description": "Ścieżka do pliku WAV, MP3 lub OGG w /media lub /config/media."
+        },
+        "message": {
+          "name": "Wiadomość",
+          "description": "Tekst do wypowiedzenia przez domofon (TTS Tłumacza Google). Podaj to albo plik audio."
+        },
+        "language": {
+          "name": "Język",
+          "description": "Język wypowiadanej wiadomości, np. pl lub en."
+        }
+      }
     }
   }
 }

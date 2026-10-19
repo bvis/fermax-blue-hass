@@ -5,10 +5,9 @@ from __future__ import annotations
 from typing import Any
 
 from homeassistant.components.diagnostics import async_redact_data
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
-from .const import DOMAIN
+from .coordinator import FermaxBlueConfigEntry
 
 TO_REDACT = {
     "password",
@@ -18,15 +17,21 @@ TO_REDACT = {
     "token",
     "fermax_auth_basic",
     "firebase_api_key",
+    "firebase_app_id",
+    "firebase_project_id",
+    "firebase_sender_id",
+    "firebase_package_name",
+    # The pairing name users give their home, often its address
+    "tag",
 }
 
 
 async def async_get_config_entry_diagnostics(
     hass: HomeAssistant,
-    config_entry: ConfigEntry,
+    config_entry: FermaxBlueConfigEntry,
 ) -> dict[str, Any]:
     """Return diagnostics for a config entry."""
-    coordinators = hass.data[DOMAIN].get(config_entry.entry_id, [])
+    coordinators = config_entry.runtime_data
 
     devices = []
     for coordinator in coordinators:
