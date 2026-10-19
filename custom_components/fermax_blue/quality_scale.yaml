@@ -1,0 +1,86 @@
+rules:
+  # Bronze
+  action-setup: done
+  appropriate-polling:
+    status: done
+    comment: Every 5 minutes by default (1-30 in the options); rings and door events arrive by push.
+  brands: done
+  common-modules: done
+  config-flow: done
+  config-flow-test-coverage: done
+  dependency-transparency: done
+  docs-actions: done
+  docs-conditions:
+    status: exempt
+    comment: The integration provides no conditions.
+  docs-high-level-description: done
+  docs-installation-instructions: done
+  docs-removal-instructions: done
+  docs-triggers:
+    status: exempt
+    comment: The integration provides no device triggers; rings are event entities.
+  entity-event-setup: done
+  entity-unique-id: done
+  has-entity-name: done
+  runtime-data: done
+  test-before-configure: done
+  test-before-setup: done
+  unique-config-entry: done
+
+  # Silver
+  action-exceptions: done
+  config-entry-unloading: done
+  docs-configuration-parameters: done
+  docs-installation-parameters: done
+  entity-unavailable: done
+  integration-owner: done
+  log-when-unavailable: done
+  parallel-updates: done
+  reauthentication-flow: done
+  test-coverage: done
+
+  # Gold
+  devices: done
+  diagnostics: done
+  discovery:
+    status: exempt
+    comment: A cloud account; there is nothing on the local network to discover.
+  discovery-update-info:
+    status: exempt
+    comment: No discovery.
+  docs-data-update: done
+  docs-examples: done
+  docs-known-limitations: done
+  docs-supported-devices: done
+  docs-supported-functions: done
+  docs-troubleshooting: done
+  docs-use-cases: done
+  dynamic-devices:
+    status: done
+    comment: The account's pairings are checked daily and a new intercom reloads the entry.
+  entity-category: done
+  entity-device-class: done
+  entity-disabled-by-default:
+    status: exempt
+    comment: No noisy or rarely used entities; the diagnostic sensors change only on a poll.
+  entity-translations:
+    status: done
+    comment: Lock names are the door names the user gave the doors in the Fermax app.
+  exception-translations: done
+  icon-translations: done
+  reconfiguration-flow: done
+  repair-issues:
+    status: done
+    comment: Raised when the live video libraries can't be installed on the running Home Assistant.
+  stale-devices:
+    status: done
+    comment: Intercoms no longer on the account can be deleted from the device page.
+
+  # Platinum
+  async-dependency:
+    status: todo
+    comment: gTTS is synchronous and runs in a worker thread; the other libraries are asyncio.
+  inject-websession:
+    status: todo
+    comment: The Fermax API uses Home Assistant's httpx client; the push client still opens its own aiohttp session.
+  strict-typing: todo

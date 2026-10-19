@@ -77,7 +77,9 @@ The integration is configured through the Home Assistant UI:
 3. Search for **Fermax Blue**
 4. Enter your Fermax Blue app credentials (see below)
 
-The integration will automatically discover all paired devices on your account.
+The integration will automatically discover all paired devices on your account. An intercom paired to the account later shows up within a day, or straight away if you reload the integration.
+
+If you change the password of the Fermax account, Home Assistant shows a **Re-authenticate** prompt for the integration: enter the new password there. To change the API or Firebase credentials without removing the integration, use **Reconfigure** in the integration's menu.
 
 ### Options
 
@@ -88,7 +90,7 @@ After setup, you can configure the integration options:
 3. Available options:
    - **Polling interval** (1-30 minutes, default: 5)
    - **Recording retention** (1-90 days, default: 10) — auto-deletes older call recordings
-   - **Audio file path** — WAV/MP3 file played by the auto-respond call mode (e.g., `/config/media/mi_mensaje.wav`)
+   - **Audio file path** — WAV/MP3 file played by the auto-respond call mode, inside `/media` or `/config/media` (e.g., `/config/media/mi_mensaje.wav`). Empty turns the auto-response off
    - **Install live video libraries without the av check** (default: off) — only for Home Assistant versions where live video can't be installed, see the warning at the top
 
 Two more settings live on the device as entities rather than in the options dialog: `select.<name>_call_mode` chooses what a ring does (*notify only*, *record* the call, or *auto-respond*: answer, play the audio file through the intercom speaker and record), and `number.<name>_stream_duration` sets how long a stream session lasts (10-120 s, default 30).
@@ -204,7 +206,7 @@ For each paired intercom device, the integration creates:
 | `event.<name>_doorbell` | Event | Fires when someone rings the doorbell; the `door` attribute holds the calling panel's door key as the intercom sends it (`GENERAL`, `ZERO`, `UNSUPPORTED`...), to tell panels on the same monitor apart |
 | `event.<name>_door_opened` | Event | Fires when a door is successfully opened |
 | `event.<name>_camera_on` | Event | Fires when camera preview / live stream starts |
-| `binary_sensor.<name>_connection` | Binary Sensor | Device connectivity (entities go unavailable when disconnected) |
+| `binary_sensor.<name>_connection` | Binary Sensor | Device connectivity: off while the intercom is disconnected, and then the other entities go unavailable |
 | `lock.<name>_<door>_lock` | Lock | Lock/unlock (open) the door |
 | `button.<name>_<door>_open` | Button | One-press door opening |
 | `button.<name>_camera_preview` | Button | Start camera preview / live stream |
@@ -221,6 +223,8 @@ For each paired intercom device, the integration creates:
 | `switch.<name>_ring_preview` | Switch | Enable/disable live view-only preview on ring without answering the call (see [Ring preview](#ring-preview)) |
 | `select.<name>_call_mode` | Select | What a ring does: notify only, record the call, or auto-respond with the configured audio file |
 | `number.<name>_stream_duration` | Number | Length of a stream session in seconds (10-120, default 30) |
+
+The WiFi signal, status and connection entities are diagnostic entities, and the notifications, photo caller and ring preview switches, the call mode and the stream duration are configuration entities, so they appear under those headings on the device page. Every entity goes unavailable while the Fermax cloud doesn't answer.
 
 ### Ring preview
 
@@ -316,7 +320,7 @@ You can also access them from the dashboard via the **Grabaciones** button, or b
 
 ### `fermax_blue.send_audio`
 
-Send audio to the intercom speaker during an active video stream.
+Send audio to the intercom speaker during an active video stream. `entity_id` picks the intercom (any of its Fermax Blue entities); without it the audio goes to the intercom that has a live session. Audio files must be inside `/media` or `/config/media`.
 
 ```yaml
 # Send a pre-recorded audio file
@@ -438,8 +442,25 @@ automation:
 5. **Video Streaming**: The integration connects to the Fermax mediasoup SFU via Socket.IO, negotiates WebRTC transport, and receives live video frames (~720x480) that are served as MJPEG to the HA frontend and republished, together with the intercom's audio, over WebRTC through Home Assistant's bundled go2rtc. A viewer's microphone travels the opposite way into the call
 6. **Push Notifications**: When someone rings your doorbell, Fermax sends a push notification via Firebase, which the integration receives instantly and acknowledges
 7. **Frame Persistence**: The last video frame is saved to disk so the camera card always shows a preview, even after HA restarts
-8. **Polling**: Device status (connection, signal, opening history) is polled at a configurable interval (default: 5 minutes)
+8. **Polling**: Device status (connection, signal, opening history) is polled at a configurable interval (default: 5 minutes). Rings, door openings and stream changes arrive by push in between, so they show up at once. Once a day the integration also checks the account for newly paired intercoms
 9. **Retry Logic**: API calls are automatically retried with exponential backoff on transient errors (5xx, connection failures)
+
+## Known limitations
+
+- **Live video on Home Assistant 2026.10 and later** needs an `aiortc` release that accepts the `av` version Home Assistant ships. Until there is one, live video and talk-back are off (Home Assistant shows a repair saying so) and everything else works; see the warning at the top for the option that turns live video on anyway.
+- **Cloud only.** Everything goes through the Fermax cloud and Google's push service; with no internet connection nothing works, as with the app.
+- **No HLS / `stream` integration.** The camera plays over WebRTC or MJPEG. Cards and casts that need HLS (`camera_view: live` on a Cast target, `media-source://camera/...`) don't work; cast the MJPEG endpoint instead (see the blueprints).
+- **Switching camera is "next camera".** The intercom only accepts a camera change during a live session and always moves to the next source, so a per-camera selector isn't possible.
+- **Every door of the pairing gets entities.** The cloud's door visibility flag is unreliable, so hidden doors show up too; disable the ones you don't need.
+- **No time overlay on the WebRTC video.** The MJPEG stream carries the LIVE badge; WebRTC forwards the intercom's video untouched.
+
+## Removing the integration
+
+1. Go to **Settings** > **Devices & Services** > **Fermax Blue**, open the three-dot menu of the entry and choose **Delete**.
+2. If you installed it with HACS, remove **Fermax Blue** in HACS and restart Home Assistant.
+3. Optionally delete the leftovers the integration wrote: recordings and call photos in `/media/fermax_recordings`, and the push credentials and last camera frame in `/config/.storage/fermax_blue*`.
+
+An intercom you unpaired from the account can be deleted on its own from its device page (three-dot menu > **Delete**).
 
 ## Troubleshooting
 
@@ -502,6 +523,10 @@ make pre-push       # Full CI replica on Python 3.13 + 3.14 (same as GitHub Acti
 ```
 
 This project uses [Conventional Commits](https://www.conventionalcommits.org/).
+
+## Quality scale
+
+The integration tracks Home Assistant's [Integration Quality Scale](https://developers.home-assistant.io/docs/core/integration-quality-scale/) rules in [`quality_scale.yaml`](custom_components/fermax_blue/quality_scale.yaml): every Bronze, Silver and Gold rule is done or exempt with a reason. The Platinum rules are still to do: gTTS is synchronous, the push client opens its own HTTP session, and the code isn't strictly typed yet.
 
 ## Roadmap
 
