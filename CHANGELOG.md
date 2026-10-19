@@ -1,25 +1,25 @@
 # Changelog
 
-## [Unreleased]
+## [0.24.0-beta.2] - 2026-10-19
 
 ### Added
-- **Re-authenticate instead of retrying for ever** — when Fermax rejects the stored password (you changed it in the app), Home Assistant now shows a *Re-authenticate* prompt for the integration instead of retrying the setup in the background. **Reconfigure** in the integration menu changes the API and Firebase credentials without removing it.
-- **A repair when live video can't be installed** — on Home Assistant versions where the live video libraries don't install (2026.10, see the README), *Settings → Repairs* says so and points to the option, instead of only a log line. It goes away by itself once live video installs.
-- **New intercoms on the account show up by themselves** — the integration checks the account's pairings once a day and reloads when a new intercom appears. An intercom removed from the account can be deleted from its device page.
-- **`quality_scale.yaml`** and README sections on known limitations, removal and how data is updated.
+- **Re-authenticate instead of retrying for ever** (#156) — when Fermax rejects the stored password (you changed it in the app), Home Assistant now shows a *Re-authenticate* prompt for the integration instead of retrying the setup in the background. **Reconfigure** in the integration menu changes the API and Firebase credentials without removing it.
+- **A repair when live video can't be installed** (#156) — on Home Assistant versions where the live video libraries don't install (2026.10, see the README), *Settings → Repairs* says so and points to the option, instead of only a log line. It goes away by itself once live video installs.
+- **New intercoms on the account show up by themselves** (#156) — the integration checks the account's pairings once a day and reloads when a new intercom appears. An intercom removed from the account can be deleted from its device page.
+- **`quality_scale.yaml`** (#156) and README sections on known limitations, removal and how data is updated.
 
 ### Changed
-- **Settings and diagnostics are grouped on the device page** — the notifications, photo caller and ring preview switches, the call mode and the stream duration are configuration entities; WiFi signal, status and connection are diagnostic entities. Entity ids don't change.
+- **Settings and diagnostics are grouped on the device page** (#156) — the notifications, photo caller and ring preview switches, the call mode and the stream duration are configuration entities; WiFi signal, status and connection are diagnostic entities. Entity ids don't change.
 - **The *Open door* buttons are translated** — they were always "Open <door>" in English; they now follow Home Assistant's language. Entity ids don't change.
-- **`send_audio` takes the intercom from `entity_id`** — with several intercoms the audio goes to the one you pick; without `entity_id` it goes to the intercom with a live session, as before. Its name and fields are translated.
-- **The auto-response file must be inside the media folders** — the options dialog now checks it the same way `send_audio` does, and the field starts empty (auto-response off) instead of a placeholder path.
+- **`send_audio` takes the intercom from `entity_id`** (#156) — with several intercoms the audio goes to the one you pick; without `entity_id` it goes to the intercom with a live session, as before. Its name and fields are translated.
+- **The auto-response file must be inside the media folders** (#156) — the options dialog now checks it the same way `send_audio` does, and the field starts empty (auto-response off) instead of a placeholder path.
 
 ### Fixed
-- **`send_audio` no longer fails after a reload** — the action kept the intercoms of the first setup, so after changing an option or reloading it always answered that no session was running.
-- **Entities go unavailable when the Fermax cloud stops answering** — they kept showing the last values as current. The *Connection* sensor now reads *off* while the intercom is disconnected instead of going unavailable itself.
-- **Less work on Home Assistant's event loop** — the snapshot badge, the wake-up progress picture (MJPEG and WebRTC), the audio mix of a recording and the clean-up of a failed recording run in worker threads, and the imaging and video libraries are loaded once at setup in a worker thread.
-- **Reloading the integration no longer leaves things running** — background tasks belong to the entry and stop with it, a live session is closed on unload, the shared HTTP client is used instead of a new one per setup, and push and the API stay up when Home Assistant refuses to unload the platforms. Cancelling an MJPEG stream now stops it properly.
-- **Diagnostics redact the remaining Firebase identifiers and the pairing name**, which is often a home address.
+- **`send_audio` no longer fails after a reload** (#156) — the action kept the intercoms of the first setup, so after changing an option or reloading it always answered that no session was running.
+- **Entities go unavailable when the Fermax cloud stops answering** (#156) — they kept showing the last values as current. The *Connection* sensor now reads *off* while the intercom is disconnected instead of going unavailable itself.
+- **Less work on Home Assistant's event loop** (#156) — the snapshot badge, the wake-up progress picture (MJPEG and WebRTC), the audio mix of a recording and the clean-up of a failed recording run in worker threads, and the imaging and video libraries are loaded once at setup in a worker thread.
+- **Reloading the integration no longer leaves things running** (#156) — background tasks belong to the entry and stop with it, a live session is closed on unload, the shared HTTP client is used instead of a new one per setup, and push and the API stay up when Home Assistant refuses to unload the platforms. Cancelling an MJPEG stream now stops it properly.
+- **Diagnostics redact the remaining Firebase identifiers and the pairing name** (#156), which is often a home address.
 
 ## [0.24.0-beta.1] - 2026-10-19
 
