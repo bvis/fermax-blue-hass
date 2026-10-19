@@ -64,11 +64,9 @@
         "data": {
           "scan_interval": "Abfrageintervall (Minuten)",
           "recording_retention": "Aufbewahrung der Aufnahmen (Tage)",
-          "auto_response_file": "Pfad zur Audiodatei",
-          "force_streaming_deps": "Live-Video-Bibliotheken ohne av-Prüfung installieren"
+          "auto_response_file": "Pfad zur Audiodatei"
         },
         "data_description": {
-          "force_streaming_deps": "Nur für Home-Assistant-Versionen, auf denen sich Live-Video nicht installieren lässt (2026.10 und neuer, bis eine kompatible aiortc-Version erscheint). Installiert die getesteten Versionen von aiortc und pymediasoup, ohne sie gegen die av-Version von Home Assistant zu prüfen. Schalte es aus, sobald sich Live-Video normal installiert.",
           "auto_response_file": "Wird über die Türsprechanlage abgespielt, wenn der Anrufmodus Automatische Antwort ist. Leer lassen, um die automatische Antwort auszuschalten."
         }
       }
@@ -206,7 +204,7 @@
       "message": "Die Türsprechanlage hat den Pförtner nicht angerufen."
     },
     "streaming_unavailable": {
-      "message": "Live-Video ist aus: Die Streaming-Bibliotheken lassen sich auf dieser Home-Assistant-Version noch nicht installieren, ein Neustart hilft also nicht. Alles andere funktioniert weiter; um es trotzdem zu nutzen, aktiviere „Live-Video-Bibliotheken ohne av-Prüfung installieren“ in den Optionen der Integration."
+      "message": "Live-Video ist aus: Die Streaming-Bibliotheken lassen sich auf dieser Home-Assistant-Version noch nicht installieren, ein Neustart hilft also nicht. Alles andere funktioniert weiter."
     },
     "send_audio_no_input": {
       "message": "Gib eine Audiodatei oder eine Nachricht an."
@@ -227,7 +225,7 @@
   "issues": {
     "streaming_unavailable": {
       "title": "Live-Video ist aus",
-      "description": "Die Live-Video-Bibliotheken (aiortc, pymediasoup) lassen sich auf dieser Home-Assistant-Version nicht installieren, weil sie die mitgelieferte av-Version nicht unterstützen. Alles andere funktioniert weiter. Live-Video kommt von selbst zurück, sobald eine kompatible aiortc-Version erscheint; bis dahin kannst du in den Optionen der Integration „Live-Video-Bibliotheken ohne av-Prüfung installieren“ einschalten."
+      "description": "Die Live-Video-Bibliotheken (aiortc, pymediasoup) lassen sich auf dieser Home-Assistant-Version nicht installieren, weil sie die mitgelieferte av-Version nicht unterstützen. Alles andere funktioniert weiter. Live-Video kommt von selbst zurück, sobald eine kompatible aiortc-Version erscheint."
     }
   },
   "services": {

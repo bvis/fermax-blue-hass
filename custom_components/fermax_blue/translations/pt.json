@@ -64,11 +64,9 @@
         "data": {
           "scan_interval": "Intervalo de consulta (minutos)",
           "recording_retention": "Retenção de gravações (dias)",
-          "auto_response_file": "Caminho do arquivo de áudio",
-          "force_streaming_deps": "Instalar as bibliotecas de vídeo em direto sem verificar o av"
+          "auto_response_file": "Caminho do arquivo de áudio"
         },
         "data_description": {
-          "force_streaming_deps": "Apenas para versões do Home Assistant em que o vídeo em direto não pode ser instalado (2026.10 e posteriores, até sair uma versão compatível do aiortc). Instala as versões testadas do aiortc e do pymediasoup sem as verificar contra a versão do av que o Home Assistant inclui. Desativa-o quando o vídeo em direto se instalar normalmente.",
           "auto_response_file": "Reproduzido pelo videoporteiro quando o modo de chamada é Resposta automática. Deixa vazio para desativar a resposta automática."
         }
       }
@@ -206,7 +204,7 @@
       "message": "O videoporteiro não efetuou a chamada ao porteiro."
     },
     "streaming_unavailable": {
-      "message": "O vídeo em direto está desativado: as suas bibliotecas de streaming ainda não podem ser instaladas nesta versão do Home Assistant, por isso reiniciar não resolve. Tudo o resto continua a funcionar; para o experimentar na mesma, ativa 'Instalar as bibliotecas de vídeo em direto sem verificar o av' nas opções da integração."
+      "message": "O vídeo em direto está desativado: as suas bibliotecas de streaming ainda não podem ser instaladas nesta versão do Home Assistant, por isso reiniciar não resolve. Tudo o resto continua a funcionar."
     },
     "send_audio_no_input": {
       "message": "Indica um ficheiro de áudio ou uma mensagem para reproduzir."
@@ -227,7 +225,7 @@
   "issues": {
     "streaming_unavailable": {
       "title": "O vídeo em direto está desativado",
-      "description": "As bibliotecas de vídeo em direto (aiortc, pymediasoup) não podem ser instaladas nesta versão do Home Assistant porque não suportam a versão de av que ela inclui. Tudo o resto continua a funcionar. O vídeo em direto volta sozinho quando sair uma versão compatível do aiortc; até lá podes ativar 'Instalar as bibliotecas de vídeo em direto sem verificar o av' nas opções da integração."
+      "description": "As bibliotecas de vídeo em direto (aiortc, pymediasoup) não podem ser instaladas nesta versão do Home Assistant porque não suportam a versão de av que ela inclui. Tudo o resto continua a funcionar. O vídeo em direto volta sozinho quando sair uma versão compatível do aiortc."
     }
   },
   "services": {

@@ -4,9 +4,12 @@
 
 ### Added
 - **Re-authenticate instead of retrying for ever** — when Fermax rejects the stored password (you changed it in the app), Home Assistant now shows a *Re-authenticate* prompt for the integration instead of retrying the setup in the background. **Reconfigure** in the integration menu changes the API and Firebase credentials without removing it.
-- **A repair when live video can't be installed** — on Home Assistant versions where the live video libraries don't install (2026.10, see the README), *Settings → Repairs* says so and points to the option, instead of only a log line. It goes away by itself once live video installs.
+- **A repair when live video can't be installed** — on Home Assistant versions where the live video libraries don't install (2026.10, see the README), *Settings → Repairs* says so, instead of only a log line. It goes away by itself once live video installs.
 - **New intercoms on the account show up by themselves** — the integration checks the account's pairings once a day and reloads when a new intercom appears. An intercom removed from the account can be deleted from its device page.
 - **`quality_scale.yaml`** and README sections on known limitations, removal and how data is updated.
+
+### Removed
+- **The *Install live video libraries without the av check* option** — the integration no longer installs packages itself. On Home Assistant 2026.10 live video stays off until an `aiortc` release accepts `av 19`, and comes back by itself then. Libraries the option already installed stay in place and keep working until Home Assistant replaces its packages.
 
 ### Changed
 - **Settings and diagnostics are grouped on the device page** — the notifications, photo caller and ring preview switches, the call mode and the stream duration are configuration entities; WiFi signal, status and connection are diagnostic entities. Entity ids don't change.

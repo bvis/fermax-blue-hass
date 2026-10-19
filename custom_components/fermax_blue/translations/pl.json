@@ -64,11 +64,9 @@
         "data": {
           "scan_interval": "Interwał odpytywania (minuty)",
           "recording_retention": "Przechowywanie nagrań (dni)",
-          "auto_response_file": "Ścieżka do pliku audio",
-          "force_streaming_deps": "Zainstaluj biblioteki wideo na żywo bez sprawdzania av"
+          "auto_response_file": "Ścieżka do pliku audio"
         },
         "data_description": {
-          "force_streaming_deps": "Tylko dla wersji Home Assistant, w których nie da się zainstalować wideo na żywo (2026.10 i nowsze, do czasu wydania zgodnej wersji aiortc). Instaluje przetestowane wersje aiortc i pymediasoup bez sprawdzania ich z wersją av dostarczaną z Home Assistant. Wyłącz to, gdy wideo na żywo będzie się instalować normalnie.",
           "auto_response_file": "Odtwarzany przez domofon, gdy tryb połączenia to Automatyczna odpowiedź. Zostaw puste, aby wyłączyć automatyczną odpowiedź."
         }
       }
@@ -206,7 +204,7 @@
       "message": "Domofon nie wykonał połączenia z portierem."
     },
     "streaming_unavailable": {
-      "message": "Wideo na żywo jest wyłączone: jego biblioteki streamingu nie dają się jeszcze zainstalować w tej wersji Home Assistant, więc ponowne uruchomienie nie pomoże. Wszystko inne działa; aby mimo to spróbować, włącz „Zainstaluj biblioteki wideo na żywo bez sprawdzania av” w opcjach integracji."
+      "message": "Wideo na żywo jest wyłączone: jego biblioteki streamingu nie dają się jeszcze zainstalować w tej wersji Home Assistant, więc ponowne uruchomienie nie pomoże. Wszystko inne działa."
     },
     "send_audio_no_input": {
       "message": "Podaj plik audio albo wiadomość do odczytania."
@@ -227,7 +225,7 @@
   "issues": {
     "streaming_unavailable": {
       "title": "Wideo na żywo jest wyłączone",
-      "description": "Bibliotek wideo na żywo (aiortc, pymediasoup) nie da się zainstalować w tej wersji Home Assistant, bo nie obsługują dołączonej wersji av. Wszystko inne działa dalej. Wideo na żywo wróci samo, gdy pojawi się zgodna wersja aiortc; do tego czasu możesz włączyć „Zainstaluj biblioteki wideo na żywo bez sprawdzania av” w opcjach integracji."
+      "description": "Bibliotek wideo na żywo (aiortc, pymediasoup) nie da się zainstalować w tej wersji Home Assistant, bo nie obsługują dołączonej wersji av. Wszystko inne działa dalej. Wideo na żywo wróci samo, gdy pojawi się zgodna wersja aiortc."
     }
   },
   "services": {

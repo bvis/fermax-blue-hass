@@ -64,11 +64,9 @@
         "data": {
           "scan_interval": "Intervallo di polling (minuti)",
           "recording_retention": "Conservazione registrazioni (giorni)",
-          "auto_response_file": "Percorso file audio",
-          "force_streaming_deps": "Installa le librerie del video in diretta senza controllare av"
+          "auto_response_file": "Percorso file audio"
         },
         "data_description": {
-          "force_streaming_deps": "Solo per le versioni di Home Assistant in cui il video in diretta non si può installare (2026.10 e successive, finché non esce una versione compatibile di aiortc). Installa le versioni testate di aiortc e pymediasoup senza verificarle rispetto alla versione di av fornita da Home Assistant. Disattivalo quando il video in diretta si installa normalmente.",
           "auto_response_file": "Riprodotto dal videocitofono quando la modalità di chiamata è Risposta automatica. Lascia vuoto per disattivare la risposta automatica."
         }
       }
@@ -206,7 +204,7 @@
       "message": "Il videocitofono non ha chiamato il portiere."
     },
     "streaming_unavailable": {
-      "message": "Il video in diretta è disattivato: le sue librerie di streaming non si possono ancora installare su questa versione di Home Assistant, quindi riavviare non serve. Tutto il resto funziona; per provarlo comunque, attiva 'Installa le librerie del video in diretta senza controllare av' nelle opzioni dell'integrazione."
+      "message": "Il video in diretta è disattivato: le sue librerie di streaming non si possono ancora installare su questa versione di Home Assistant, quindi riavviare non serve. Tutto il resto funziona."
     },
     "send_audio_no_input": {
       "message": "Indica un file audio o un messaggio da riprodurre."
@@ -227,7 +225,7 @@
   "issues": {
     "streaming_unavailable": {
       "title": "Il video in diretta è disattivato",
-      "description": "Le librerie del video in diretta (aiortc, pymediasoup) non possono essere installate su questa versione di Home Assistant perché non supportano la versione di av inclusa. Tutto il resto continua a funzionare. Il video in diretta torna da solo quando uscirà una versione compatibile di aiortc; nel frattempo puoi attivare 'Installa le librerie del video in diretta senza controllare av' nelle opzioni dell'integrazione."
+      "description": "Le librerie del video in diretta (aiortc, pymediasoup) non possono essere installate su questa versione di Home Assistant perché non supportano la versione di av inclusa. Tutto il resto continua a funzionare. Il video in diretta torna da solo quando uscirà una versione compatibile di aiortc."
     }
   },
   "services": {

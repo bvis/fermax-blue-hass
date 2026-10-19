@@ -64,11 +64,9 @@
         "data": {
           "scan_interval": "Intervalle d'interrogation (minutes)",
           "recording_retention": "Rétention des enregistrements (jours)",
-          "auto_response_file": "Chemin du fichier audio",
-          "force_streaming_deps": "Installer les bibliothèques de vidéo en direct sans vérifier av"
+          "auto_response_file": "Chemin du fichier audio"
         },
         "data_description": {
-          "force_streaming_deps": "Uniquement pour les versions de Home Assistant où la vidéo en direct ne peut pas être installée (2026.10 et suivantes, jusqu'à une version compatible d'aiortc). Installe les versions testées d'aiortc et de pymediasoup sans les vérifier par rapport à la version d'av fournie par Home Assistant. Désactivez-le dès que la vidéo en direct s'installe normalement.",
           "auto_response_file": "Diffusé par l'interphone quand le mode d'appel est Réponse automatique. Laissez vide pour désactiver la réponse automatique."
         }
       }
@@ -206,7 +204,7 @@
       "message": "L'interphone n'a pas appelé le gardien."
     },
     "streaming_unavailable": {
-      "message": "La vidéo en direct est désactivée : ses bibliothèques de streaming ne peuvent pas encore être installées sur cette version de Home Assistant, un redémarrage n'y changera rien. Tout le reste fonctionne ; pour l'essayer quand même, activez « Installer les bibliothèques de vidéo en direct sans vérifier av » dans les options de l'intégration."
+      "message": "La vidéo en direct est désactivée : ses bibliothèques de streaming ne peuvent pas encore être installées sur cette version de Home Assistant, un redémarrage n'y changera rien. Tout le reste fonctionne."
     },
     "send_audio_no_input": {
       "message": "Indiquez un fichier audio ou un message à énoncer."
@@ -227,7 +225,7 @@
   "issues": {
     "streaming_unavailable": {
       "title": "La vidéo en direct est désactivée",
-      "description": "Les bibliothèques de vidéo en direct (aiortc, pymediasoup) ne peuvent pas être installées sur cette version de Home Assistant, car elles ne prennent pas en charge la version de av qu'elle fournit. Tout le reste fonctionne. La vidéo en direct revient d'elle-même dès qu'une version compatible d'aiortc sort ; d'ici là, vous pouvez activer « Installer les bibliothèques de vidéo en direct sans vérifier av » dans les options de l'intégration."
+      "description": "Les bibliothèques de vidéo en direct (aiortc, pymediasoup) ne peuvent pas être installées sur cette version de Home Assistant, car elles ne prennent pas en charge la version de av qu'elle fournit. Tout le reste fonctionne. La vidéo en direct revient d'elle-même dès qu'une version compatible d'aiortc sort."
     }
   },
   "services": {

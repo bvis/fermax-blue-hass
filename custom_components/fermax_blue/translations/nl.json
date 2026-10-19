@@ -64,11 +64,9 @@
         "data": {
           "scan_interval": "Polling-interval (minuten)",
           "recording_retention": "Opnames bewaren (dagen)",
-          "auto_response_file": "Pad naar audiobestand",
-          "force_streaming_deps": "Live-videobibliotheken installeren zonder av-controle"
+          "auto_response_file": "Pad naar audiobestand"
         },
         "data_description": {
-          "force_streaming_deps": "Alleen voor Home Assistant-versies waarop live video niet kan worden geïnstalleerd (2026.10 en later, tot er een compatibele aiortc-versie is). Installeert de geteste versies van aiortc en pymediasoup zonder ze te controleren tegen de av-versie die Home Assistant meelevert. Zet het uit zodra live video normaal installeert.",
           "auto_response_file": "Wordt via de intercom afgespeeld als de belmodus Automatisch antwoorden is. Laat leeg om automatisch antwoorden uit te zetten."
         }
       }
@@ -206,7 +204,7 @@
       "message": "De intercom heeft de portier niet gebeld."
     },
     "streaming_unavailable": {
-      "message": "Live video staat uit: de streamingbibliotheken kunnen op deze Home Assistant-versie nog niet worden geïnstalleerd, dus herstarten helpt niet. Al het andere blijft werken; om het toch te proberen, zet 'Live-videobibliotheken installeren zonder av-controle' aan in de opties van de integratie."
+      "message": "Live video staat uit: de streamingbibliotheken kunnen op deze Home Assistant-versie nog niet worden geïnstalleerd, dus herstarten helpt niet. Al het andere blijft werken."
     },
     "send_audio_no_input": {
       "message": "Geef een audiobestand of een bericht op."
@@ -227,7 +225,7 @@
   "issues": {
     "streaming_unavailable": {
       "title": "Live video staat uit",
-      "description": "De live-videobibliotheken (aiortc, pymediasoup) kunnen niet op deze Home Assistant-versie worden geïnstalleerd, omdat ze de meegeleverde av-versie niet ondersteunen. Al het andere blijft werken. Live video komt vanzelf terug zodra er een compatibele aiortc-versie is; tot die tijd kun je 'Live-videobibliotheken installeren zonder av-controle' aanzetten in de opties van de integratie."
+      "description": "De live-videobibliotheken (aiortc, pymediasoup) kunnen niet op deze Home Assistant-versie worden geïnstalleerd, omdat ze de meegeleverde av-versie niet ondersteunen. Al het andere blijft werken. Live video komt vanzelf terug zodra er een compatibele aiortc-versie is."
     }
   },
   "services": {
