@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.24.0-beta.2] - 2026-10-19
+## [0.24.0] - 2026-10-20
 
 ### Added
 - **Re-authenticate instead of retrying for ever** (#156) — when Fermax rejects the stored password (you changed it in the app), Home Assistant now shows a *Re-authenticate* prompt for the integration instead of retrying the setup in the background. **Reconfigure** in the integration menu changes the API and Firebase credentials without removing it.
@@ -20,19 +20,11 @@
 - **Less work on Home Assistant's event loop** (#156) — the snapshot badge, the wake-up progress picture (MJPEG and WebRTC), the audio mix of a recording and the clean-up of a failed recording run in worker threads, and the imaging and video libraries are loaded once at setup in a worker thread.
 - **Reloading the integration no longer leaves things running** (#156) — background tasks belong to the entry and stop with it, a live session is closed on unload, the shared HTTP client is used instead of a new one per setup, and push and the API stay up when Home Assistant refuses to unload the platforms. Cancelling an MJPEG stream now stops it properly.
 - **Diagnostics redact the remaining Firebase identifiers and the pairing name** (#156), which is often a home address.
-
-## [0.24.0-beta.1] - 2026-10-19
-
-### Fixed
 - **Sending audio no longer stalls Home Assistant** (#154) — `fermax_blue.send_audio` and the auto-response decoded the whole audio file on Home Assistant's event loop, so a long file or a slow disk (SD card, network share) froze everything else while it ran. Decoding now runs in a worker thread, and so does creating the recordings folder when a session starts.
+- **The integration loads even when Google refuses the push registration** (#150) — a `PHONE_REGISTRATION_ERROR` from Google during setup left the whole integration unloaded, although doors, camera and sensors work without push. It now loads with doorbell notifications off and tries the registration again every 15 minutes; turning the *Notifications* switch on tries it at once and says so if it still fails.
 
 ### Removed
 - **The Home Assistant TTS fallback of `send_audio`** (#154) — when the built-in text-to-speech failed, `send_audio` tried `tts.google_translate_say` on a placeholder player and picked the newest file in `/config/tts/`, which never produced the message. A failed text message now raises the usual error straight away.
-
-## [0.23.1-beta.1] - 2026-10-18
-
-### Fixed
-- **The integration loads even when Google refuses the push registration** (#150) — a `PHONE_REGISTRATION_ERROR` from Google during setup left the whole integration unloaded, although doors, camera and sensors work without push. It now loads with doorbell notifications off and tries the registration again every 15 minutes; turning the *Notifications* switch on tries it at once and says so if it still fails.
 
 ## [0.23.0] - 2026-10-12
 
