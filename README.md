@@ -6,6 +6,7 @@
 [![CodeQL](https://github.com/bvis/fermax-blue-hass/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/bvis/fermax-blue-hass/actions/workflows/codeql.yml)
 [![License: MIT](https://img.shields.io/github/license/bvis/fermax-blue-hass.svg)](LICENSE)
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
+[![Quality scale: Gold (self-assessed)](https://img.shields.io/badge/quality%20scale-gold%20(self--assessed)-d4af37)](custom_components/fermax_blue/quality_scale.yaml)
 
 > [!WARNING]
 > **Home Assistant 2026.10: live video needs one extra step.** Home Assistant 2026.10 ships `av 19`, and the WebRTC library this integration uses (`aiortc`) doesn't accept it yet ([aiortc#1447](https://github.com/aiortc/aiortc/pull/1447)). Out of the box the integration loads, and rings, door opening, photos and everything else work, but live video and talk-back stay off.
