@@ -6,6 +6,7 @@
 [![CodeQL](https://github.com/bvis/fermax-blue-hass/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/bvis/fermax-blue-hass/actions/workflows/codeql.yml)
 [![License: MIT](https://img.shields.io/github/license/bvis/fermax-blue-hass.svg)](LICENSE)
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
+[![Quality scale: Gold (self-assessed)](https://img.shields.io/badge/quality%20scale-gold%20(self--assessed)-d4af37)](custom_components/fermax_blue/quality_scale.yaml)
 
 > [!WARNING]
 > **Home Assistant 2026.10: no live video until aiortc 1.16.** Home Assistant 2026.10 ships `av 19`, and the WebRTC library this integration uses (`aiortc`) doesn't accept it yet ([aiortc#1447](https://github.com/aiortc/aiortc/pull/1447) is merged, not released). The integration loads, and rings, door opening, photos and everything else work, but live video and talk-back stay off; *Settings → Repairs* says so. Live video comes back by itself, with no update of the integration, once a compatible `aiortc` release is out.
@@ -87,6 +88,7 @@ After setup, you can configure the integration options:
    - **Polling interval** (1-30 minutes, default: 5)
    - **Recording retention** (1-90 days, default: 10) — auto-deletes older call recordings
    - **Audio file path** — WAV/MP3 file played by the auto-respond call mode, inside `/media` or `/config/media` (e.g., `/config/media/mi_mensaje.wav`). Empty turns the auto-response off
+
 
 Two more settings live on the device as entities rather than in the options dialog: `select.<name>_call_mode` chooses what a ring does (*notify only*, *record* the call, or *auto-respond*: answer, play the audio file through the intercom speaker and record), and `number.<name>_stream_duration` sets how long a stream session lasts (10-120 s, default 30).
 
