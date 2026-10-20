@@ -203,9 +203,6 @@
     "call_guard_failed": {
       "message": "Domofon nie wykonał połączenia z portierem."
     },
-    "streaming_unavailable": {
-      "message": "Wideo na żywo jest wyłączone: jego biblioteki streamingu nie dają się jeszcze zainstalować w tej wersji Home Assistant, więc ponowne uruchomienie nie pomoże. Wszystko inne działa."
-    },
     "send_audio_no_input": {
       "message": "Podaj plik audio albo wiadomość do odczytania."
     },
@@ -220,12 +217,6 @@
     },
     "unknown_entity": {
       "message": "{entity_id} nie jest encją Fermax Blue."
-    }
-  },
-  "issues": {
-    "streaming_unavailable": {
-      "title": "Wideo na żywo jest wyłączone",
-      "description": "Bibliotek wideo na żywo (aiortc, pymediasoup) nie da się zainstalować w tej wersji Home Assistant, bo nie obsługują dołączonej wersji av. Wszystko inne działa dalej. Wideo na żywo wróci samo, gdy pojawi się zgodna wersja aiortc."
     }
   },
   "services": {

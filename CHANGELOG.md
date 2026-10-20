@@ -1,5 +1,13 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+- **Live video works on Home Assistant 2026.10 out of the box** (#157) — Home Assistant now installs the live video libraries with the integration, from `aiortc-fermax` and `pymediasoup-fermax` (`aiortc` 1.15.0 and `pymediasoup` 1.5.0 republished to accept `av 19`). They are a stopgap until `aiortc` 1.16.0 is out. The *Live video is off* repair from earlier versions is cleared at startup.
+
+### Removed
+- **The *Install live video libraries without the av check* option** (#157) — the integration no longer installs packages itself; Home Assistant installs everything from the manifest. A leftover setting is ignored.
+
 ## [0.24.0] - 2026-10-20
 
 ### Added

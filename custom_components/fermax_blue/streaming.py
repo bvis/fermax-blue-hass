@@ -23,24 +23,11 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from functools import cache
-from importlib.util import find_spec
 from typing import Any
 
 import socketio
 
 _LOGGER = logging.getLogger(__name__)
-
-
-@cache
-def streaming_deps_available() -> bool:
-    """Return True when the live-video deps (pymediasoup/aiortc) are installed.
-
-    Setup installs them (STREAMING_REQUIREMENTS) and carries on without them
-    when no aiortc release accepts the av that HA pins, as on HA 2026.10 with
-    av 19. Callers must skip stream work — including the auto-on request that
-    wakes the physical intercom — when this returns False.
-    """
-    return find_spec("pymediasoup") is not None
 
 
 # Suppress noisy H264 decode warnings (expected on stream start before first keyframe)
@@ -1029,21 +1016,6 @@ class FermaxStreamSession:
         """Start the full streaming pipeline."""
         try:
             return await self._start_inner()
-        except ImportError as err:
-            # Live video needs pymediasoup + aiortc. They are manifest
-            # requirements again, but may be missing on installs that upgraded
-            # while the deps were optional (v0.16.8) until HA reinstalls
-            # requirements. The rest of the integration (door open, calls,
-            # sensors) works fine; only live streaming is unavailable.
-            _LOGGER.warning(
-                "Fermax Blue live video is unavailable: streaming dependencies "
-                "(pymediasoup/aiortc) are not installed. Restart Home Assistant "
-                "so it installs the integration requirements. Everything else "
-                "works normally. (%s)",
-                err,
-            )
-            await self.stop()
-            return False
         except Exception:
             _LOGGER.exception("Failed to start stream session")
             await self.stop()

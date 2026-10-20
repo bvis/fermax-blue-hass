@@ -203,9 +203,6 @@
     "call_guard_failed": {
       "message": "لم يجرِ الإنتركم الاتصال بالحارس."
     },
-    "streaming_unavailable": {
-      "message": "الفيديو المباشر متوقف: لا يمكن بعد تثبيت مكتبات البث على هذا الإصدار من Home Assistant، لذا لن تفيد إعادة التشغيل. كل شيء آخر يواصل العمل."
-    },
     "send_audio_no_input": {
       "message": "حدّد ملف صوت أو رسالة لنطقها."
     },
@@ -220,12 +217,6 @@
     },
     "unknown_entity": {
       "message": "{entity_id} ليس كيانًا من Fermax Blue."
-    }
-  },
-  "issues": {
-    "streaming_unavailable": {
-      "title": "الفيديو المباشر متوقف",
-      "description": "لا يمكن تثبيت مكتبات الفيديو المباشر (aiortc وpymediasoup) على هذا الإصدار من Home Assistant لأنها لا تدعم إصدار av المرفق به. كل شيء آخر يستمر في العمل. يعود الفيديو المباشر تلقائيًا عند صدور إصدار متوافق من aiortc."
     }
   },
   "services": {

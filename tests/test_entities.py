@@ -644,8 +644,8 @@ class TestOptimisticSwitches:
         assert switch.is_on is True  # device_info.photocaller = True in fixture
 
 
-class TestCameraStreamingDepsGuard:
-    """Camera turn_on must not request auto-on when live-video deps are missing."""
+class TestCameraTurnOn:
+    """Camera turn_on surfaces a failed auto-on."""
 
     def _make_camera(self, mock_coordinator):
         from custom_components.fermax_blue.camera import FermaxCamera
@@ -653,30 +653,11 @@ class TestCameraStreamingDepsGuard:
         return FermaxCamera(mock_coordinator)
 
     @pytest.mark.asyncio
-    async def test_turn_on_without_deps_raises(self, mock_coordinator):
-        camera = self._make_camera(mock_coordinator)
-
-        with (
-            patch(
-                "custom_components.fermax_blue.camera.streaming_deps_available",
-                return_value=False,
-            ),
-            pytest.raises(HomeAssistantError),
-        ):
-            await camera.async_turn_on()
-
-        mock_coordinator.start_camera_preview.assert_not_awaited()
-
-    @pytest.mark.asyncio
     async def test_turn_on_raises_when_the_preview_does_not_start(self, mock_coordinator):
         camera = self._make_camera(mock_coordinator)
         mock_coordinator.start_camera_preview = AsyncMock(return_value=None)
 
         with (
-            patch(
-                "custom_components.fermax_blue.camera.streaming_deps_available",
-                return_value=True,
-            ),
             pytest.raises(HomeAssistantError),
         ):
             await camera.async_turn_on()
@@ -1540,11 +1521,7 @@ class TestCameraBehavior:
         mock_coordinator.start_camera_preview = AsyncMock(return_value=result)
         camera = self._make(mock_coordinator)
 
-        with patch(
-            "custom_components.fermax_blue.camera.streaming_deps_available",
-            return_value=True,
-        ):
-            await camera.async_turn_on()
+        await camera.async_turn_on()
 
         mock_coordinator.start_camera_preview.assert_awaited_once()
 
@@ -1773,30 +1750,16 @@ class TestCameraWebRtc:
     @pytest.mark.asyncio
     async def test_stream_source_points_at_bridge(self, mock_coordinator):
         camera = self._make_camera(mock_coordinator)
-        with patch(
-            "custom_components.fermax_blue.camera.streaming_deps_available", return_value=True
-        ):
-            assert (
-                await camera.stream_source()
-                == "webrtc:ws://127.0.0.1:8123/api/fermax_blue/webrtc/tok123"
-            )
-
-    @pytest.mark.asyncio
-    async def test_stream_source_absent_without_deps(self, mock_coordinator):
-        camera = self._make_camera(mock_coordinator)
-        with patch(
-            "custom_components.fermax_blue.camera.streaming_deps_available", return_value=False
-        ):
-            assert await camera.stream_source() is None
+        assert (
+            await camera.stream_source()
+            == "webrtc:ws://127.0.0.1:8123/api/fermax_blue/webrtc/tok123"
+        )
 
     @pytest.mark.asyncio
     async def test_no_hls_stream_is_created(self, mock_coordinator):
         # ffmpeg cannot open the webrtc: source; HLS would retry it for ever (#100)
         camera = self._make_camera(mock_coordinator)
-        with patch(
-            "custom_components.fermax_blue.camera.streaming_deps_available", return_value=True
-        ):
-            assert await camera.async_create_stream() is None
+        assert await camera.async_create_stream() is None
         assert camera.stream is None
 
 

@@ -203,9 +203,6 @@
     "call_guard_failed": {
       "message": "Die Türsprechanlage hat den Pförtner nicht angerufen."
     },
-    "streaming_unavailable": {
-      "message": "Live-Video ist aus: Die Streaming-Bibliotheken lassen sich auf dieser Home-Assistant-Version noch nicht installieren, ein Neustart hilft also nicht. Alles andere funktioniert weiter."
-    },
     "send_audio_no_input": {
       "message": "Gib eine Audiodatei oder eine Nachricht an."
     },
@@ -220,12 +217,6 @@
     },
     "unknown_entity": {
       "message": "{entity_id} ist keine Fermax-Blue-Entität."
-    }
-  },
-  "issues": {
-    "streaming_unavailable": {
-      "title": "Live-Video ist aus",
-      "description": "Die Live-Video-Bibliotheken (aiortc, pymediasoup) lassen sich auf dieser Home-Assistant-Version nicht installieren, weil sie die mitgelieferte av-Version nicht unterstützen. Alles andere funktioniert weiter. Live-Video kommt von selbst zurück, sobald eine kompatible aiortc-Version erscheint."
     }
   },
   "services": {

@@ -27,26 +27,7 @@ from custom_components.fermax_blue.streaming import (
     _create_switchable_audio_track,
     _mix_pcm,
     _patch_pymediasoup_audio_channels,
-    streaming_deps_available,
 )
-
-
-class TestStreamingDepsAvailable:
-    """Detection of the optional live-video dependencies."""
-
-    def test_true_when_pymediasoup_installed(self):
-        streaming_deps_available.cache_clear()
-        assert streaming_deps_available() is True
-        streaming_deps_available.cache_clear()
-
-    def test_false_when_pymediasoup_missing(self):
-        streaming_deps_available.cache_clear()
-        with patch(
-            "custom_components.fermax_blue.streaming.find_spec",
-            return_value=None,
-        ):
-            assert streaming_deps_available() is False
-        streaming_deps_available.cache_clear()
 
 
 class RecordingTransport:
@@ -722,16 +703,6 @@ class TestSignalingUrlScheme:
 
 class TestStartFailures:
     """start() degrades gracefully when the pipeline cannot be built."""
-
-    async def test_missing_deps_stops_session(self, tmp_path):
-        session = _bare_session(str(tmp_path))
-        session._signaling = MagicMock(
-            connect=AsyncMock(side_effect=ImportError("No module named 'pymediasoup'")),
-            disconnect=AsyncMock(),
-        )
-
-        assert await session.start() is False
-        session._signaling.disconnect.assert_awaited_once()
 
     async def test_unexpected_error_stops_session(self, tmp_path):
         session = _bare_session(str(tmp_path))

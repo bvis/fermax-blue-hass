@@ -203,9 +203,6 @@
     "call_guard_failed": {
       "message": "Il videocitofono non ha chiamato il portiere."
     },
-    "streaming_unavailable": {
-      "message": "Il video in diretta è disattivato: le sue librerie di streaming non si possono ancora installare su questa versione di Home Assistant, quindi riavviare non serve. Tutto il resto funziona."
-    },
     "send_audio_no_input": {
       "message": "Indica un file audio o un messaggio da riprodurre."
     },
@@ -220,12 +217,6 @@
     },
     "unknown_entity": {
       "message": "{entity_id} non è un'entità Fermax Blue."
-    }
-  },
-  "issues": {
-    "streaming_unavailable": {
-      "title": "Il video in diretta è disattivato",
-      "description": "Le librerie del video in diretta (aiortc, pymediasoup) non possono essere installate su questa versione di Home Assistant perché non supportano la versione di av inclusa. Tutto il resto continua a funzionare. Il video in diretta torna da solo quando uscirà una versione compatibile di aiortc."
     }
   },
   "services": {

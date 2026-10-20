@@ -148,52 +148,6 @@ def coordinator(mock_hass, mock_api, pairing):
     return coord
 
 
-class TestStreamingDepsGuard:
-    """Optional live-video deps: never wake the intercom when they are missing."""
-
-    @pytest.mark.asyncio
-    async def test_preview_skipped_without_deps(self, coordinator, mock_api):
-        coordinator.notification_listener = MagicMock()
-        coordinator.notification_listener.fcm_token = "tok"
-
-        with patch(
-            "custom_components.fermax_blue.coordinator.streaming_deps_available",
-            return_value=False,
-        ):
-            result = await coordinator.start_camera_preview()
-
-        assert result is None
-        mock_api.auto_on.assert_not_awaited()
-
-    @pytest.mark.asyncio
-    async def test_preview_requests_auto_on_with_deps(self, coordinator, mock_api):
-        coordinator.notification_listener = MagicMock()
-        coordinator.notification_listener.fcm_token = "tok"
-        mock_api.auto_on = AsyncMock(return_value=None)
-
-        with patch(
-            "custom_components.fermax_blue.coordinator.streaming_deps_available",
-            return_value=True,
-        ):
-            await coordinator.start_camera_preview()
-
-        mock_api.auto_on.assert_awaited_once()
-
-    @pytest.mark.asyncio
-    async def test_start_stream_skipped_without_deps(self, coordinator):
-        coordinator._stream_session = None
-        coordinator.stop_stream = AsyncMock()
-
-        with patch(
-            "custom_components.fermax_blue.coordinator.streaming_deps_available",
-            return_value=False,
-        ):
-            await coordinator._start_stream("room1", "https://signaling-pro-duoxme.fermax.io")
-
-        coordinator.stop_stream.assert_not_awaited()
-        assert coordinator.stream_session is None
-
-
 class TestCoordinatorDnd:
     """Test DND coordination."""
 
@@ -373,10 +327,6 @@ class TestPreviewTimeoutClamp:
         session = MagicMock()
         session.start = AsyncMock(return_value=True)
         with (
-            patch(
-                "custom_components.fermax_blue.coordinator.streaming_deps_available",
-                return_value=True,
-            ),
             patch(
                 "custom_components.fermax_blue.coordinator.FermaxStreamSession",
                 return_value=session,
@@ -1317,10 +1267,6 @@ class TestCameraPreviewLifecycle:
 
         with (
             patch(
-                "custom_components.fermax_blue.coordinator.streaming_deps_available",
-                return_value=True,
-            ),
-            patch(
                 "custom_components.fermax_blue.coordinator.async_call_later",
                 return_value=MagicMock(),
             ) as call_later,
@@ -1344,11 +1290,7 @@ class TestCameraPreviewLifecycle:
         full_coordinator.notification_listener = listener
         mock_api.auto_on = AsyncMock(return_value=None)
 
-        with patch(
-            "custom_components.fermax_blue.coordinator.streaming_deps_available",
-            return_value=True,
-        ):
-            assert await full_coordinator.start_camera_preview() is None
+        assert await full_coordinator.start_camera_preview() is None
 
         assert full_coordinator.camera_active is False
 
@@ -1396,10 +1338,6 @@ class TestStreamLifecycle:
         session.start = AsyncMock(return_value=start_ok)
         with (
             patch(
-                "custom_components.fermax_blue.coordinator.streaming_deps_available",
-                return_value=True,
-            ),
-            patch(
                 "custom_components.fermax_blue.coordinator.FermaxStreamSession",
                 return_value=session,
             ) as session_cls,
@@ -1436,10 +1374,6 @@ class TestStreamLifecycle:
         second.start = AsyncMock(return_value=True)
         with (
             patch(
-                "custom_components.fermax_blue.coordinator.streaming_deps_available",
-                return_value=True,
-            ),
-            patch(
                 "custom_components.fermax_blue.coordinator.FermaxStreamSession",
                 side_effect=[first, second],
             ),
@@ -1460,10 +1394,6 @@ class TestStreamLifecycle:
 
     async def test_no_listener_never_builds_session(self, full_coordinator):
         with (
-            patch(
-                "custom_components.fermax_blue.coordinator.streaming_deps_available",
-                return_value=True,
-            ),
             patch("custom_components.fermax_blue.coordinator.FermaxStreamSession") as session_cls,
         ):
             await full_coordinator._start_stream("room1", "https://signaling-pro-duoxme.fermax.io")
@@ -1477,10 +1407,6 @@ class TestStreamLifecycle:
         full_coordinator.notification_listener = listener
 
         with (
-            patch(
-                "custom_components.fermax_blue.coordinator.streaming_deps_available",
-                return_value=True,
-            ),
             patch("custom_components.fermax_blue.coordinator.FermaxStreamSession") as session_cls,
         ):
             await full_coordinator._start_stream("room1", "https://signaling-pro-duoxme.fermax.io")
@@ -1728,20 +1654,12 @@ class TestConversationTimeoutFromPush:
 
     async def test_stored_before_any_other_work(self, coordinator):
         coordinator._stream_session = None
-        with patch(
-            "custom_components.fermax_blue.coordinator.streaming_deps_available",
-            return_value=False,
-        ):
-            await coordinator._start_stream("r", DEFAULT_SIGNALING_URL, conversation_timeout="45")
+        await coordinator._start_stream("r", DEFAULT_SIGNALING_URL, conversation_timeout="45")
         assert coordinator._conversation_timeout == 45
 
     async def test_unusable_value_falls_back(self, coordinator):
         coordinator._stream_session = None
-        with patch(
-            "custom_components.fermax_blue.coordinator.streaming_deps_available",
-            return_value=False,
-        ):
-            await coordinator._start_stream("r", DEFAULT_SIGNALING_URL, conversation_timeout="x")
+        await coordinator._start_stream("r", DEFAULT_SIGNALING_URL, conversation_timeout="x")
         assert coordinator._conversation_timeout == DEFAULT_CONVERSATION_TIMEOUT
 
 
@@ -1798,10 +1716,6 @@ class TestWakeProgress:
 
         mock_api.auto_on = AsyncMock(side_effect=_auto_on)
         with (
-            patch(
-                "custom_components.fermax_blue.coordinator.streaming_deps_available",
-                return_value=True,
-            ),
             patch("custom_components.fermax_blue.coordinator.async_call_later"),
         ):
             await coordinator.start_camera_preview()
@@ -1825,10 +1739,6 @@ class TestWakeProgress:
             session = MagicMock()
             session.start = AsyncMock(return_value=ok)
             with (
-                patch(
-                    "custom_components.fermax_blue.coordinator.streaming_deps_available",
-                    return_value=True,
-                ),
                 patch(
                     "custom_components.fermax_blue.coordinator.FermaxStreamSession",
                     return_value=session,

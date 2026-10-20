@@ -8,8 +8,8 @@
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 [![Quality scale: Gold (self-assessed)](https://img.shields.io/badge/quality%20scale-gold%20(self--assessed)-d4af37)](custom_components/fermax_blue/quality_scale.yaml)
 
-> [!WARNING]
-> **Home Assistant 2026.10: no live video until aiortc 1.16.** Home Assistant 2026.10 ships `av 19`, and the WebRTC library this integration uses (`aiortc`) doesn't accept it yet ([aiortc#1447](https://github.com/aiortc/aiortc/pull/1447) is merged, not released). The integration loads, and rings, door opening, photos and everything else work, but live video and talk-back stay off; *Settings → Repairs* says so. Live video comes back by itself, with no update of the integration, once a compatible `aiortc` release is out.
+> [!NOTE]
+> Live video uses temporary forks of `aiortc` and `pymediasoup` that accept the `av 19` shipped by Home Assistant 2026.10 ([aiortc-fermax](https://github.com/bvis/aiortc/tree/fermax-1.15), [pymediasoup-fermax](https://github.com/bvis/pymediasoup-fermax/tree/fermax-1.5)), until aiortc 1.16.0 is out.
 
 Home Assistant custom integration for **Fermax Blue** video door entry systems (DUOX PLUS / blueStream).
 
@@ -444,7 +444,6 @@ automation:
 
 ## Known limitations
 
-- **Live video on Home Assistant 2026.10 and later** needs an `aiortc` release that accepts the `av` version Home Assistant ships. Until there is one, live video and talk-back are off (Home Assistant shows a repair saying so) and everything else works.
 - **Cloud only.** Everything goes through the Fermax cloud and Google's push service; with no internet connection nothing works, as with the app.
 - **No HLS / `stream` integration.** The camera plays over WebRTC or MJPEG. Cards and casts that need HLS (`camera_view: live` on a Cast target, `media-source://camera/...`) don't work; cast the MJPEG endpoint instead (see the blueprints).
 - **Switching camera is "next camera".** The intercom only accepts a camera change during a live session and always moves to the next source, so a per-camera selector isn't possible.
@@ -476,11 +475,6 @@ Press the "Camera preview" button to trigger the first stream. After that, the l
 
 ### No sound, or the microphone does nothing
 Sound comes with the WebRTC stream, so the card has to play the stream rather than the still image: `camera_view: live` on a picture-entity card, or the more-info dialog. Home Assistant's own cards do not capture the microphone yet; use a card that does (see [Live view and talk-back](#live-view-and-talk-back)) and open Home Assistant over **HTTPS** — browsers and the companion apps refuse microphone access on plain `http://`. Check the browser's site permissions if the microphone button stays muted.
-
-### Live video not working after upgrading
-Live video is powered by `pymediasoup`/`aiortc`, which the integration installs when it starts. `aiortc` has to accept the `av` version that Home Assistant ships, and from time to time Home Assistant moves ahead first: Home Assistant 2026.10 ships `av 19`, while `aiortc` 1.15.0 accepts up to `av 17`. On those versions the log shows a WARNING saying live video is unavailable.
-
-Everything else (doorbell detection, door opening, visitor photos, F1, DND, photo caller, call log) keeps working. Live video comes back without updating the integration once a compatible `aiortc` release is out: restart Home Assistant and it gets installed.
 
 ### Diagnostics
 For troubleshooting, you can download diagnostics from **Settings** > **Devices & Services** > **Fermax Blue** > **3 dots menu** > **Download diagnostics**. Credentials are automatically redacted.

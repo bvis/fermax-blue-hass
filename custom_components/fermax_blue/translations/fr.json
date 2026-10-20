@@ -203,9 +203,6 @@
     "call_guard_failed": {
       "message": "L'interphone n'a pas appelé le gardien."
     },
-    "streaming_unavailable": {
-      "message": "La vidéo en direct est désactivée : ses bibliothèques de streaming ne peuvent pas encore être installées sur cette version de Home Assistant, un redémarrage n'y changera rien. Tout le reste fonctionne."
-    },
     "send_audio_no_input": {
       "message": "Indiquez un fichier audio ou un message à énoncer."
     },
@@ -220,12 +217,6 @@
     },
     "unknown_entity": {
       "message": "{entity_id} n'est pas une entité Fermax Blue."
-    }
-  },
-  "issues": {
-    "streaming_unavailable": {
-      "title": "La vidéo en direct est désactivée",
-      "description": "Les bibliothèques de vidéo en direct (aiortc, pymediasoup) ne peuvent pas être installées sur cette version de Home Assistant, car elles ne prennent pas en charge la version de av qu'elle fournit. Tout le reste fonctionne. La vidéo en direct revient d'elle-même dès qu'une version compatible d'aiortc sort."
     }
   },
   "services": {

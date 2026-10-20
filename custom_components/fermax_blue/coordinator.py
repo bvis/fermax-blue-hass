@@ -47,7 +47,7 @@ from .const import (
     WEBRTC_START_TIMEOUT,
 )
 from .notification import FermaxNotificationListener, _redact_notification
-from .streaming import DEFAULT_SIGNALING_URL, FermaxStreamSession, streaming_deps_available
+from .streaming import DEFAULT_SIGNALING_URL, FermaxStreamSession
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -629,14 +629,6 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
             _LOGGER.error("Cannot start camera: no FCM token available")
             return None
 
-        if not streaming_deps_available():
-            _LOGGER.warning(
-                "Camera preview unavailable: optional live-video dependencies "
-                "(pymediasoup/aiortc) are not installed; skipping auto-on so the "
-                "intercom is not woken up for a stream that cannot start"
-            )
-            return None
-
         self._set_wake("request")
         result = await self.api.auto_on(
             self.pairing.device_id,
@@ -777,14 +769,6 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         self._conversation_timeout = _positive_int(
             conversation_timeout, DEFAULT_CONVERSATION_TIMEOUT
         )
-        if not streaming_deps_available():
-            _LOGGER.warning(
-                "Ignoring stream request for room %s: optional live-video "
-                "dependencies (pymediasoup/aiortc) are not installed",
-                room_id,
-            )
-            return
-
         await self.stop_stream()
 
         if not self.notification_listener:

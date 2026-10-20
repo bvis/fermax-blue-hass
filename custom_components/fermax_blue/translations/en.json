@@ -203,9 +203,6 @@
     "call_guard_failed": {
       "message": "The intercom did not place the call to the guard."
     },
-    "streaming_unavailable": {
-      "message": "Live video is off: its streaming libraries can't be installed on this Home Assistant version yet, so restarting won't help. Everything else keeps working."
-    },
     "send_audio_no_input": {
       "message": "Provide either an audio file or a message to speak."
     },
@@ -220,12 +217,6 @@
     },
     "unknown_entity": {
       "message": "{entity_id} is not a Fermax Blue entity."
-    }
-  },
-  "issues": {
-    "streaming_unavailable": {
-      "title": "Live video is off",
-      "description": "The live video libraries (aiortc, pymediasoup) can't be installed on this Home Assistant version because they don't support the av version it ships. Everything else keeps working. Live video comes back on its own once a compatible aiortc release is out."
     }
   },
   "services": {

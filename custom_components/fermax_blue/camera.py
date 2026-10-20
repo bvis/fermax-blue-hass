@@ -17,7 +17,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from .const import DOMAIN, SIGNAL_DOORBELL_RING
 from .coordinator import FermaxBlueConfigEntry, FermaxBlueCoordinator
 from .entity import FermaxBlueEntity
-from .streaming import draw_wake_progress, streaming_deps_available
+from .streaming import draw_wake_progress
 from .webrtc_bridge import webrtc_stream_source
 
 _LOGGER = logging.getLogger(__name__)
@@ -105,8 +105,6 @@ class FermaxCamera(FermaxBlueEntity, Camera):
 
     async def stream_source(self) -> str | None:
         """Return the go2rtc source for this intercom's WebRTC bridge."""
-        if not streaming_deps_available():
-            return None
         return webrtc_stream_source(self.hass, self.coordinator.webrtc_token)
 
     async def async_create_stream(self) -> None:
@@ -191,11 +189,6 @@ class FermaxCamera(FermaxBlueEntity, Camera):
 
     async def async_turn_on(self) -> None:
         """Start live camera stream via auto-on + mediasoup."""
-        if not streaming_deps_available():
-            raise HomeAssistantError(
-                translation_domain=DOMAIN, translation_key="streaming_unavailable"
-            )
-
         result = await self.coordinator.start_camera_preview()
         if not result:
             raise HomeAssistantError(

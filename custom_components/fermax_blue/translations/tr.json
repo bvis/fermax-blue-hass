@@ -203,9 +203,6 @@
     "call_guard_failed": {
       "message": "İnterkom kapıcıyı aramadı."
     },
-    "streaming_unavailable": {
-      "message": "Canlı video kapalı: yayın kitaplıkları bu Home Assistant sürümüne henüz kurulamıyor, bu yüzden yeniden başlatmak işe yaramaz. Diğer her şey çalışmaya devam ediyor."
-    },
     "send_audio_no_input": {
       "message": "Bir ses dosyası veya seslendirilecek bir mesaj belirt."
     },
@@ -220,12 +217,6 @@
     },
     "unknown_entity": {
       "message": "{entity_id} bir Fermax Blue varlığı değil."
-    }
-  },
-  "issues": {
-    "streaming_unavailable": {
-      "title": "Canlı video kapalı",
-      "description": "Canlı video kitaplıkları (aiortc, pymediasoup) bu Home Assistant sürümüne kurulamıyor, çünkü birlikte gelen av sürümünü desteklemiyorlar. Diğer her şey çalışmaya devam ediyor. Uyumlu bir aiortc sürümü çıktığında canlı video kendiliğinden geri gelir."
     }
   },
   "services": {

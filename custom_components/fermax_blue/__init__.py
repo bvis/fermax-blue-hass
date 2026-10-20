@@ -32,7 +32,6 @@ from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.httpx_client import get_async_client
 from homeassistant.helpers.typing import ConfigType
-from homeassistant.requirements import RequirementsNotFound, async_process_requirements
 
 from .api import FermaxAuthError, FermaxBlueApi
 from .const import (
@@ -52,12 +51,10 @@ from .const import (
     FCM_WATCHDOG_INTERVAL,
     PLATFORMS,
     RECORDINGS_DIR,
-    STREAMING_REQUIREMENTS,
     WEBRTC_TOKENS,
 )
 from .coordinator import FermaxBlueConfigEntry, FermaxBlueCoordinator
 from .media_source import is_allowed_media_path
-from .streaming import streaming_deps_available
 from .webrtc_bridge import FermaxWebRtcView
 
 _LOGGER = logging.getLogger(__name__)
@@ -73,11 +70,17 @@ SEND_AUDIO_SCHEMA = vol.Schema(
         vol.Optional("language", default="es"): str,
     }
 )
+# Raised by 0.21.0-0.24.x when the live-video libraries couldn't be installed;
+# they are manifest requirements now, so setup clears any leftover issue
 STREAMING_ISSUE = "streaming_unavailable"
 # Imported inside coroutines by the overlay, TTS and live-video paths: loading
 # them once at setup, in a worker thread, keeps that disk I/O off the event loop
-PRELOAD_MODULES = ("PIL.Image", "PIL.ImageDraw", "PIL.ImageFont", "numpy", "gtts")
-STREAMING_PRELOAD_MODULES = (
+PRELOAD_MODULES = (
+    "PIL.Image",
+    "PIL.ImageDraw",
+    "PIL.ImageFont",
+    "numpy",
+    "gtts",
     "av",
     "aiortc",
     "aiortc.codecs.h264",
@@ -127,35 +130,6 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: ConfigEntry) ->
         return False
 
     return True
-
-
-async def _async_install_streaming_deps(hass: HomeAssistant) -> None:
-    """Install the live-video deps, or carry on without them."""
-    try:
-        await async_process_requirements(
-            hass, DOMAIN, list(STREAMING_REQUIREMENTS), is_built_in=False
-        )
-    except RequirementsNotFound:
-        _LOGGER.warning(
-            "Live video is unavailable: %s cannot be installed alongside the av version "
-            "this Home Assistant ships. Everything else works; live video comes back by "
-            "itself once a compatible aiortc release is out (see the README)",
-            ", ".join(STREAMING_REQUIREMENTS),
-        )
-    importlib.invalidate_caches()
-    streaming_deps_available.cache_clear()
-    if streaming_deps_available():
-        ir.async_delete_issue(hass, DOMAIN, STREAMING_ISSUE)
-    else:
-        ir.async_create_issue(
-            hass,
-            DOMAIN,
-            STREAMING_ISSUE,
-            is_fixable=False,
-            severity=ir.IssueSeverity.WARNING,
-            translation_key=STREAMING_ISSUE,
-            learn_more_url="https://github.com/bvis/fermax-blue-hass#known-limitations",
-        )
 
 
 def _import_modules(names: tuple[str, ...]) -> None:
@@ -271,11 +245,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: FermaxBlueConfigEntry) -
         await api.close()
         raise ConfigEntryNotReady(f"Failed to connect to Fermax API: {err}") from err
 
-    await _async_install_streaming_deps(hass)
-    await asyncio.to_thread(
-        _import_modules,
-        PRELOAD_MODULES + (STREAMING_PRELOAD_MODULES if streaming_deps_available() else ()),
-    )
+    ir.async_delete_issue(hass, DOMAIN, STREAMING_ISSUE)
+    await asyncio.to_thread(_import_modules, PRELOAD_MODULES)
 
     scan_interval = entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
     auto_response_file = entry.options.get("auto_response_file", "")

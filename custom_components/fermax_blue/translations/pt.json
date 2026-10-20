@@ -203,9 +203,6 @@
     "call_guard_failed": {
       "message": "O videoporteiro não efetuou a chamada ao porteiro."
     },
-    "streaming_unavailable": {
-      "message": "O vídeo em direto está desativado: as suas bibliotecas de streaming ainda não podem ser instaladas nesta versão do Home Assistant, por isso reiniciar não resolve. Tudo o resto continua a funcionar."
-    },
     "send_audio_no_input": {
       "message": "Indica um ficheiro de áudio ou uma mensagem para reproduzir."
     },
@@ -220,12 +217,6 @@
     },
     "unknown_entity": {
       "message": "{entity_id} não é uma entidade Fermax Blue."
-    }
-  },
-  "issues": {
-    "streaming_unavailable": {
-      "title": "O vídeo em direto está desativado",
-      "description": "As bibliotecas de vídeo em direto (aiortc, pymediasoup) não podem ser instaladas nesta versão do Home Assistant porque não suportam a versão de av que ela inclui. Tudo o resto continua a funcionar. O vídeo em direto volta sozinho quando sair uma versão compatível do aiortc."
     }
   },
   "services": {

@@ -9,9 +9,6 @@ name: Newest HA core
 #
 # - Red: the manifest requirements don't resolve (the integration would not load)
 #   or the tests fail.
-# - Warning: the live-video deps (STREAMING_REQUIREMENTS) don't resolve. The
-#   integration then loads without live video, so their tests are skipped. When
-#   the warning goes away, so can the README notice about it.
 #
 # Not a required check: a broken beta must not block merges.
 
@@ -56,12 +53,6 @@ jobs:
               "homeassistant==$HA_VERSION" av \
               $(python3 -c "import json; print(\" \".join(json.load(open(\"custom_components/fermax_blue/manifest.json\"))[\"requirements\"]))") \
               pytest pytest-asyncio pytest-cov numpy PyTurboJPEG
-            STREAMING=$(python3 -c "import ast, re; s = open(\"custom_components/fermax_blue/const.py\").read(); print(\" \".join(ast.literal_eval(re.search(r\"STREAMING_REQUIREMENTS = (\(.*?\))\", s).group(1))))")
-            SKIP=()
-            if ! pip install --quiet --no-cache-dir --root-user-action=ignore -c /tmp/constraints.txt $STREAMING; then
-              echo "::warning::$STREAMING do not resolve on homeassistant==$HA_VERSION: live video will be off there"
-              SKIP=(--ignore=tests/test_streaming.py --ignore=tests/test_webrtc_bridge.py)
-            fi
-            pip list 2>/dev/null | grep -iE "^(homeassistant|av|aiortc|pymediasoup) "
-            pytest -q -p no:cacheprovider --no-cov "${SKIP[@]}"
+            pip list 2>/dev/null | grep -iE "^(homeassistant|av|aiortc|pymediasoup)(-fermax)? "
+            pytest -q -p no:cacheprovider --no-cov
           '

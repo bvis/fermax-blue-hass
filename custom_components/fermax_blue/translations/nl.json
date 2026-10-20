@@ -203,9 +203,6 @@
     "call_guard_failed": {
       "message": "De intercom heeft de portier niet gebeld."
     },
-    "streaming_unavailable": {
-      "message": "Live video staat uit: de streamingbibliotheken kunnen op deze Home Assistant-versie nog niet worden geïnstalleerd, dus herstarten helpt niet. Al het andere blijft werken."
-    },
     "send_audio_no_input": {
       "message": "Geef een audiobestand of een bericht op."
     },
@@ -220,12 +217,6 @@
     },
     "unknown_entity": {
       "message": "{entity_id} is geen Fermax Blue-entiteit."
-    }
-  },
-  "issues": {
-    "streaming_unavailable": {
-      "title": "Live video staat uit",
-      "description": "De live-videobibliotheken (aiortc, pymediasoup) kunnen niet op deze Home Assistant-versie worden geïnstalleerd, omdat ze de meegeleverde av-versie niet ondersteunen. Al het andere blijft werken. Live video komt vanzelf terug zodra er een compatibele aiortc-versie is."
     }
   },
   "services": {

@@ -203,9 +203,6 @@
     "call_guard_failed": {
       "message": "El videoportero no realizó la llamada al portero."
     },
-    "streaming_unavailable": {
-      "message": "El vídeo en directo está desactivado: sus librerías de streaming aún no se pueden instalar en esta versión de Home Assistant, así que reiniciar no lo arregla. Todo lo demás sigue funcionando."
-    },
     "send_audio_no_input": {
       "message": "Indica un archivo de audio o un mensaje para reproducir."
     },
@@ -220,12 +217,6 @@
     },
     "unknown_entity": {
       "message": "{entity_id} no es una entidad de Fermax Blue."
-    }
-  },
-  "issues": {
-    "streaming_unavailable": {
-      "title": "El vídeo en directo está desactivado",
-      "description": "Las librerías de vídeo en directo (aiortc, pymediasoup) no se pueden instalar en esta versión de Home Assistant porque no admiten la versión de av que incluye. Todo lo demás sigue funcionando. El vídeo en directo vuelve solo cuando salga una versión compatible de aiortc."
     }
   },
   "services": {

@@ -70,8 +70,8 @@ rules:
   icon-translations: done
   reconfiguration-flow: done
   repair-issues:
-    status: done
-    comment: Raised when the live video libraries can't be installed on the running Home Assistant.
+    status: exempt
+    comment: Nothing the user can fix needs a repair; a rejected password starts re-authentication.
   stale-devices:
     status: done
     comment: Intercoms no longer on the account can be deleted from the device page.
