@@ -10,7 +10,7 @@ RUN pip install --no-cache-dir \
     pytest pytest-asyncio pytest-cov \
     httpx firebase-messaging homeassistant \
     "python-socketio[asyncio_client]>=5.12.0" \
-    av pymediasoup Pillow numpy PyTurboJPEG \
+    av "pymediasoup-fermax==1.5.0.post1" Pillow numpy PyTurboJPEG \
     && pip install --no-cache-dir aiodns pycares
 
 WORKDIR /app
