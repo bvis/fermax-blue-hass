@@ -52,11 +52,11 @@ Requires Home Assistant **2025.12 or newer** (the live-view dependencies need th
 ### HACS (Recommended)
 
 1. Open HACS in Home Assistant
-2. Go to **Integrations** > **Custom repositories**
-3. Add this repository URL with category **Integration**
-4. Search for "Fermax Blue" and install
-5. Restart Home Assistant
-6. Go to **Settings** > **Devices & Services** > **Add Integration** > **Fermax Blue**
+2. Search for "Fermax Blue" and install it
+3. Restart Home Assistant
+4. Go to **Settings** > **Devices & Services** > **Add Integration** > **Fermax Blue**
+
+If it doesn't show up in the search, add `https://github.com/bvis/fermax-blue-hass` under **Custom repositories** with category **Integration** first.
 
 ### Manual Installation
 
