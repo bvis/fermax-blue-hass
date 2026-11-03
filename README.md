@@ -1,6 +1,6 @@
 # Fermax Blue for Home Assistant
 
-[![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
+[![Marketplace](https://img.shields.io/badge/Marketplace-Default-41BDF5.svg)](https://www.home-assistant.io/integrations/marketplace/)
 [![GitHub Release](https://img.shields.io/github/release/bvis/fermax-blue-hass.svg)](https://github.com/bvis/fermax-blue-hass/releases)
 [![Tests](https://github.com/bvis/fermax-blue-hass/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/bvis/fermax-blue-hass/actions/workflows/tests.yml)
 [![CodeQL](https://github.com/bvis/fermax-blue-hass/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/bvis/fermax-blue-hass/actions/workflows/codeql.yml)
@@ -49,14 +49,16 @@ Should work with any Fermax Blue-compatible intercom (devices that work with the
 
 Requires Home Assistant **2025.12 or newer** (the live-view dependencies need the `av` version that ships with it).
 
-### HACS (Recommended)
+### Marketplace (Recommended)
 
-1. Open HACS in Home Assistant
+[![Open in the Marketplace](https://my.home-assistant.io/badges/marketplace_repository.svg)](https://my.home-assistant.io/redirect/marketplace_repository/?owner=bvis&repository=fermax-blue-hass&category=integration)
+
+1. Go to **Settings** > **Marketplace**
 2. Search for "Fermax Blue" and install it
-3. Restart Home Assistant
+3. Restart Home Assistant if it asks you to
 4. Go to **Settings** > **Devices & Services** > **Add Integration** > **Fermax Blue**
 
-If it doesn't show up in the search, add `https://github.com/bvis/fermax-blue-hass` under **Custom repositories** with category **Integration** first.
+The Marketplace arrived in Home Assistant 2026.11. Before that, community integrations were installed through HACS, so on an older version search for "Fermax Blue" in HACS instead.
 
 ### Manual Installation
 
@@ -260,7 +262,7 @@ The flow the integration is built for: someone rings, your phone shows a notific
 **Requirements**
 
 - Home Assistant reachable over **HTTPS** (Nabu Casa, a reverse proxy, DuckDNS…): browsers and the companion apps refuse microphone access on plain `http://`.
-- The **WebRTC card** from HACS ([AlexxIT/WebRTC](https://github.com/AlexxIT/WebRTC)), set up with **its own go2rtc** (leave the URL empty in its setup dialog). Home Assistant's bundled go2rtc cannot be shared: it listens on a private socket only. The card is what captures the microphone; Home Assistant's own cards play video and audio only.
+- The **WebRTC card** from the Marketplace ([AlexxIT/WebRTC](https://github.com/AlexxIT/WebRTC)), set up with **its own go2rtc** (leave the URL empty in its setup dialog). Home Assistant's bundled go2rtc cannot be shared: it listens on a private socket only. The card is what captures the microphone; Home Assistant's own cards play video and audio only.
 
 **Dashboard** — [`blueprints/fermax_answer_dashboard.yaml`](blueprints/fermax_answer_dashboard.yaml)
 
@@ -294,7 +296,7 @@ A ready-to-use dashboard card template is included in [`blueprints/fermax_dashbo
 
 **To use it:**
 
-1. Install [mushroom-cards](https://github.com/piitaya/lovelace-mushroom) via HACS (for status indicators)
+1. Install [mushroom-cards](https://github.com/piitaya/lovelace-mushroom) from the Marketplace (for status indicators)
 2. Copy the content of `blueprints/fermax_dashboard_card.yaml`
 3. Edit your dashboard > Add card > Manual YAML
 4. Paste and replace `DEVICE_NAME` and `DOOR` with your entity names
@@ -453,7 +455,7 @@ automation:
 ## Removing the integration
 
 1. Go to **Settings** > **Devices & Services** > **Fermax Blue**, open the three-dot menu of the entry and choose **Delete**.
-2. If you installed it with HACS, remove **Fermax Blue** in HACS and restart Home Assistant.
+2. If you installed it from the Marketplace (or HACS on older versions), remove **Fermax Blue** there and restart Home Assistant.
 3. Optionally delete the leftovers the integration wrote: recordings and call photos in `/media/fermax_recordings`, and the push credentials and last camera frame in `/config/.storage/fermax_blue*`.
 
 An intercom you unpaired from the account can be deleted on its own from its device page (three-dot menu > **Delete**).

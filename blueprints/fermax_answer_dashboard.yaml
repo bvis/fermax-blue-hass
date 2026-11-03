@@ -6,7 +6,7 @@
 #
 # Prerequisites:
 # - Fermax Blue 0.20 or newer (WebRTC live view)
-# - The WebRTC card + integration from HACS (https://github.com/AlexxIT/WebRTC),
+# - The WebRTC card + integration from the Marketplace (https://github.com/AlexxIT/WebRTC),
 #   set up with its own go2rtc. Home Assistant's bundled go2rtc cannot be shared:
 #   it only listens on a private socket. Talking needs a card that captures the
 #   microphone; Home Assistant's own cards play video and audio only.

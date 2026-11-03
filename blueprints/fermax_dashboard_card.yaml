@@ -5,7 +5,7 @@
 #
 # Prerequisites:
 # - Fermax Blue integration installed and configured
-# - mushroom-cards installed via HACS (for status indicators)
+# - mushroom-cards installed from the Marketplace (for status indicators)
 #
 # To find your entity IDs, go to Settings > Devices > your Fermax device
 
