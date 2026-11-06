@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.25.1-beta.1] - 2026-11-06
+
+### Changed
+- **Live video uses the official `aiortc` 1.16.0 and `pymediasoup` 1.5.0 again** — `aiortc` 1.16.0 accepts the `av 19` that Home Assistant 2026.10 and later ship, so the temporary `aiortc-fermax` and `pymediasoup-fermax` packages from 0.25.0 are no longer needed. Nothing changes in how live video works.
+
 ## [0.25.0] - 2026-10-21
 
 ### Changed

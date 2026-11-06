@@ -217,9 +217,7 @@ class TestStreamingRequirements:
                 Path(__file__).parent.parent / "custom_components/fermax_blue/manifest.json"
             ).read_text()
         )
-        assert {"pymediasoup-fermax==1.5.0.post1", "aiortc-fermax==1.15.0.post1"} <= set(
-            manifest["requirements"]
-        )
+        assert {"pymediasoup==1.5.0", "aiortc==1.16.0"} <= set(manifest["requirements"])
 
     async def test_nothing_is_installed_behind_home_assistant(self, mock_hass, entry, mock_api):
         entry.options = {"force_streaming_deps": True}  # left over from 0.22-0.24
