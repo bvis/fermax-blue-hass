@@ -8,9 +8,6 @@
 [![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 [![Quality scale: Gold (self-assessed)](https://img.shields.io/badge/quality%20scale-gold%20(self--assessed)-d4af37)](custom_components/fermax_blue/quality_scale.yaml)
 
-> [!NOTE]
-> Live video uses temporary forks of `aiortc` and `pymediasoup` that accept the `av 19` shipped by Home Assistant 2026.10 ([aiortc-fermax](https://github.com/bvis/aiortc/tree/fermax-1.15), [pymediasoup-fermax](https://github.com/bvis/pymediasoup-fermax/tree/fermax-1.5)), until aiortc 1.16.0 is out.
-
 Home Assistant custom integration for **Fermax Blue** video door entry systems (DUOX PLUS / blueStream).
 
 This integration simulates a Fermax Blue mobile app client, connecting to the Fermax cloud API and receiving real-time push notifications via Firebase Cloud Messaging when someone rings your doorbell.
