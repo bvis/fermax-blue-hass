@@ -1275,7 +1275,7 @@ class TestCameraPreviewLifecycle:
             assert result is divert
             assert full_coordinator.camera_active is True
             stale_timer.assert_called_once()  # previous timeout cancelled
-            mock_api.auto_on.assert_awaited_once_with("dev1", "tok")
+            mock_api.auto_on.assert_awaited_once_with("dev1", "tok", None)
             assert call_later.call_args.args[1] == CAMERA_TIMEOUT_SECONDS
             deactivate = call_later.call_args.args[2]
             deactivate(None)
@@ -1283,6 +1283,36 @@ class TestCameraPreviewLifecycle:
         assert full_coordinator.camera_active is False
         assert full_coordinator._camera_timeout_unsub is None
         assert full_coordinator.async_set_updated_data.call_count == 2
+
+    async def test_nowifi_preview_wakes_the_panel_for_the_unit(self, full_coordinator, mock_api):
+        """#165: a NOWIFI unit can't be woken itself; the visible panel is, on its behalf."""
+        listener = MagicMock()
+        listener.fcm_token = "tok"
+        full_coordinator.notification_listener = listener
+
+        def door(name, panel, visible):
+            return AccessDoor(
+                name=name,
+                title=name,
+                access_id={"block": 0, "subblock": -1, "number": 0},
+                visible=visible,
+                panel_id=panel,
+            )
+
+        full_coordinator.pairing = Pairing(
+            device_id="dev1",
+            tag="Home",
+            installation_id="inst_1",
+            access_doors={
+                "hidden": door("hidden", "panel_hidden", False),
+                "shown": door("shown", "panel_1", True),
+            },
+        )
+        mock_api.auto_on = AsyncMock(return_value=None)
+
+        await full_coordinator.start_camera_preview()
+
+        mock_api.auto_on.assert_awaited_once_with("panel_1", "tok", "dev1")
 
     async def test_failed_auto_on_leaves_camera_off(self, full_coordinator, mock_api):
         listener = MagicMock()

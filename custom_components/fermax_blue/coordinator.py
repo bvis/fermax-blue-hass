@@ -629,10 +629,14 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
             _LOGGER.error("Cannot start camera: no FCM token available")
             return None
 
+        # A NOWIFI home unit has no connection of its own: the request goes
+        # to the street panel on the unit's behalf, as for its doors (#165)
+        panel_id = self._preview_panel_id()
         self._set_wake("request")
         result = await self.api.auto_on(
-            self.pairing.device_id,
+            panel_id or self.pairing.device_id,
             self.notification_listener.fcm_token,
+            self.pairing.device_id if panel_id else None,
         )
         # The push may already have started the session while auto-on answered
         if self._wake and self._wake[0] == "request":
@@ -664,6 +668,12 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
             self.async_set_updated_data(self.data)
 
         return result
+
+    def _preview_panel_id(self) -> str | None:
+        """Street panel to wake for a preview: the first visible panel door's, if any."""
+        doors = [d for d in self.pairing.access_doors.values() if d.panel_id]
+        doors.sort(key=lambda d: not d.visible)
+        return doors[0].panel_id if doors else None
 
     @property
     def has_active_stream(self) -> bool:
