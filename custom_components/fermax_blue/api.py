@@ -572,16 +572,20 @@ class FermaxBlueApi:
             _LOGGER.debug("Failed to decode call photo", exc_info=True)
         return None
 
-    async def auto_on(self, device_id: str, fcm_token: str) -> DivertResponse | None:
+    async def auto_on(
+        self, device_id: str, fcm_token: str, call_as: str | None = None
+    ) -> DivertResponse | None:
         """Start camera preview (auto-on) without a doorbell ring.
 
         This triggers the intercom to start streaming video to the app/client.
         The signaling server URL and room ID will arrive via push notification.
+        On a NOWIFI pairing ``device_id`` is the street panel and ``call_as``
+        the pairing's own device, as for panel doors.
         """
         payload = {
             "directedToBluestream": fcm_token,
             "directedToSippo": None,
-            "callAs": None,
+            "callAs": call_as,
         }
 
         try:
