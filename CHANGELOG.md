@@ -1,9 +1,12 @@
 # Changelog
 
-## [0.25.1-beta.1] - 2026-11-06
+## [0.25.1] - 2026-11-07
 
 ### Changed
 - **Live video uses the official `aiortc` 1.16.0 and `pymediasoup` 1.5.0 again** — `aiortc` 1.16.0 accepts the `av 19` that Home Assistant 2026.10 and later ship, so the temporary `aiortc-fermax` and `pymediasoup-fermax` packages from 0.25.0 are no longer needed. Nothing changes in how live video works.
+
+### Fixed
+- **No burst of `failed to decode H264 frame` warnings when a call starts** — `aiortc` 1.16.0 logs the frames that arrive before the first keyframe from a different place, so the integration now quiets that one too, as it did before.
 
 ## [0.25.0] - 2026-10-21
 

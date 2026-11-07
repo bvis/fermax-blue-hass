@@ -30,8 +30,10 @@ import socketio
 _LOGGER = logging.getLogger(__name__)
 
 
-# Suppress noisy H264 decode warnings (expected on stream start before first keyframe)
+# Suppress noisy H264 decode warnings (expected on stream start before first keyframe).
+# aiortc <=1.15 logged them from the codec, 1.16 from the receiver.
 logging.getLogger("aiortc.codecs.h264").setLevel(logging.ERROR)
+logging.getLogger("aiortc.rtcrtpreceiver").setLevel(logging.ERROR)
 
 SIGNALING_VERSION = "0.8.2"
 
