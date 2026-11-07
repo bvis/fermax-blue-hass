@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.25.2] - 2026-11-07
+
+### Fixed
+- **Reopening the camera after a failed wake-up works again** — when the intercom woke up but the video didn't connect, opening the camera again in the next minute and a half didn't wake it a second time: it waited 40 seconds and gave up. Now it wakes the intercom again straight away.
+
 ## [0.25.1] - 2026-11-07
 
 ### Changed
