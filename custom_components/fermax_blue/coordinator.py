@@ -830,6 +830,9 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         else:
             _LOGGER.warning("Failed to start video stream for room %s", room_id)
             self._stream_session = None
+            # Otherwise the next viewer waits for this dead preview instead of waking the intercom
+            self._camera_active = False
+            self.async_set_updated_data(self.data)
 
     @callback
     def _schedule_stream_stop(self, seconds: int) -> None:

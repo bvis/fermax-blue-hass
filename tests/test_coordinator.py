@@ -1437,6 +1437,7 @@ class TestStreamLifecycle:
         full_coordinator.async_set_updated_data.assert_called_once_with({})
 
     async def test_start_failure_clears_session(self, full_coordinator):
+        full_coordinator._camera_active = True  # set by the preview request that woke it
         _, _, dispatch, call_later = await self._start(full_coordinator, start_ok=False)
 
         assert full_coordinator.stream_session is None
