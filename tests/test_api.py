@@ -525,6 +525,16 @@ class TestAutoOn:
         assert result.remote_address == "AA F0 00"
 
     @pytest.mark.asyncio
+    async def test_auto_on_for_a_panel_sends_call_as(self, authenticated_api):
+        resp = _mock_response(200, json={"reason": "call_starting"})
+
+        with patch("httpx.AsyncClient.post", return_value=resp) as post:
+            await authenticated_api.auto_on("panel_1", "tok", "unit_1")
+
+        assert post.call_args.args[0].endswith("/deviceaction/api/v2/device/panel_1/autoon")
+        assert post.call_args.kwargs["json"]["callAs"] == "unit_1"
+
+    @pytest.mark.asyncio
     async def test_auto_on_failure(self, authenticated_api):
         """Test auto-on when server returns error."""
         resp = _mock_response(500, json={"title": "Internal Server Error"})
