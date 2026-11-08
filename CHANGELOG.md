@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.25.3-beta.1] - 2026-11-07
+## [0.25.3] - 2026-11-08
 
 ### Fixed
 - **Camera preview on NOWIFI pairings** (#165) — on a home unit without WiFi, *Camera preview* never got an answer, because the request went to the home unit instead of the street panel. It now goes to the street panel on the unit's behalf, as the Fermax app does, the same way panel doors are opened. No extra requests to Fermax.
