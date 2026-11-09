@@ -552,6 +552,10 @@ This integration would not be possible without the work of the Fermax open-sourc
 
 Thanks to the collaborative work of this community, the OAuth credentials needed for third-party integrations are publicly available. Without their effort, projects like this one would not be possible.
 
+Contributors to this repository:
+
+- **[@mixtoism](https://github.com/mixtoism)** (Pablo Arnau-González): switching the Fermax account from Reconfigure (#173)
+
 ## Disclaimer
 
 This integration is not affiliated with or endorsed by Fermax. It uses unofficial APIs that may change at any time. Use at your own risk.
