@@ -77,7 +77,13 @@ STEP_CREDENTIALS_SCHEMA = vol.Schema(
     }
 )
 
-STEP_RECONFIGURE_SCHEMA = STEP_USER_DATA_SCHEMA.extend(STEP_CREDENTIALS_SCHEMA.schema)
+# Password optional: left empty, the stored one is kept (required only to switch account).
+STEP_RECONFIGURE_SCHEMA = vol.Schema(
+    {
+        vol.Required(CONF_USERNAME): str,
+        vol.Optional(CONF_PASSWORD): PASSWORD_SELECTOR,
+    }
+).extend(STEP_CREDENTIALS_SCHEMA.schema)
 
 
 class FermaxBlueConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -199,12 +205,18 @@ class FermaxBlueConfigFlow(ConfigFlow, domain=DOMAIN):
         entry = self._get_reconfigure_entry()
         errors: dict[str, str] = {}
         if user_input is not None:
+            if not user_input.get(CONF_PASSWORD):
+                user_input.pop(CONF_PASSWORD, None)
             data = {**entry.data, **user_input}
             unique_id = data[CONF_USERNAME].lower()
             if unique_id != entry.unique_id:
-                await self.async_set_unique_id(unique_id)
-                self._abort_if_unique_id_configured()
-            errors, _ = await self._async_try_login(data)
+                if CONF_PASSWORD not in user_input:
+                    errors[CONF_PASSWORD] = "invalid_auth"
+                else:
+                    await self.async_set_unique_id(unique_id)
+                    self._abort_if_unique_id_configured()
+            if not errors:
+                errors, _ = await self._async_try_login(data)
             if not errors:
                 return self.async_update_reload_and_abort(
                     entry,

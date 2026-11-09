@@ -446,10 +446,44 @@ class TestReconfigureFlow:
         flow._abort_if_unique_id_configured.side_effect = AbortFlow("already_configured")
 
         with pytest.raises(AbortFlow):
-            await flow.async_step_reconfigure({CONF_USERNAME: "taken@example.com"})
+            await flow.async_step_reconfigure(
+                {CONF_USERNAME: "taken@example.com", CONF_PASSWORD: "x"}
+            )
 
         api_cls.assert_not_called()
         flow.async_update_reload_and_abort.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_empty_password_keeps_the_stored_one(self, monkeypatch):
+        api_cls = _fake_login(monkeypatch)
+        flow, entry = self._flow()
+
+        result = await flow.async_step_reconfigure(
+            {
+                CONF_USERNAME: "User@Example.com",
+                CONF_PASSWORD: "",
+                CONF_FIREBASE_API_KEY: "AIza-new",
+            }
+        )
+
+        assert result["type"] == "abort"
+        assert api_cls.call_args.args[:2] == ("User@Example.com", "secret")
+        flow.async_update_reload_and_abort.assert_called_once_with(
+            entry,
+            unique_id="user@example.com",
+            data_updates={CONF_USERNAME: "User@Example.com", CONF_FIREBASE_API_KEY: "AIza-new"},
+        )
+
+    @pytest.mark.asyncio
+    async def test_switching_account_needs_its_password(self, monkeypatch):
+        api_cls = _fake_login(monkeypatch)
+        flow, _ = self._flow()
+
+        result = await flow.async_step_reconfigure({CONF_USERNAME: "other@example.com"})
+
+        assert result["errors"] == {CONF_PASSWORD: "invalid_auth"}
+        api_cls.assert_not_called()
+        flow.async_set_unique_id.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_http_url_is_rejected(self, monkeypatch):
