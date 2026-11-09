@@ -432,7 +432,7 @@ class TestReconfigureFlow:
         assert result["type"] == "abort"
         flow.async_set_unique_id.assert_awaited_once_with("other@example.com")
         flow._abort_if_unique_id_configured.assert_called_once()
-        assert api_cls.call_args.args[1:3] == ("Other@Example.com", "other-secret")
+        assert api_cls.call_args.args[:2] == ("Other@Example.com", "other-secret")
         flow.async_update_reload_and_abort.assert_called_once_with(
             entry, unique_id="other@example.com", data_updates=changes
         )
