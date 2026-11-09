@@ -32,8 +32,10 @@
       },
       "reconfigure": {
         "title": "Identifiants de l'API",
-        "description": "Mettez à jour les identifiants de l'API et de Firebase de ce compte. L'intégration se recharge avec eux.",
+        "description": "Changez le compte Fermax ou les identifiants de l'API et de Firebase. Un autre compte doit avoir accès aux mêmes appareils (invitez-le depuis l'application Fermax Blue) ; les ID des entités sont conservés. L'intégration se recharge avec les nouvelles valeurs.",
         "data": {
+          "username": "E-mail",
+          "password": "Mot de passe",
           "fermax_auth_url": "Fermax Auth URL",
           "fermax_base_url": "Fermax Base URL",
           "fermax_auth_basic": "Fermax Auth Basic header",
@@ -42,6 +44,9 @@
           "firebase_app_id": "Firebase App ID",
           "firebase_project_id": "Firebase Project ID",
           "firebase_package_name": "Firebase Package Name"
+        },
+        "data_description": {
+          "password": "Laissez vide pour garder le mot de passe actuel. Obligatoire si vous changez l'e-mail."
         }
       }
     },

@@ -75,7 +75,7 @@ The integration is configured through the Home Assistant UI:
 
 The integration will automatically discover all paired devices on your account. An intercom paired to the account later shows up within a day, or straight away if you reload the integration.
 
-If you change the password of the Fermax account, Home Assistant shows a **Re-authenticate** prompt for the integration: enter the new password there. To change the API or Firebase credentials without removing the integration, use **Reconfigure** in the integration's menu.
+If you change the password of the Fermax account, Home Assistant shows a **Re-authenticate** prompt for the integration: enter the new password there. To change the API or Firebase credentials, or to switch to another Fermax account, without removing the integration, use **Reconfigure** in the integration's menu. The new account must already have access to the same devices (invite it from the Fermax Blue app); entities keep their IDs and history.
 
 ### Options
 

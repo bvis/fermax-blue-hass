@@ -32,8 +32,10 @@
       },
       "reconfigure": {
         "title": "API-Zugangsdaten",
-        "description": "Aktualisiere die API- und Firebase-Zugangsdaten dieses Kontos. Die Integration wird damit neu geladen.",
+        "description": "Ändere das Fermax-Konto oder die API- und Firebase-Zugangsdaten. Ein anderes Konto muss Zugriff auf dieselben Geräte haben (in der Fermax-Blue-App einladen); die Entitäts-IDs bleiben erhalten. Die Integration wird mit den neuen Werten neu geladen.",
         "data": {
+          "username": "E-Mail",
+          "password": "Passwort",
           "fermax_auth_url": "Fermax Auth URL",
           "fermax_base_url": "Fermax Base URL",
           "fermax_auth_basic": "Fermax Auth Basic header",
@@ -42,6 +44,9 @@
           "firebase_app_id": "Firebase App ID",
           "firebase_project_id": "Firebase Project ID",
           "firebase_package_name": "Firebase Package Name"
+        },
+        "data_description": {
+          "password": "Leer lassen, um das aktuelle Passwort zu behalten. Erforderlich, wenn du die E-Mail änderst."
         }
       }
     },
