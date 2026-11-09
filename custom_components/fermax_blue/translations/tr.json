@@ -32,8 +32,10 @@
       },
       "reconfigure": {
         "title": "API kimlik bilgileri",
-        "description": "Bu hesabın API ve Firebase kimlik bilgilerini güncelle. Entegrasyon bunlarla yeniden yüklenir.",
+        "description": "Fermax hesabını veya API ve Firebase kimlik bilgilerini değiştir. Başka bir hesabın aynı cihazlara erişimi olmalıdır (Fermax Blue uygulamasından davet et); varlık kimlikleri korunur. Entegrasyon yeni değerlerle yeniden yüklenir.",
         "data": {
+          "username": "E-posta",
+          "password": "Şifre",
           "fermax_auth_url": "Fermax Auth URL",
           "fermax_base_url": "Fermax Base URL",
           "fermax_auth_basic": "Fermax Auth Basic header",

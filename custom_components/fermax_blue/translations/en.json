@@ -32,8 +32,10 @@
       },
       "reconfigure": {
         "title": "API Credentials",
-        "description": "Update the API and Firebase credentials of this account. The integration reloads with them.",
+        "description": "Change the Fermax account or the API and Firebase credentials. To switch to another account, it must have access to the same devices (invite it from the Fermax Blue app); entity IDs are kept. The integration reloads with the new values.",
         "data": {
+          "username": "Email",
+          "password": "Password",
           "fermax_auth_url": "Fermax Auth URL",
           "fermax_base_url": "Fermax Base URL",
           "fermax_auth_basic": "Fermax Auth Basic header",

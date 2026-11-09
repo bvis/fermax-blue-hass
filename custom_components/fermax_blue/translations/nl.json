@@ -32,8 +32,10 @@
       },
       "reconfigure": {
         "title": "API-gegevens",
-        "description": "Werk de API- en Firebase-gegevens van dit account bij. De integratie wordt ermee opnieuw geladen.",
+        "description": "Wijzig het Fermax-account of de API- en Firebase-gegevens. Een ander account moet toegang hebben tot dezelfde apparaten (nodig het uit via de Fermax Blue-app); entiteit-ID's blijven behouden. De integratie wordt opnieuw geladen met de nieuwe waarden.",
         "data": {
+          "username": "E-mail",
+          "password": "Wachtwoord",
           "fermax_auth_url": "Fermax Auth URL",
           "fermax_base_url": "Fermax Base URL",
           "fermax_auth_basic": "Fermax Auth Basic header",

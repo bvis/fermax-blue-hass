@@ -32,8 +32,10 @@
       },
       "reconfigure": {
         "title": "بيانات اعتماد واجهة البرمجة",
-        "description": "حدّث بيانات اعتماد واجهة البرمجة وFirebase لهذا الحساب. يُعاد تحميل التكامل بها.",
+        "description": "غيّر حساب Fermax أو بيانات اعتماد واجهة البرمجة وFirebase. يجب أن يكون للحساب الآخر وصول إلى الأجهزة نفسها (ادعه من تطبيق Fermax Blue)؛ تبقى معرّفات الكيانات كما هي. يُعاد تحميل التكامل بالقيم الجديدة.",
         "data": {
+          "username": "البريد الإلكتروني",
+          "password": "كلمة المرور",
           "fermax_auth_url": "Fermax Auth URL",
           "fermax_base_url": "Fermax Base URL",
           "fermax_auth_basic": "Fermax Auth Basic header",

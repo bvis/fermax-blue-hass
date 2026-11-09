@@ -77,6 +77,8 @@ STEP_CREDENTIALS_SCHEMA = vol.Schema(
     }
 )
 
+STEP_RECONFIGURE_SCHEMA = STEP_USER_DATA_SCHEMA.extend(STEP_CREDENTIALS_SCHEMA.schema)
+
 
 class FermaxBlueConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Fermax Blue."""
@@ -189,22 +191,32 @@ class FermaxBlueConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_reconfigure(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Change the API and Firebase credentials of an existing entry."""
+        """Change the account or the API and Firebase credentials of an existing entry.
+
+        Entities are keyed by device, so switching to another account that has
+        access to the same devices keeps their entity IDs and history.
+        """
         entry = self._get_reconfigure_entry()
         errors: dict[str, str] = {}
         if user_input is not None:
             data = {**entry.data, **user_input}
+            unique_id = data[CONF_USERNAME].lower()
+            if unique_id != entry.unique_id:
+                await self.async_set_unique_id(unique_id)
+                self._abort_if_unique_id_configured()
             errors, _ = await self._async_try_login(data)
             if not errors:
                 return self.async_update_reload_and_abort(
-                    entry, data_updates={key: data[key] for key in user_input}
+                    entry,
+                    unique_id=unique_id,
+                    data_updates={key: data[key] for key in user_input},
                 )
 
+        suggested = {**entry.data, **(user_input or {})}
+        suggested.pop(CONF_PASSWORD, None)
         return self.async_show_form(
             step_id="reconfigure",
-            data_schema=self.add_suggested_values_to_schema(
-                STEP_CREDENTIALS_SCHEMA, {**entry.data, **(user_input or {})}
-            ),
+            data_schema=self.add_suggested_values_to_schema(STEP_RECONFIGURE_SCHEMA, suggested),
             errors=errors,
         )
 

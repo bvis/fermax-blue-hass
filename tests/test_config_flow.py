@@ -390,19 +390,22 @@ class TestReconfigureFlow:
         flow = _make_flow()
         entry = MagicMock()
         entry.data = {**_credentials_payload()}
+        entry.unique_id = "user@example.com"
         flow._get_reconfigure_entry = MagicMock(return_value=entry)
         flow.add_suggested_values_to_schema = MagicMock(side_effect=lambda schema, values: schema)
         return flow, entry
 
     @pytest.mark.asyncio
     async def test_shows_the_current_values(self):
-        flow, entry = self._flow()
+        flow, _ = self._flow()
 
         result = await flow.async_step_reconfigure()
 
         assert result["step_id"] == "reconfigure"
         flow.add_suggested_values_to_schema.assert_called_once()
-        assert flow.add_suggested_values_to_schema.call_args.args[1] == entry.data
+        suggested = flow.add_suggested_values_to_schema.call_args.args[1]
+        assert suggested[CONF_USERNAME] == "User@Example.com"
+        assert CONF_PASSWORD not in suggested
 
     @pytest.mark.asyncio
     async def test_valid_credentials_update_the_entry(self, monkeypatch):
@@ -413,7 +416,40 @@ class TestReconfigureFlow:
         result = await flow.async_step_reconfigure(changes)
 
         assert result["type"] == "abort"
-        flow.async_update_reload_and_abort.assert_called_once_with(entry, data_updates=changes)
+        flow.async_update_reload_and_abort.assert_called_once_with(
+            entry, unique_id="user@example.com", data_updates=changes
+        )
+        flow.async_set_unique_id.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_account_can_be_switched(self, monkeypatch):
+        api_cls = _fake_login(monkeypatch)
+        flow, entry = self._flow()
+        changes = {CONF_USERNAME: "Other@Example.com", CONF_PASSWORD: "other-secret"}
+
+        result = await flow.async_step_reconfigure(changes)
+
+        assert result["type"] == "abort"
+        flow.async_set_unique_id.assert_awaited_once_with("other@example.com")
+        flow._abort_if_unique_id_configured.assert_called_once()
+        assert api_cls.call_args.args[1:3] == ("Other@Example.com", "other-secret")
+        flow.async_update_reload_and_abort.assert_called_once_with(
+            entry, unique_id="other@example.com", data_updates=changes
+        )
+
+    @pytest.mark.asyncio
+    async def test_switching_to_an_account_already_configured_aborts(self, monkeypatch):
+        from homeassistant.data_entry_flow import AbortFlow
+
+        api_cls = _fake_login(monkeypatch)
+        flow, _ = self._flow()
+        flow._abort_if_unique_id_configured.side_effect = AbortFlow("already_configured")
+
+        with pytest.raises(AbortFlow):
+            await flow.async_step_reconfigure({CONF_USERNAME: "taken@example.com"})
+
+        api_cls.assert_not_called()
+        flow.async_update_reload_and_abort.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_http_url_is_rejected(self, monkeypatch):
