@@ -360,8 +360,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: FermaxBlueConfigEntry) -
 
 
 async def _async_options_updated(hass: HomeAssistant, entry: FermaxBlueConfigEntry) -> None:
-    """Handle options update — apply hot-reloadable options without full reload."""
+    """Handle an entry update: reload on new account data, else apply options hot."""
     coordinators = entry.runtime_data
+    # Reauth and Reconfigure only save; reloading is this listener's job (HA 2026.12).
+    if any(coordinator.config_entry_data != dict(entry.data) for coordinator in coordinators):
+        hass.config_entries.async_schedule_reload(entry.entry_id)
+        return
 
     new_scan = entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL)
     auto_response_file = entry.options.get("auto_response_file", "")

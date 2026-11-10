@@ -109,6 +109,8 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         )
         self.api = api
         self.pairing = pairing
+        # Account data this coordinator was built from; a change means reload.
+        self.config_entry_data = dict(config_entry.data)
         self.device_info: DeviceInfo | None = None
         self.notification_listener: FermaxNotificationListener | None = None
         self._last_photo: bytes | None = None

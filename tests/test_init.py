@@ -611,6 +611,7 @@ class TestOptionsUpdated:
 
     async def test_auto_response_file_hot_reloads(self, mock_hass, entry):
         coordinator = _make_coordinator()
+        coordinator.config_entry_data = dict(entry.data)
         entry.runtime_data = [coordinator]
         entry.options = {"auto_response_file": "/media/greeting.mp3"}
 
@@ -621,6 +622,7 @@ class TestOptionsUpdated:
 
     async def test_scan_interval_change_triggers_reload(self, mock_hass, entry):
         coordinator = _make_coordinator()  # currently at DEFAULT_SCAN_INTERVAL minutes
+        coordinator.config_entry_data = dict(entry.data)
         entry.runtime_data = [coordinator]
         entry.options = {CONF_SCAN_INTERVAL: DEFAULT_SCAN_INTERVAL + 5}
 
@@ -631,12 +633,34 @@ class TestOptionsUpdated:
     async def test_no_update_interval_never_reloads(self, mock_hass, entry):
         coordinator = _make_coordinator()
         coordinator.update_interval = None
+        coordinator.config_entry_data = dict(entry.data)
         entry.runtime_data = [coordinator]
         entry.options = {CONF_SCAN_INTERVAL: DEFAULT_SCAN_INTERVAL + 5}
 
         await _async_options_updated(mock_hass, entry)
 
         mock_hass.config_entries.async_reload.assert_not_awaited()
+
+    async def test_new_account_data_reloads_the_entry(self, mock_hass, entry):
+        coordinator = _make_coordinator()
+        coordinator.config_entry_data = {**entry.data, CONF_PASSWORD: "old-secret"}
+        entry.runtime_data = [coordinator]
+        entry.options = {"auto_response_file": "/media/greeting.mp3"}
+
+        await _async_options_updated(mock_hass, entry)
+
+        mock_hass.config_entries.async_schedule_reload.assert_called_once_with(entry.entry_id)
+        mock_hass.config_entries.async_reload.assert_not_awaited()
+
+    async def test_options_alone_do_not_schedule_a_reload(self, mock_hass, entry):
+        coordinator = _make_coordinator()
+        coordinator.config_entry_data = dict(entry.data)
+        entry.runtime_data = [coordinator]
+        entry.options = {"auto_response_file": "/media/greeting.mp3"}
+
+        await _async_options_updated(mock_hass, entry)
+
+        mock_hass.config_entries.async_schedule_reload.assert_not_called()
 
 
 class TestGenerateTtsAudio:
