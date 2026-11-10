@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.26.0-beta.2] - 2026-11-10
+
+### Fixed
+- **Reconfigure and re-authentication keep reloading the integration on Home Assistant 2026.12** — saving them used a reload that Home Assistant 2026.12 stops allowing for integrations that also have options, so a new password or account could be saved without being used until the next restart. The integration now reloads itself when the account data changes. Saving Reconfigure without changing anything no longer reloads it.
+
 ## [0.26.0-beta.1] - 2026-11-10
 
 ### Added

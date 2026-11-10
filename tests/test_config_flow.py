@@ -322,7 +322,7 @@ def _make_flow():
     flow.async_create_entry = MagicMock(
         side_effect=lambda **kwargs: {"type": "create_entry", **kwargs}
     )
-    flow.async_update_reload_and_abort = MagicMock(
+    flow.async_update_and_abort = MagicMock(
         side_effect=lambda entry, **kwargs: {"type": "abort", **kwargs}
     )
     return flow
@@ -367,7 +367,7 @@ class TestReauthFlow:
 
         assert api_cls.call_args.args[1] == "new-secret"
         assert result["type"] == "abort"
-        flow.async_update_reload_and_abort.assert_called_once_with(
+        flow.async_update_and_abort.assert_called_once_with(
             entry, data_updates={CONF_PASSWORD: "new-secret"}
         )
 
@@ -380,7 +380,7 @@ class TestReauthFlow:
 
         assert result["step_id"] == "reauth_confirm"
         assert result["errors"] == {"base": "invalid_auth"}
-        flow.async_update_reload_and_abort.assert_not_called()
+        flow.async_update_and_abort.assert_not_called()
 
 
 class TestReconfigureFlow:
@@ -416,7 +416,7 @@ class TestReconfigureFlow:
         result = await flow.async_step_reconfigure(changes)
 
         assert result["type"] == "abort"
-        flow.async_update_reload_and_abort.assert_called_once_with(
+        flow.async_update_and_abort.assert_called_once_with(
             entry, unique_id="user@example.com", data_updates=changes
         )
         flow.async_set_unique_id.assert_not_called()
@@ -433,7 +433,7 @@ class TestReconfigureFlow:
         flow.async_set_unique_id.assert_awaited_once_with("other@example.com")
         flow._abort_if_unique_id_configured.assert_called_once()
         assert api_cls.call_args.args[:2] == ("Other@Example.com", "other-secret")
-        flow.async_update_reload_and_abort.assert_called_once_with(
+        flow.async_update_and_abort.assert_called_once_with(
             entry, unique_id="other@example.com", data_updates=changes
         )
 
@@ -451,7 +451,7 @@ class TestReconfigureFlow:
             )
 
         api_cls.assert_not_called()
-        flow.async_update_reload_and_abort.assert_not_called()
+        flow.async_update_and_abort.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_empty_password_keeps_the_stored_one(self, monkeypatch):
@@ -468,7 +468,7 @@ class TestReconfigureFlow:
 
         assert result["type"] == "abort"
         assert api_cls.call_args.args[:2] == ("User@Example.com", "secret")
-        flow.async_update_reload_and_abort.assert_called_once_with(
+        flow.async_update_and_abort.assert_called_once_with(
             entry,
             unique_id="user@example.com",
             data_updates={CONF_USERNAME: "User@Example.com", CONF_FIREBASE_API_KEY: "AIza-new"},
