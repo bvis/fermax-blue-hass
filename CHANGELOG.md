@@ -1,17 +1,15 @@
 # Changelog
 
-## [0.26.0-beta.2] - 2026-11-10
-
-### Fixed
-- **Reconfigure and re-authentication keep reloading the integration on Home Assistant 2026.12** — saving them used a reload that Home Assistant 2026.12 stops allowing for integrations that also have options, so a new password or account could be saved without being used until the next restart. The integration now reloads itself when the account data changes. Saving Reconfigure without changing anything no longer reloads it.
-
-## [0.26.0-beta.1] - 2026-11-10
+## [0.26.0] - 2026-11-11
 
 ### Added
 - **Switch the Fermax account from Reconfigure** (#173, thanks @mixtoism) — you can move the integration to another Fermax account, for example one invited from the Fermax Blue app just for Home Assistant, without removing it. The new account needs access to the same devices; entities keep their IDs, history and automations. Switching to an account that's already set up is refused.
 
 ### Changed
 - **Reconfigure no longer asks for the password** unless you change the email: leave it empty to keep the current one.
+
+### Fixed
+- **Reconfigure and re-authentication keep reloading the integration on Home Assistant 2026.12** — saving them used a reload that Home Assistant 2026.12 stops allowing for integrations that also have options, so a new password or account could be saved without being used until the next restart. The integration now reloads itself when the account data changes. Saving Reconfigure without changing anything no longer reloads it.
 
 ## [0.25.3] - 2026-11-08
 
