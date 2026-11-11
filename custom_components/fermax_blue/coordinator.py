@@ -31,6 +31,7 @@ from .api import (
     FermaxBlueApi,
     OpeningRecord,
     Pairing,
+    describe_error,
 )
 from .const import (
     CALL_MODE_AUTO_RESPOND,
@@ -353,8 +354,8 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
                                 )
                                 self._last_photo_id = latest.photo_id
                                 self._background(self._save_call_photo(photo), "call photo")
-            except Exception:
-                _LOGGER.debug("Failed to fetch call log/photo", exc_info=True)
+            except Exception as err:
+                _LOGGER.debug("Failed to fetch call log/photo (%s)", describe_error(err))
 
         # Fetch DND status
         if self.notification_listener and self.notification_listener.fcm_token:
@@ -363,8 +364,8 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
                     self.pairing.device_id,
                     self.notification_listener.fcm_token,
                 )
-            except Exception:
-                _LOGGER.debug("Failed to fetch DND status", exc_info=True)
+            except Exception as err:
+                _LOGGER.debug("Failed to fetch DND status (%s)", describe_error(err))
 
         # Fetch latest door opening (1 API call, lightweight)
         try:
@@ -373,8 +374,8 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
             )
             if openings:
                 self._last_opening = openings[0]
-        except Exception:
-            _LOGGER.debug("Failed to fetch opening history", exc_info=True)
+        except Exception as err:
+            _LOGGER.debug("Failed to fetch opening history (%s)", describe_error(err))
 
         return {
             "device_id": device_info.device_id,
@@ -425,7 +426,7 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
                 "Push registration failed for device %s (%s): doorbell notifications "
                 "are off, retrying in %d minutes",
                 self.pairing.device_id,
-                err,
+                describe_error(err),
                 FCM_REGISTER_RETRY_INTERVAL // 60,
             )
             return False
@@ -448,13 +449,25 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         return True
 
     async def stop_notifications(self) -> None:
-        """Stop the notification listener."""
-        if self.notification_listener:
-            if self.notification_listener.fcm_token:
-                await self.api.register_app_token(
-                    self.notification_listener.fcm_token, active=False
-                )
-            await self.notification_listener.stop()
+        """Stop the notification listener.
+
+        Telling Fermax to stop pushing is best effort: it fails with a rejected
+        password or no connection, and neither may keep the entry from unloading.
+        """
+        listener = self.notification_listener
+        if not listener:
+            return
+        try:
+            if listener.fcm_token:
+                await self.api.register_app_token(listener.fcm_token, active=False)
+        except Exception as err:
+            _LOGGER.debug(
+                "Could not deactivate the push token for device %s (%s)",
+                self.pairing.device_id,
+                describe_error(err),
+            )
+        finally:
+            await listener.stop()
 
     async def ensure_notifications_running(self) -> None:
         """Watchdog hook: revive the FCM listener if it died."""

@@ -6,6 +6,7 @@ import time
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import UpdateFailed
@@ -1005,6 +1006,25 @@ class TestNotificationLifecycle:
         await full_coordinator.stop_notifications()
 
         mock_api.register_app_token.assert_awaited_once_with("fcm_tok", active=False)
+        listener.stop.assert_awaited_once()
+
+    @pytest.mark.parametrize(
+        "error",
+        [FermaxAuthError("invalid_grant"), httpx.ConnectError("no route")],
+        ids=["rejected password", "no connection"],
+    )
+    async def test_stop_survives_a_failed_token_deactivation(
+        self, full_coordinator, mock_api, error
+    ):
+        """An unload must not fail (and strand the entry) because Fermax can't be reached."""
+        listener = MagicMock()
+        listener.fcm_token = "fcm_tok"
+        listener.stop = AsyncMock()
+        full_coordinator.notification_listener = listener
+        mock_api.register_app_token.side_effect = error
+
+        await full_coordinator.stop_notifications()
+
         listener.stop.assert_awaited_once()
 
     async def test_stop_without_listener_is_noop(self, full_coordinator, mock_api):

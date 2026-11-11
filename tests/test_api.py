@@ -13,6 +13,7 @@ from custom_components.fermax_blue.api import (
     FermaxAuthError,
     FermaxBlueApi,
     OpeningRecord,
+    describe_error,
 )
 
 
@@ -95,6 +96,18 @@ class TestAuthentication:
         with (
             patch("httpx.AsyncClient.post", return_value=resp),
             pytest.raises(FermaxAuthError, match="Bad credentials"),
+        ):
+            await api.authenticate()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("status", [200, 403, 500, 503])
+    async def test_error_body_outside_400_401_is_not_a_rejected_password(self, api, status):
+        """A server-side failure must not send the user to re-enter the password."""
+        resp = _mock_response(status, json={"error": "server_error", "error_description": "boom"})
+
+        with (
+            patch("httpx.AsyncClient.post", return_value=resp),
+            pytest.raises(FermaxApiError, match=f"HTTP {status}"),
         ):
             await api.authenticate()
 
@@ -913,3 +926,43 @@ class TestRedactEmail:
         from custom_components.fermax_blue.api import redact_email
 
         assert redact_email("user@") == "u***r@***"
+
+
+class TestDescribeError:
+    """Log lines about a failed request must not carry its URL (tokens, e-mail)."""
+
+    def test_http_status_error_keeps_only_the_status(self):
+        request = httpx.Request("GET", "https://api.example.com/x?appToken=SECRET&userId=me@x.io")
+        exc = httpx.HTTPStatusError(
+            f"Server error '500' for url '{request.url}'",
+            request=request,
+            response=httpx.Response(500, request=request),
+        )
+
+        assert describe_error(exc) == "HTTP 500"
+
+    def test_transport_error_keeps_only_its_type(self):
+        exc = httpx.ConnectError("failed for https://api.example.com/x?token=SECRET")
+
+        assert describe_error(exc) == "ConnectError"
+
+    def test_other_errors_keep_their_message(self):
+        assert describe_error(ValueError("bad photo")) == "ValueError: bad photo"
+
+    @pytest.mark.asyncio
+    async def test_opening_history_failure_does_not_log_the_account(
+        self, authenticated_api, caplog
+    ):
+        caplog.set_level(logging.DEBUG, logger="custom_components.fermax_blue.api")
+        request = httpx.Request("GET", "https://api.example.com/r?userId=test@example.com")
+        error = httpx.HTTPStatusError(
+            f"Client error '403' for url '{request.url}'",
+            request=request,
+            response=httpx.Response(403, request=request),
+        )
+
+        with patch.object(authenticated_api, "_api_get", AsyncMock(side_effect=error)):
+            assert await authenticated_api.get_opening_history("dev1", master=True) == []
+
+        assert "test@example.com" not in caplog.text
+        assert "HTTP 403" in caplog.text

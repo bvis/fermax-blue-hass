@@ -325,6 +325,9 @@ def _make_flow():
     flow.async_update_and_abort = MagicMock(
         side_effect=lambda entry, **kwargs: {"type": "abort", **kwargs}
     )
+    flow.async_update_reload_and_abort = MagicMock(
+        side_effect=lambda entry, **kwargs: {"type": "abort", **kwargs}
+    )
     return flow
 
 
@@ -381,6 +384,45 @@ class TestReauthFlow:
         assert result["step_id"] == "reauth_confirm"
         assert result["errors"] == {"base": "invalid_auth"}
         flow.async_update_and_abort.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_loaded_entry_is_reloaded_by_its_listener_only(self, monkeypatch):
+        _fake_login(monkeypatch)
+        flow, _ = self._flow()
+
+        await flow.async_step_reauth_confirm({CONF_PASSWORD: "new-secret"})
+
+        flow.async_update_reload_and_abort.assert_not_called()
+        flow.hass.config_entries.async_schedule_reload.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_same_password_still_reloads_a_loaded_entry(self, monkeypatch):
+        """Polling stopped at the rejection; no data change means no listener call."""
+        _fake_login(monkeypatch)
+        flow, entry = self._flow()
+
+        result = await flow.async_step_reauth_confirm({CONF_PASSWORD: "secret"})
+
+        assert result["type"] == "abort"
+        flow.hass.config_entries.async_schedule_reload.assert_called_once_with(entry.entry_id)
+        flow.async_update_and_abort.assert_called_once()
+        flow.async_update_reload_and_abort.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_entry_that_failed_to_start_is_reloaded(self, monkeypatch):
+        """Setup stopped before the update listener existed, so the flow reloads."""
+        _fake_login(monkeypatch)
+        flow, entry = self._flow()
+        entry.update_listeners = []
+
+        result = await flow.async_step_reauth_confirm({CONF_PASSWORD: "new-secret"})
+
+        assert result["type"] == "abort"
+        flow.async_update_reload_and_abort.assert_called_once_with(
+            entry, data_updates={CONF_PASSWORD: "new-secret"}
+        )
+        flow.async_update_and_abort.assert_not_called()
+        flow.hass.config_entries.async_schedule_reload.assert_not_called()
 
 
 class TestReconfigureFlow:
@@ -494,6 +536,31 @@ class TestReconfigureFlow:
 
         assert result["errors"] == {CONF_FERMAX_BASE_URL: "invalid_url"}
         api_cls.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_unchanged_values_do_not_reload_a_loaded_entry(self, monkeypatch):
+        _fake_login(monkeypatch)
+        flow, _ = self._flow()
+
+        await flow.async_step_reconfigure({CONF_FIREBASE_API_KEY: "AIza-key"})
+
+        flow.async_update_and_abort.assert_called_once()
+        flow.hass.config_entries.async_schedule_reload.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_entry_that_failed_to_start_is_reloaded(self, monkeypatch):
+        _fake_login(monkeypatch)
+        flow, entry = self._flow()
+        entry.update_listeners = []
+        changes = {CONF_FIREBASE_API_KEY: "AIza-new"}
+
+        result = await flow.async_step_reconfigure(changes)
+
+        assert result["type"] == "abort"
+        flow.async_update_reload_and_abort.assert_called_once_with(
+            entry, unique_id="user@example.com", data_updates=changes
+        )
+        flow.async_update_and_abort.assert_not_called()
 
 
 class TestConfigFlowSteps:
@@ -675,5 +742,19 @@ class TestOptionsFlow:
 
         result = await flow.async_step_init()
 
-        defaults = {str(key): key.default() for key in result["data_schema"].schema}
-        assert defaults["auto_response_file"] == ""
+        key = next(k for k in result["data_schema"].schema if k == "auto_response_file")
+        assert key.default is vol.UNDEFINED
+
+    @pytest.mark.asyncio
+    async def test_auto_response_can_be_cleared(self, tmp_path):
+        """An emptied text field arrives as a missing key, which must stay missing."""
+        flow = self._options_flow(tmp_path)
+        clip = str(tmp_path / "media" / "hello.wav")
+        flow.hass.config_entries.async_get_known_entry.return_value = MagicMock(
+            options={"auto_response_file": clip}
+        )
+
+        form = await flow.async_step_init()
+        key = next(k for k in form["data_schema"].schema if k == "auto_response_file")
+        assert key.description == {"suggested_value": clip}
+        assert "auto_response_file" not in form["data_schema"]({"scan_interval": 10})
