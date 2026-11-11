@@ -370,6 +370,26 @@ class TestSetupEntryFailure:
         mock_api.close.assert_awaited_once()
 
 
+class TestSetupEntryPartialFailure:
+    """A later intercom failing must not leave the first one's push listener behind."""
+
+    async def test_started_listeners_are_stopped_when_a_later_intercom_fails(
+        self, mock_hass, entry, mock_api
+    ):
+        mock_api.get_pairings.return_value = [MagicMock(), MagicMock()]
+        first, second = _make_coordinator(), _make_coordinator()
+        second.async_config_entry_first_refresh.side_effect = ConfigEntryNotReady("offline")
+
+        with pytest.raises(ConfigEntryNotReady):
+            await _run_setup(mock_hass, entry, mock_api, [first, second])
+
+        # Home Assistant retries the setup: a listener left running would be
+        # joined by a second one and every ring would arrive twice
+        first.setup_notifications.assert_awaited_once()
+        first.stop_notifications.assert_awaited_once()
+        second.setup_notifications.assert_not_awaited()
+
+
 class TestSendAudioService:
     """The send_audio service handler registered at setup."""
 

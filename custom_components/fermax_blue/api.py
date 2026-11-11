@@ -13,8 +13,7 @@ from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import quote
 
-import httpx
-
+from ._compat import httpx
 from .const import APP_HEADERS
 
 _LOGGER = logging.getLogger(__name__)
@@ -83,7 +82,7 @@ class AccessDoor:
 
     name: str
     title: str
-    access_id: dict
+    access_id: dict[str, Any]
     visible: bool
     # Doors listed under panelAccessDoors are opened on the panel itself
     panel_id: str | None = None
@@ -260,7 +259,7 @@ class FermaxBlueApi:
             return f"OAuth authentication failed ({error}): {description}"
         return f"OAuth authentication failed: {error}"
 
-    def _get_auth_headers(self) -> dict:
+    def _get_auth_headers(self) -> dict[str, str]:
         """Get headers for authenticated API requests."""
         return {
             "Authorization": f"Bearer {self._access_token}",
@@ -358,7 +357,7 @@ class FermaxBlueApi:
         await self._ensure_authenticated()
         return self._access_token or ""
 
-    async def _api_request(self, method: str, path: str, **kwargs) -> httpx.Response:
+    async def _api_request(self, method: str, path: str, **kwargs: Any) -> httpx.Response:
         """Make an authenticated request with retry on transient errors."""
         await self._ensure_authenticated()
         client = await self._get_client()
@@ -396,15 +395,15 @@ class FermaxBlueApi:
         # Should not reach here, but satisfy type checker
         raise last_exc  # type: ignore[misc]
 
-    async def _api_get(self, path: str, **kwargs) -> httpx.Response:
+    async def _api_get(self, path: str, **kwargs: Any) -> httpx.Response:
         """Make an authenticated GET request with retry."""
         return await self._api_request("get", path, **kwargs)
 
-    async def _api_post(self, path: str, **kwargs) -> httpx.Response:
+    async def _api_post(self, path: str, **kwargs: Any) -> httpx.Response:
         """Make an authenticated POST request with retry."""
         return await self._api_request("post", path, **kwargs)
 
-    async def _api_put(self, path: str, **kwargs) -> httpx.Response:
+    async def _api_put(self, path: str, **kwargs: Any) -> httpx.Response:
         """Make an authenticated PUT request with retry."""
         return await self._api_request("put", path, **kwargs)
 
@@ -467,7 +466,9 @@ class FermaxBlueApi:
             wireless_signal=data.get("wirelessSignal", 0),
         )
 
-    async def open_door(self, device_id: str, access_id: dict, panel_id: str | None = None) -> bool:
+    async def open_door(
+        self, device_id: str, access_id: dict[str, Any], panel_id: str | None = None
+    ) -> bool:
         """Open a door; a panel door is addressed to the panel on behalf of the unit."""
         target, params = (panel_id, {"unitId": device_id}) if panel_id else (device_id, None)
         try:
@@ -663,7 +664,7 @@ class FermaxBlueApi:
         return self._parse_divert_response(response.json())
 
     @staticmethod
-    def _parse_divert_response(data: dict) -> DivertResponse:
+    def _parse_divert_response(data: dict[str, Any]) -> DivertResponse:
         """Build a DivertResponse from a divert-style payload."""
         return DivertResponse(
             reason=data.get("reason", ""),

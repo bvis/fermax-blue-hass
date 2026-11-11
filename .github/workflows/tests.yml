@@ -47,16 +47,21 @@ jobs:
       - name: Format check
         run: docker run --rm -v $PWD:/app -w /app fermax-blue-dev ruff format --check custom_components/ tests/ scripts/
 
+  # Each Python gets a different Home Assistant (3.13: the last core that ran on
+  # it; 3.14: the newest), and their types differ, so check against both.
   type-check:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.13", "3.14"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Build dev image
-        run: docker build -t fermax-blue-dev -f Dockerfile.dev .
+      - name: Build dev image (Python ${{ matrix.python-version }})
+        run: docker build -t fermax-blue-dev --build-arg PYTHON_VERSION=${{ matrix.python-version }} -f Dockerfile.dev .
 
       - name: Type check
-        run: docker run --rm -v $PWD:/app -w /app fermax-blue-dev mypy custom_components/fermax_blue/ --ignore-missing-imports
+        run: docker run --rm -v $PWD:/app -w /app fermax-blue-dev mypy custom_components/fermax_blue/
 
   dead-code:
     runs-on: ubuntu-latest

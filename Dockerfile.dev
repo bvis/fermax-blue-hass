@@ -1,4 +1,6 @@
-ARG PYTHON_VERSION=3.13
+# The default is the Python of current Home Assistant; CI and the pre-push hook
+# also build 3.13, which gets the last core that ran on it.
+ARG PYTHON_VERSION=3.14
 FROM python:${PYTHON_VERSION}-slim
 
 RUN apt-get update -qq && \

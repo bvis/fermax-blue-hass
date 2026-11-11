@@ -39,11 +39,12 @@ for PY in 3.13 3.14; do
         step "Format (py${PY})"
         $RUN ruff format --check custom_components/ tests/ scripts/ \
             && pass "Format" || fail "Format — run 'make format'"
-
-        step "Type check (py${PY})"
-        $RUN mypy custom_components/fermax_blue/ --ignore-missing-imports \
-            && pass "Type check" || fail "Type check"
     fi
+
+    # On both: each Python gets a different Home Assistant, with different types
+    step "Type check (py${PY})"
+    $RUN mypy custom_components/fermax_blue/ \
+        && pass "Type check py${PY}" || fail "Type check py${PY}"
 
     step "Tests (py${PY})"
     $RUN pytest tests/ -q --tb=short --cov=custom_components/fermax_blue --cov-report= \

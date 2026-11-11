@@ -87,7 +87,7 @@ make pre-push
 
 ### Available Commands
 
-All commands run in a Docker image built from `Dockerfile.dev` (Python 3.13 by default), so your local environment stays clean:
+All commands run in a Docker image built from `Dockerfile.dev` (Python 3.14 by default), so your local environment stays clean:
 
 ```bash
 make lint          # Ruff linting (E, F, W, I, N, UP, B, A, SIM, TCH)
@@ -132,7 +132,7 @@ docker run --rm -v $(pwd):/app -w /app fermax-blue-dev \
 Every push and PR runs these jobs in GitHub Actions (plus a weekly run that catches dependency drift):
 - **test** — Pytest on Python 3.13 + 3.14 with coverage
 - **lint** — Ruff check + format verification
-- **type-check** — Mypy type checking
+- **type-check** — Mypy (strict) on Python 3.13 + 3.14
 - **dead-code** — Vulture
 - **hassfest** — Home Assistant manifest validation
 - **validate** — HACS integration validation

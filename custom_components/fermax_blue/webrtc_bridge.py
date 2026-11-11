@@ -27,8 +27,8 @@ from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
 from aiohttp import web
-from homeassistant.components.http import HomeAssistantView
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.http import HomeAssistantView
 from homeassistant.helpers.network import NoURLAvailableError, get_url
 
 from .const import WEBRTC_PATH
@@ -104,7 +104,7 @@ def _prefer_fast_h264() -> None:
         from aiortc import codecs
         from aiortc.codecs import h264
 
-        class _FastH264Encoder(h264.H264Encoder):  # type: ignore[misc]
+        class _FastH264Encoder(h264.H264Encoder):
             def _encode_frame(self, frame: Any, force_keyframe: bool) -> Any:
                 if self.codec and (
                     frame.width != self.codec.width or frame.height != self.codec.height
@@ -116,7 +116,7 @@ def _prefer_fast_h264() -> None:
                     self.codec = _make_h264_context(frame.width, frame.height, self.target_bitrate)
                 yield from super()._encode_frame(frame, force_keyframe)
 
-        codecs.H264Encoder = _FastH264Encoder  # type: ignore[misc]
+        codecs.H264Encoder = _FastH264Encoder  # type: ignore[attr-defined]
     except Exception:
         _LOGGER.debug("Could not tune the H264 encoder; using aiortc defaults", exc_info=True)
 
@@ -136,7 +136,7 @@ def _placeholder_frame(jpeg: bytes | None, progress: float | None = None) -> Any
             _LOGGER.debug("Unusable snapshot for the placeholder frame", exc_info=True)
     if progress is not None:
         draw_wake_progress(img, progress)
-    return av.VideoFrame.from_image(img).reformat(format="yuv420p")
+    return av.VideoFrame.from_image(img).reformat(format="yuv420p")  # type: ignore[no-untyped-call]
 
 
 def _create_switchable_video_track(
@@ -152,7 +152,7 @@ def _create_switchable_video_track(
 
     from aiortc import MediaStreamTrack
 
-    class _Track(MediaStreamTrack):  # type: ignore[misc]
+    class _Track(MediaStreamTrack):
         kind = "video"
 
         def __init__(self) -> None:
@@ -254,7 +254,7 @@ class WebRtcPeer:
         self._mic_track: Any = None
         self._mic_ready = False
         self._mic_routed = False
-        self._tasks: list[asyncio.Task] = []
+        self._tasks: list[asyncio.Task[None]] = []
         self._closed = False
 
     async def run(self, ws: web.WebSocketResponse) -> None:

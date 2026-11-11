@@ -58,7 +58,7 @@ def _patch_pymediasoup_audio_channels() -> None:
                 codec.channels = 1
         return caps
 
-    _Handler.getNativeRtpCapabilities = _patched_get  # type: ignore[assignment]
+    _Handler.getNativeRtpCapabilities = _patched_get
 
 
 _PYMEDIASOUP_PATCHED = False
@@ -175,7 +175,7 @@ def _decode_audio_file(audio_path: str) -> tuple[list[Any], list[bytes]]:
     with av.open(audio_path) as container:
         for packet in container.demux(audio=0):
             for decoded in packet.decode():
-                for resampled in resampler.resample(decoded):  # type: ignore[arg-type]
+                for resampled in resampler.resample(decoded):
                     all_samples.append(resampled.to_ndarray().flatten())
     if not all_samples:
         return [], []
@@ -270,7 +270,7 @@ def _write_mp4(
         else:
             for index, jpeg in enumerate(jpegs):
                 image = Image.open(io.BytesIO(jpeg)).convert("RGB")
-                frame = av.VideoFrame.from_image(image).reformat(format="yuv420p")
+                frame = av.VideoFrame.from_image(image).reformat(format="yuv420p")  # type: ignore[no-untyped-call]
                 frame.pts = index
                 frame.time_base = Fraction(1, 25)
                 out.mux(video.encode(frame))
@@ -304,7 +304,7 @@ def _create_encoded_video_track(source: Any) -> Any:
     import av
     from aiortc import MediaStreamTrack
 
-    class _Track(MediaStreamTrack):  # type: ignore[misc]
+    class _Track(MediaStreamTrack):
         kind = "video"
 
         def __init__(self) -> None:
@@ -438,7 +438,7 @@ def _create_switchable_audio_track() -> Any:
             p.update(bytes(p.buffer_size))
         return frame
 
-    class _Track(MediaStreamTrack):  # type: ignore[misc]
+    class _Track(MediaStreamTrack):
         kind = "audio"
 
         def __init__(self) -> None:
@@ -576,15 +576,15 @@ class FermaxSignalingClient:
         """Connect to signaling server and join a room."""
         self._sio = socketio.AsyncClient(logger=False, engineio_logger=False)
 
-        @self._sio.event
+        @self._sio.event  # type: ignore[untyped-decorator]
         async def connect() -> None:
             self._connected = True
 
-        @self._sio.event
+        @self._sio.event  # type: ignore[untyped-decorator]
         async def disconnect() -> None:
             self._connected = False
 
-        @self._sio.on("end_up")
+        @self._sio.on("end_up")  # type: ignore[untyped-decorator]
         async def on_end_up(data: Any) -> None:
             code = data.get("code", "") if isinstance(data, dict) else str(data)
             _LOGGER.info("Call ended: %s", code)
@@ -639,7 +639,7 @@ class FermaxSignalingClient:
             return None
 
     @staticmethod
-    def _parse_transport(data: dict) -> TransportData:
+    def _parse_transport(data: dict[str, Any]) -> TransportData:
         return TransportData(
             id=data.get("id", ""),
             dtls_parameters=json.dumps(data.get("dtlsParameters", {})),
@@ -711,7 +711,7 @@ class FermaxSignalingClient:
         rtp_parameters: str,
         app_data: str,
         rtp_capabilities: str,
-    ) -> dict | None:
+    ) -> dict[str, Any] | None:
         """Signal pickup — matches APK's PickupCall JSON structure.
 
         Returns the pickup ACK result dict with:
@@ -749,7 +749,7 @@ class FermaxSignalingClient:
             )
 
             if isinstance(response, dict) and "error" not in response:
-                result: dict = response.get("result", {})
+                result: dict[str, Any] = response.get("result", {})
                 return result
             return None
         except Exception:
@@ -850,13 +850,13 @@ class FermaxStreamSession:
         self._consumer: Any = None
         self._audio_consumer: Any = None
         self._recorder: Any = None
-        self._frame_task: asyncio.Task | None = None
+        self._frame_task: asyncio.Task[None] | None = None
         self._latest_frame: bytes | None = None
         self._last_raw_frame: bytes | None = None
         self._active = False
         self._room: Any = None
         self._recording_path: str | None = None
-        self._audio_task: asyncio.Task | None = None
+        self._audio_task: asyncio.Task[None] | None = None
         self._relay: Any = None
         self._switchable_track: Any = None
         self._audio_sinks: list[Any] = []
@@ -1070,7 +1070,7 @@ class FermaxStreamSession:
         )
 
         # Handle transport connect callback
-        @self._recv_transport.on("connect")
+        @self._recv_transport.on("connect")  # type: ignore[untyped-decorator]
         async def on_connect(dtls_parameters: DtlsParameters) -> None:
             await self._signaling.connect_transport(
                 transport_id=video_tp.id,
@@ -1122,7 +1122,7 @@ class FermaxStreamSession:
                 dtlsParameters=DtlsParameters(**audio_dtls),
             )
 
-            @self._recv_audio_transport.on("connect")
+            @self._recv_audio_transport.on("connect")  # type: ignore[untyped-decorator]
             async def on_audio_connect(dtls_parameters: DtlsParameters) -> None:
                 await self._signaling.connect_transport(
                     transport_id=audio_tp.id,
@@ -1144,14 +1144,14 @@ class FermaxStreamSession:
             sctpParameters=None,
         )
 
-        @self._send_transport.on("connect")
+        @self._send_transport.on("connect")  # type: ignore[untyped-decorator]
         async def on_send_connect(dtls_parameters: DtlsParameters) -> None:
             await self._signaling.connect_transport(
                 transport_id=send_tp.id,
                 dtls_parameters=json.dumps(dtls_parameters.dict(exclude_none=True)),
             )
 
-        @self._send_transport.on("produce")
+        @self._send_transport.on("produce")  # type: ignore[untyped-decorator]
         async def on_produce(
             kind: str,
             rtp_parameters: Any,

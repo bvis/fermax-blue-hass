@@ -10,7 +10,6 @@ import tempfile
 from datetime import datetime, timedelta
 from pathlib import Path
 
-import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     ATTR_ENTITY_ID,
@@ -33,6 +32,7 @@ from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.httpx_client import get_async_client
 from homeassistant.helpers.typing import ConfigType
 
+from ._compat import vol
 from .api import FermaxAuthError, FermaxBlueApi
 from .const import (
     CONF_FERMAX_AUTH_BASIC,
@@ -260,23 +260,30 @@ async def async_setup_entry(hass: HomeAssistant, entry: FermaxBlueConfigEntry) -
 
     coordinators: list[FermaxBlueCoordinator] = []
 
-    for pairing in pairings:
-        coordinator = FermaxBlueCoordinator(
-            hass,
-            api,
-            pairing,
-            scan_interval,
-            auto_response_file,
-            firebase_config,
-            config_entry=entry,
-        )
-        await coordinator.async_config_entry_first_refresh()
+    try:
+        for pairing in pairings:
+            coordinator = FermaxBlueCoordinator(
+                hass,
+                api,
+                pairing,
+                scan_interval,
+                auto_response_file,
+                firebase_config,
+                config_entry=entry,
+            )
+            await coordinator.async_config_entry_first_refresh()
 
-        storage_path = Path(hass.config.config_dir) / ".storage" / DOMAIN
-        await asyncio.to_thread(storage_path.mkdir, parents=True, exist_ok=True)
-        await coordinator.setup_notifications(storage_path)
+            storage_path = Path(hass.config.config_dir) / ".storage" / DOMAIN
+            await asyncio.to_thread(storage_path.mkdir, parents=True, exist_ok=True)
+            await coordinator.setup_notifications(storage_path)
 
-        coordinators.append(coordinator)
+            coordinators.append(coordinator)
+    except Exception:
+        # Home Assistant will set the entry up again: a push listener left
+        # running would be joined by a new one and every ring would arrive twice
+        for started in coordinators:
+            await started.stop_notifications()
+        raise
 
     entry.runtime_data = coordinators
 
