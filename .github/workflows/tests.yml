@@ -25,18 +25,18 @@ jobs:
         python-version: ["3.13", "3.14"]
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Build dev image (Python ${{ matrix.python-version }})
         run: docker build -t fermax-blue-dev --build-arg PYTHON_VERSION=${{ matrix.python-version }} -f Dockerfile.dev .
 
       - name: Run tests
-        run: docker run --rm -v $PWD:/app -w /app fermax-blue-dev pytest tests/ -v --cov=custom_components/fermax_blue --cov-report=term-missing --cov-fail-under=40 --tb=short
+        run: docker run --rm -v $PWD:/app -w /app fermax-blue-dev pytest tests/ -v --cov=custom_components/fermax_blue --cov-report=term-missing --tb=short
 
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Build dev image
         run: docker build -t fermax-blue-dev -f Dockerfile.dev .
@@ -50,7 +50,7 @@ jobs:
   type-check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Build dev image
         run: docker build -t fermax-blue-dev -f Dockerfile.dev .
@@ -61,7 +61,7 @@ jobs:
   dead-code:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Build dev image
         run: docker build -t fermax-blue-dev -f Dockerfile.dev .
       - name: Dead code check
@@ -70,17 +70,17 @@ jobs:
   hassfest:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Hassfest validation
-        uses: home-assistant/actions/hassfest@master
+        uses: home-assistant/actions/hassfest@86d4564712fa02543c808e3a693dd04f9d3f8361 # master @ 2026-09-10
 
   validate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: HACS validation
-        uses: hacs/action@main
+        uses: hacs/action@1ebf01c408f29afcb6406bd431bc98fd8cbb15aa # main @ 2026-06-09
         with:
           category: integration

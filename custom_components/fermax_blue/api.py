@@ -240,7 +240,7 @@ class FermaxBlueApi:
         if error == "invalid_client":
             return (
                 "OAuth client authentication failed (invalid_client). Check the Fermax "
-                "Auth Basic header/OAuth client credentials extracted from the APK."
+                "Auth Basic header/OAuth client credentials taken from the app."
             )
 
         if description and description != error:

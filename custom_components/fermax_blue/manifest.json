@@ -5,6 +5,7 @@
   "config_flow": true,
   "dependencies": ["http", "media_source"],
   "documentation": "https://github.com/bvis/fermax-blue-hass",
+  "integration_type": "hub",
   "iot_class": "cloud_push",
   "issue_tracker": "https://github.com/bvis/fermax-blue-hass/issues",
   "loggers": ["firebase_messaging", "pymediasoup", "socketio"],

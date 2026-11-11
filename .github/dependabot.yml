@@ -1,16 +1,40 @@
 version: 2
 updates:
+  # Python dependencies declared in pyproject.toml
   - package-ecosystem: pip
     directory: /
     schedule:
       interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Madrid
+    open-pull-requests-limit: 5
     labels:
       - dependencies
-    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      # One PR a week for all minor and patch bumps
+      python-minor-patch:
+        update-types:
+          - minor
+          - patch
 
+  # GitHub Actions used by the workflows under .github/workflows/
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Madrid
+    open-pull-requests-limit: 5
     labels:
       - dependencies
+    commit-message:
+      prefix: "chore(actions)"
+    groups:
+      actions-minor-patch:
+        update-types:
+          - minor
+          - patch
