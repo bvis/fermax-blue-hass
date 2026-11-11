@@ -1,6 +1,8 @@
 # Changelog
 
-## [0.26.1] - unreleased
+## [1.0.0] - 2026-11-11
+
+First 1.0 release. Nothing breaks or needs changing when you update from 0.26: the number only says what has been true for a while, that entities, services and options are stable. From here a breaking change means a 2.0.
 
 ### Fixed
 - **A new password entered after a failed start is used straight away** — in 0.26.0, when Fermax rejected the password while Home Assistant was starting, entering the new one said it was saved but the integration stayed in error until you reloaded it by hand or restarted. Reconfigure had the same problem on an integration that had not started. Both now reload it.
