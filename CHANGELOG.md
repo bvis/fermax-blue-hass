@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.26.1-beta.1] - 2026-11-11
+
+### Fixed
+- **A new password entered after a failed start is used straight away** — in 0.26.0, when Fermax rejected the password while Home Assistant was starting, entering the new one said it was saved but the integration stayed in error until you reloaded it by hand or restarted. Reconfigure had the same problem on an integration that had not started. Both now reload it.
+- **Re-authentication no longer leaves the integration stuck until a restart** — when the password was rejected while the integration was running, entering the new one could end in "failed to unload", which only a Home Assistant restart cleared. The same happened when reloading it or changing its options with no connection to Fermax.
+- **A Fermax server error at login no longer asks for the password again** — only a rejected login does; anything else is retried like any other connection problem.
+- **The auto-response audio file can be cleared** — emptying the field in the options put the previous file back, so the only way to turn it off was to point it at another file.
+- **Debug logs no longer include the push token or the account e-mail** — some failed requests were logged with their full address, which carries both. They now log the error code only, so a debug log is safe to attach to an issue.
+
 ## [0.26.0] - 2026-11-11
 
 ### Added

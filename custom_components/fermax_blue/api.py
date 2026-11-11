@@ -170,8 +170,21 @@ def _is_retryable(exc: Exception, method: str) -> bool:
     return isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code >= 500
 
 
+def describe_error(exc: BaseException) -> str:
+    """Describe a failed request for the log without its URL.
+
+    httpx puts the full URL in the message, and ours carry the push token and
+    the account e-mail as query parameters.
+    """
+    if isinstance(exc, httpx.HTTPStatusError):
+        return f"HTTP {exc.response.status_code}"
+    if isinstance(exc, httpx.HTTPError):
+        return type(exc).__name__
+    return f"{type(exc).__name__}: {exc}"
+
+
 class FermaxAuthError(Exception):
-    """Authentication error."""
+    """Fermax rejected the account's credentials."""
 
 
 class FermaxApiError(Exception):
@@ -299,8 +312,14 @@ class FermaxBlueApi:
 
         if "error" in data:
             message = self._format_oauth_error(data)
-            _LOGGER.warning("Fermax OAuth authentication failed: %s", message)
-            raise FermaxAuthError(message)
+            _LOGGER.warning(
+                "Fermax OAuth authentication failed (HTTP %s): %s", response.status_code, message
+            )
+            # Only a 400/401 is Fermax rejecting the credentials; an error body
+            # from a failing server must not ask the user for the password again
+            if response.status_code in (400, 401):
+                raise FermaxAuthError(message)
+            raise FermaxApiError(f"{message} (HTTP {response.status_code})")
 
         if response.status_code >= 400:
             _LOGGER.warning(
@@ -370,7 +389,7 @@ class FermaxBlueApi:
                     attempt + 1,
                     MAX_RETRIES,
                     delay,
-                    exc,
+                    describe_error(exc),
                 )
                 await asyncio.sleep(delay)
 
@@ -738,8 +757,8 @@ class FermaxBlueApi:
             params["guestEmail"] = self._username
         try:
             response = await self._api_get("/rexistro/api/v1/opendoorregistry", params=params)
-        except Exception:
-            _LOGGER.debug("Failed to get opening history", exc_info=True)
+        except Exception as err:
+            _LOGGER.debug("Failed to get opening history (%s)", describe_error(err))
             return []
 
         data = response.json()

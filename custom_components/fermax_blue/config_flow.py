@@ -169,6 +169,25 @@ class FermaxBlueConfigFlow(ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
+    def _async_save(
+        self,
+        entry: ConfigEntry,
+        *,
+        reload_unchanged: bool,
+        data_updates: dict[str, Any],
+        **updates: Any,
+    ) -> ConfigFlowResult:
+        """Save new account data and make sure the entry reloads exactly once.
+
+        A loaded entry is reloaded by its update listener when the data changes.
+        One that failed to start has no listener yet, so the flow reloads it.
+        """
+        if not entry.update_listeners:
+            return self.async_update_reload_and_abort(entry, data_updates=data_updates, **updates)
+        if reload_unchanged and all(entry.data.get(k) == v for k, v in data_updates.items()):
+            self.hass.config_entries.async_schedule_reload(entry.entry_id)
+        return self.async_update_and_abort(entry, data_updates=data_updates, **updates)
+
     async def async_step_reauth(
         self,
         entry_data: Mapping[str, Any],  # noqa: V107
@@ -185,7 +204,9 @@ class FermaxBlueConfigFlow(ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             errors, _ = await self._async_try_login({**entry.data, **user_input})
             if not errors:
-                return self.async_update_and_abort(entry, data_updates=user_input)
+                # Polling stopped when Fermax rejected the password: reload even
+                # if the same one was typed again
+                return self._async_save(entry, reload_unchanged=True, data_updates=user_input)
 
         return self.async_show_form(
             step_id="reauth_confirm",
@@ -218,8 +239,9 @@ class FermaxBlueConfigFlow(ConfigFlow, domain=DOMAIN):
             if not errors:
                 errors, _ = await self._async_try_login(data)
             if not errors:
-                return self.async_update_and_abort(
+                return self._async_save(
                     entry,
+                    reload_unchanged=False,
                     unique_id=unique_id,
                     data_updates={key: data[key] for key in user_input},
                 )
@@ -270,9 +292,11 @@ class FermaxBlueOptionsFlow(OptionsFlow):
                         vol.Coerce(int),
                         vol.Range(min=1, max=90),
                     ),
+                    # suggested_value, not default: an emptied text field arrives
+                    # as a missing key, and a default would put the old path back
                     vol.Optional(
                         CONF_AUTO_RESPONSE_FILE,
-                        default=current.get(CONF_AUTO_RESPONSE_FILE, ""),
+                        description={"suggested_value": current.get(CONF_AUTO_RESPONSE_FILE, "")},
                     ): str,
                 }
             ),
