@@ -16,7 +16,7 @@ format-check: dev-image
 	$(DEV_RUN) ruff format --check custom_components/ tests/ scripts/
 
 typecheck: dev-image
-	$(DEV_RUN) mypy custom_components/fermax_blue/ --ignore-missing-imports
+	$(DEV_RUN) mypy custom_components/fermax_blue/
 
 deadcode: dev-image
 	$(DEV_RUN) vulture custom_components/fermax_blue/ .vulture_whitelist.py --min-confidence 80
@@ -25,7 +25,7 @@ test: dev-image
 	$(DEV_RUN) pytest tests/ -v --cov=custom_components/fermax_blue --cov-report=term-missing --tb=short
 
 check: dev-image
-	$(DEV_RUN) sh -c "ruff check custom_components/ tests/ scripts/ && ruff format --check custom_components/ tests/ scripts/ && mypy custom_components/fermax_blue/ --ignore-missing-imports && vulture custom_components/fermax_blue/ .vulture_whitelist.py --min-confidence 80 && pytest tests/ -q --tb=short --cov=custom_components/fermax_blue --cov-report="
+	$(DEV_RUN) sh -c "ruff check custom_components/ tests/ scripts/ && ruff format --check custom_components/ tests/ scripts/ && mypy custom_components/fermax_blue/ && vulture custom_components/fermax_blue/ .vulture_whitelist.py --min-confidence 80 && pytest tests/ -q --tb=short --cov=custom_components/fermax_blue --cov-report="
 
 # On demand, not in CI: the MP4s in DIR (e.g. copied from /media/fermax_recordings) must play in browsers
 check-recordings: dev-image

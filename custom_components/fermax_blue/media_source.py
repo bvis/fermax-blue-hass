@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from homeassistant.components.media_player import MediaClass, MediaType
+from homeassistant.components.media_player.const import MediaClass, MediaType
 from homeassistant.components.media_source import (
     BrowseMediaSource,
     MediaSource,

@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import logging
 
-import httpx
 from homeassistant.components.button import ButtonEntity
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from ._compat import httpx
 from .const import DOMAIN
 from .coordinator import FermaxBlueConfigEntry, FermaxBlueCoordinator
 from .entity import FermaxBlueEntity

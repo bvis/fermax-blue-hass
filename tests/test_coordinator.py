@@ -670,6 +670,68 @@ def _close_coro_tasks(coordinator):
     coordinator.hass.async_create_task = MagicMock(side_effect=lambda coro: coro.close())
 
 
+class TestRingGoesToTheIntercomItNames:
+    """Every intercom of the account hears every push: only the one it names rings."""
+
+    @staticmethod
+    def _sibling(coordinator, device_id):
+        other = MagicMock()
+        other.pairing.device_id = device_id
+        entry = MagicMock()
+        entry.runtime_data = [coordinator, other]
+        coordinator.hass.config_entries.async_entries.return_value = [entry]
+        return other
+
+    @staticmethod
+    def _push(**ids):
+        return {"data": {"FermaxNotificationType": "Call", "RoomId": "room1", **ids}}
+
+    def _rings_here(self, coordinator, push):
+        _close_coro_tasks(coordinator)
+        with (
+            patch("custom_components.fermax_blue.coordinator.async_dispatcher_send") as dispatch,
+            patch(
+                "custom_components.fermax_blue.coordinator.async_call_later",
+                return_value=MagicMock(),
+            ),
+        ):
+            coordinator._handle_notification(push, "n1")
+        return dispatch.called
+
+    @pytest.mark.parametrize("key", ["CallAs", "DeviceId"])
+    def test_ring_for_the_other_intercom_is_handed_to_it(self, full_coordinator, key):
+        other = self._sibling(full_coordinator, "dev2")
+        push = self._push(**{key: "dev2"})
+
+        assert not self._rings_here(full_coordinator, push)
+        other._handle_notification.assert_called_once_with(push, "n1")
+
+    def test_ring_for_this_intercom_stays_here(self, full_coordinator):
+        other = self._sibling(full_coordinator, "dev2")
+
+        assert self._rings_here(full_coordinator, self._push(CallAs="dev1", DeviceId="panel9"))
+        other._handle_notification.assert_not_called()
+
+    def test_ring_naming_nobody_we_know_still_rings(self, full_coordinator):
+        """A home unit without WiFi is named by its street panel: never drop a ring."""
+        other = self._sibling(full_coordinator, "dev2")
+
+        assert self._rings_here(full_coordinator, self._push(DeviceId="panel9"))
+        other._handle_notification.assert_not_called()
+
+    def test_ring_without_any_name_still_rings(self, full_coordinator):
+        other = self._sibling(full_coordinator, "dev2")
+
+        assert self._rings_here(full_coordinator, self._push())
+        other._handle_notification.assert_not_called()
+
+    def test_entry_still_starting_is_skipped(self, full_coordinator):
+        starting = MagicMock(spec=[])  # no runtime_data yet
+        full_coordinator.hass.config_entries.async_entries.return_value = [starting]
+
+        assert self._rings_here(full_coordinator, self._push(CallAs="dev2"))
+
+
 class TestMalformedSignalingUrl:
     """urlparse failures must be treated as untrusted, not crash the handler."""
 

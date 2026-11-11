@@ -185,7 +185,7 @@ class FermaxNotificationListener:
     ) -> None:
         self._hass = hass
         self._notification_callback = notification_callback
-        self._credentials: dict | None = None
+        self._credentials: dict[str, Any] | None = None
         self._push_client: FcmPushClient | None = None
         self._fcm_config = FcmRegisterConfig(
             project_id=firebase_project_id,
@@ -194,7 +194,7 @@ class FermaxNotificationListener:
             messaging_sender_id=str(firebase_sender_id),
             bundle_id=firebase_package_name,
         )
-        self._store: Store = Store(hass, _FCM_STORAGE_VERSION, _FCM_STORAGE_KEY)
+        self._store: Store[dict[str, Any]] = Store(hass, _FCM_STORAGE_VERSION, _FCM_STORAGE_KEY)
         self._lifecycle_lock = asyncio.Lock()
         self._restart_backoff = FCM_RESTART_BACKOFF_INITIAL
         self._restart_at: float | None = None
@@ -215,7 +215,7 @@ class FermaxNotificationListener:
             return gcm_token
         return None
 
-    def _on_credentials_updated(self, new_creds: dict) -> None:
+    def _on_credentials_updated(self, new_creds: dict[str, Any]) -> None:
         """Handle FCM credentials update (sync callback from firebase_messaging).
 
         Schedules an async save via the HA event loop so we never perform
@@ -232,7 +232,7 @@ class FermaxNotificationListener:
         if self._credentials:
             await self._store.async_save(self._credentials)
 
-    async def _load_credentials(self) -> dict | None:
+    async def _load_credentials(self) -> dict[str, Any] | None:
         """Load FCM credentials from HA Store."""
         return await self._store.async_load()
 

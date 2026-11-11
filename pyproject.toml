@@ -24,11 +24,11 @@ filterwarnings = [
 ]
 
 [tool.mypy]
-python_version = "3.13"
+# No python_version: each check uses the interpreter of its image, so the
+# Python 3.13 and 3.14 runs see the Home Assistant that Python gets.
+strict = true
 warn_return_any = true
 warn_unused_configs = true
-disallow_untyped_defs = false
-check_untyped_defs = true
 ignore_missing_imports = true
 
 [tool.vulture]

@@ -7,7 +7,6 @@ import logging
 from collections.abc import Mapping
 from typing import Any
 
-import voluptuous as vol
 from homeassistant.config_entries import (
     ConfigEntry,
     ConfigFlow,
@@ -22,6 +21,7 @@ from homeassistant.helpers.selector import (
     TextSelectorType,
 )
 
+from ._compat import vol
 from .api import FermaxAuthError, FermaxBlueApi, Pairing
 from .const import (
     CONF_FERMAX_AUTH_BASIC,
@@ -58,7 +58,7 @@ STEP_REAUTH_SCHEMA = vol.Schema({vol.Required(CONF_PASSWORD): PASSWORD_SELECTOR}
 
 def _https_url(value: str) -> str:
     """Validate that a URL uses HTTPS scheme."""
-    url: str = vol.Url()(value)
+    url = str(vol.Url()(value))
     if not url.startswith("https://"):
         raise vol.Invalid("URL must use HTTPS")
     return url

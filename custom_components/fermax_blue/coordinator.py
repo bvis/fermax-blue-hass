@@ -482,9 +482,34 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
                 # The notifications switch shows the connection: refresh it
                 self.async_update_listeners()
 
+    def _notification_owner(self, data: dict[str, Any]) -> FermaxBlueCoordinator | None:
+        """Return the other intercom a push names, if it names one set up here.
+
+        All the intercoms of an account share one push registration, so each
+        hears the pushes of the others. `CallAs` carries the called unit;
+        `DeviceId` is that unit too, or its street panel on a unit without
+        WiFi. A push that names no intercom we know stays here: a ring is
+        never dropped.
+        """
+        named = {data.get("CallAs"), data.get("DeviceId")}
+        if self.pairing.device_id in named:
+            return None
+        for entry in self.hass.config_entries.async_entries(DOMAIN):
+            # An entry that is still starting has no runtime_data yet
+            others: list[FermaxBlueCoordinator] = getattr(entry, "runtime_data", None) or []
+            for other in others:
+                if other is not self and other.pairing.device_id in named:
+                    return other
+        return None
+
     @callback
-    def _handle_notification(self, notification: dict, persistent_id: str) -> None:
+    def _handle_notification(self, notification: dict[str, Any], persistent_id: str) -> None:
         """Handle an incoming FCM doorbell notification."""
+        owner = self._notification_owner(notification.get("data", notification))
+        if owner is not None:
+            owner._handle_notification(notification, persistent_id)
+            return
+
         # After a reload/restart, FCM re-delivers recent notifications.
         # Ignore them during the grace period to avoid phantom doorbell rings.
         if (
