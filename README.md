@@ -103,9 +103,9 @@ A `credentials.example.json` file is included as a template. Copy it to `credent
 
 #### How to Obtain Credentials
 
-##### Firebase credentials (from the APK)
+##### Firebase credentials (from the app package)
 
-The Firebase credentials can be extracted automatically from the official Fermax Blue Android APK:
+The Firebase credentials can be read automatically from the official Fermax Blue Android app package (APK):
 
 1. **Download the Fermax Blue APK** from your device or a trusted source (e.g., Softonic)
 2. **Run the extraction script:**
@@ -123,22 +123,14 @@ The script reliably finds: `firebase_api_key`, `firebase_sender_id`, `firebase_a
 
 The OAuth `client_id` and `client_secret` are combined into the `Basic` auth header used for login. Where the app keeps them **depends on the app version**, and `scripts/extract_credentials.py` handles both layouts when a sources directory is available:
 
-**App 4.3.0 and earlier — encrypted constants:**
-
-- `com.fermax.blue.app.core.utils.OAuthUtils.getAuthorizationHeader()` (holds the AES key)
-- `com.fermax.blue.app.data.remoteconfig.Urls.clientId()`
-- `com.fermax.blue.app.data.remoteconfig.Urls.clientSecret()`
-
-**App 4.3.4 and later — plain string constants:**
-
-- `BuildConfig.OAUTH_CLIENT_ID`
-- `BuildConfig.OAUTH_CLIENT_SECRET`
+- **App 4.3.0 and earlier** keeps them encrypted.
+- **App 4.3.4 and later** keeps them as plain text.
 
 The encrypted layout is preferred when both are present. The production values should match the production URLs `oauth-pro-duoxme.fermax.io` and `pro-duoxme.fermax.io`.
 
-Several modules can ship a file named `Urls.java`; the script reads the one that actually declares `clientId()` / `clientSecret()` rather than whichever the directory walk finds first. If it still cannot generate the header, it reports what the scan saw — how many `Urls.java` files exist and how many declare those accessors, whether `OAuthUtils.java` and its key were found, and whether any `BuildConfig.java` carries the OAuth constants. That tells you whether the app changed layout again or the sources were simply never scanned (running against the app package instead of the sources directory).
+If the script cannot generate the header, it reports what it found in the sources directory. That tells you whether the app changed layout again or the sources were simply never scanned (running against the app package instead of the sources directory).
 
-Do not use unrelated `Basic` headers from tracing or observability code. In particular, `TraceManagerOtelImpl.java`, `/monitoring/v1/traces` and the **`BuildConfig.TRACING_BASIC_AUTH`** constant refer to telemetry, not OAuth login, and those headers will cause OAuth `invalid_client` errors. `TRACING_BASIC_AUTH` is especially easy to confuse because it sits in the same `BuildConfig.java` as the OAuth constants; the script skips values assigned to telemetry-named constants for exactly this reason.
+Do not use other `Basic` headers you may find in the app: the ones for telemetry (tracing, monitoring) are not the OAuth login and cause OAuth `invalid_client` errors. The script skips them for exactly this reason.
 
 Never publish `credentials.json`, generated `Basic` headers, Firebase keys, access tokens, refresh tokens, usernames, or passwords.
 
@@ -155,8 +147,8 @@ This integration exists thanks to the work of these developers. If you find this
 
 If the script doesn't find all values, search the app sources manually:
 
-1. **API URLs**: search for `oauth/token` and `fermax.io` in `Urls.java`
-2. **OAuth Basic header**: on app 4.3.4+, read `OAUTH_CLIENT_ID` and `OAUTH_CLIENT_SECRET` straight from `BuildConfig.java` — they are stored in plain text. On app 4.3.0 and earlier, inspect `OAuthUtils.getAuthorizationHeader()` and `Urls.clientId()` / `Urls.clientSecret()`, select the production environment that corresponds to `oauth-pro-duoxme.fermax.io` / `pro-duoxme.fermax.io`, and decrypt the encrypted byte arrays from those methods. Either way, URL-encode both values, join them as `client_id:client_secret`, then base64 encode that string and prefix it with `Basic `.
+1. **API URLs**: search for `oauth/token` and `fermax.io`
+2. **OAuth Basic header**: on app 4.3.4+, the OAuth client id and client secret are stored in plain text. On app 4.3.0 and earlier they are encrypted; pick the production environment that corresponds to `oauth-pro-duoxme.fermax.io` / `pro-duoxme.fermax.io`. Either way, URL-encode both values, join them as `client_id:client_secret`, then base64 encode that string and prefix it with `Basic `.
 
    If you already have the two OAuth values, let the script build the header for you instead of doing it by hand:
 
@@ -164,8 +156,8 @@ If the script doesn't find all values, search the app sources manually:
    python scripts/extract_credentials.py --client-id <CLIENT_ID> --client-secret <CLIENT_SECRET>
    ```
 
-   It prints the ready-to-paste `fermax_auth_basic` value. Ignore telemetry headers from `TraceManagerOtelImpl.java` and the `TRACING_BASIC_AUTH` constant.
-3. **Firebase**: found in `google-services.json` inside the APK:
+   It prints the ready-to-paste `fermax_auth_basic` value. Ignore the telemetry headers.
+3. **Firebase**: found in `google-services.json` inside the app package:
    - `firebase_api_key` → `client[0].api_key[0].current_key`
    - `firebase_sender_id` → `project_info.project_number`
    - `firebase_app_id` → `client[0].client_info.mobilesdk_app_id`
@@ -302,7 +294,7 @@ A ready-to-use dashboard card template is included in [`blueprints/fermax_dashbo
 
 ## Call Recordings
 
-Every video stream session is automatically recorded to MP4 in `/config/media/fermax_recordings/`: the intercom's own H264 video as it was received, plus the call audio (both directions when you talk back) as AAC. Doorbell visitor photos are saved as JPG in the same directory. Files are named with timestamps (e.g., `2026-04-06_13-00-00.mp4`, `2026-04-06_13-00-00_photo.jpg`).
+Every video stream session is automatically recorded to MP4 in `/media/fermax_recordings/`: the intercom's own H264 video as it was received, plus the call audio (both directions when you talk back) as AAC. Doorbell visitor photos are saved as JPG in the same directory. Files are named with timestamps (e.g., `2026-04-06_13-00-00.mp4`, `2026-04-06_13-00-00_photo.jpg`).
 
 Recordings and photos are automatically deleted after the retention period (default: 10 days, configurable in options).
 
@@ -310,7 +302,7 @@ Recordings and photos are automatically deleted after the retention period (defa
 
 All recordings and photos are browsable directly from the HA media browser via **Media** > **Fermax Blue**. Files are listed newest-first with thumbnails for photos and playback for videos.
 
-You can also access them from the dashboard via the **Grabaciones** button, or browse **Media** > **Local media** > **fermax_recordings**.
+You can also access them from the dashboard via the **Grabaciones** button of the dashboard card blueprint, or browse **Media** > **Local media** > **fermax_recordings**.
 
 ## Services
 
@@ -462,7 +454,7 @@ An intercom you unpaired from the account can be deleted on its own from its dev
 ### "Invalid credentials" error
 Make sure you're using the same email and password you use in the Fermax Blue mobile app. The password is case-sensitive.
 
-If Home Assistant logs show OAuth `invalid_client`, the problem is usually the OAuth client credentials (`fermax_auth_basic`), not your Fermax user email/password. Re-run the extraction against a sources directory so the script can generate the header from the real OAuth constants — `OAuthUtils.java` plus `Urls.clientId()` / `Urls.clientSecret()` on app 4.3.0 and earlier, or `BuildConfig.OAUTH_CLIENT_ID` / `OAUTH_CLIENT_SECRET` on 4.3.4 and later. Do not use `Basic` headers found near `TraceManagerOtelImpl.java`, `/monitoring/v1/traces`, OpenTelemetry, tracing, or observability code, nor the `TRACING_BASIC_AUTH` constant in `BuildConfig.java`.
+If Home Assistant logs show OAuth `invalid_client`, the problem is usually the OAuth client credentials (`fermax_auth_basic`), not your Fermax user email/password. Re-run the extraction against a sources directory so the script can generate the header from the real OAuth client id and secret. Do not use the `Basic` headers that belong to tracing or monitoring.
 
 If logs show `invalid_grant` or Home Assistant reports `invalid_auth`, the problem is more likely the Fermax account credentials, account state, or an account without access to paired devices.
 

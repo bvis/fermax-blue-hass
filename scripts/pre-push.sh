@@ -46,7 +46,7 @@ for PY in 3.13 3.14; do
     fi
 
     step "Tests (py${PY})"
-    $RUN pytest tests/ -q --tb=short \
+    $RUN pytest tests/ -q --tb=short --cov=custom_components/fermax_blue --cov-report= \
         && pass "Tests py${PY}" || fail "Tests py${PY}"
 done
 

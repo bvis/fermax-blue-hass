@@ -36,11 +36,13 @@ documented here so users can reason about the integration's security posture.
 ### Cloud credentials are user-supplied app identifiers
 
 The OAuth `client_id`/`client_secret` the integration needs are app-level client
-identifiers that each user extracts from their own copy of the official APK;
+identifiers that each user takes from their own copy of the official app;
 they are deliberately not distributed with this repository. The user's Fermax
-account credentials and the OAuth tokens issued to them are stored by Home
-Assistant in its standard config-entry storage (`.storage/`), protected by
-filesystem permissions like any other cloud integration's credentials.
+account e-mail and password are stored by Home Assistant in its standard
+config-entry storage (`.storage/`), and the push (FCM) registration in a file
+next to it, protected by filesystem permissions like any other cloud
+integration's credentials. The OAuth access token issued at login is held in
+memory only and is requested again after a restart.
 
 ### Signaling endpoints from push payloads are validated
 
@@ -51,6 +53,21 @@ only hosts under `fermax.io` and upgrades insecure `http://`/`ws://` schemes to
 arbitrary host or downgrade the transport to plaintext. The payload also
 carries a short-lived device JWT used to authenticate the media session; it is
 held in memory for that session only.
+
+### The live video endpoint is protected by a token, not by a login
+
+Home Assistant's go2rtc reads the intercom's live video from
+`/api/fermax_blue/webrtc/<token>`. go2rtc cannot log in to Home Assistant, so
+this endpoint does not ask for one: the token is the only protection. It is
+random (128 bits), exists in memory only and changes every time the
+integration loads; an unknown token gets a 404.
+
+Anyone who has the token and can reach Home Assistant can wake the intercom,
+watch and listen, and answer a call with a microphone. They cannot open a
+door. The token is part of the camera's stream source, so it is visible
+wherever that source is: if you run your own go2rtc (the phone answer flow in
+the README asks for one), its API on port 1984 lists stream sources to
+everyone on your network unless you protect it.
 
 ### FCM push depends on an unofficial client
 
