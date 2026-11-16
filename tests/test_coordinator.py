@@ -1868,3 +1868,219 @@ class TestWakeProgress:
         with patch("custom_components.fermax_blue.coordinator.WEBRTC_START_TIMEOUT", 0):
             await coordinator.ensure_stream()
         assert coordinator._wake[0] == "failed"
+
+
+class TestWhatTheCoordinatorSends:
+    """The arguments each action hands to the API, the stream session and the listener."""
+
+    IN_CALL = {"device_id": "dev1", "room_id": "room1", "fcm_token": "tok", "call_as": "dev1"}
+
+    @staticmethod
+    def _in_a_call(coordinator, *, token="tok"):
+        session = MagicMock()
+        session.is_active = True
+        session._room_id = "room1"
+        coordinator._stream_session = session
+        if token is None:
+            coordinator.notification_listener = None
+        else:
+            coordinator.notification_listener = MagicMock(fcm_token=token)
+
+    @staticmethod
+    def _two_doors(coordinator):
+        side = AccessDoor(
+            name="SIDE",
+            title="Side",
+            access_id={"block": 7, "subblock": 1, "number": 2},
+            visible=True,
+        )
+        coordinator.pairing = Pairing(
+            device_id="dev1",
+            tag="Home",
+            installation_id="inst_1",
+            access_doors={**coordinator.pairing.access_doors, "SIDE": side},
+        )
+        return side
+
+    async def test_poll_asks_for_this_intercom(self, full_coordinator, mock_api):
+        await full_coordinator._async_update_data()
+        mock_api.get_device_info.assert_awaited_once_with("dev1")
+
+    async def test_in_call_door_open_names_the_session(self, full_coordinator, mock_api):
+        self._in_a_call(full_coordinator)
+        mock_api.open_door_incall = AsyncMock(return_value=True)
+        with patch("custom_components.fermax_blue.coordinator.async_dispatcher_send") as dispatch:
+            assert await full_coordinator.open_door() is True
+        mock_api.open_door_incall.assert_awaited_once_with(**self.IN_CALL)
+        dispatch.assert_called_once_with(full_coordinator.hass, SIGNAL_DOOR_OPENED.format("dev1"))
+
+    async def test_in_call_door_open_without_push_sends_no_token(self, full_coordinator, mock_api):
+        self._in_a_call(full_coordinator, token=None)
+        mock_api.open_door_incall = AsyncMock(return_value=True)
+        with patch("custom_components.fermax_blue.coordinator.async_dispatcher_send"):
+            assert await full_coordinator.open_door() is True
+        mock_api.open_door_incall.assert_awaited_once_with(**{**self.IN_CALL, "fcm_token": None})
+
+    async def test_the_named_door_is_the_one_opened(self, full_coordinator, mock_api):
+        side = self._two_doors(full_coordinator)
+        mock_api.open_door = AsyncMock(return_value=True)
+        with patch("custom_components.fermax_blue.coordinator.async_dispatcher_send"):
+            assert await full_coordinator.open_door("SIDE") is True
+        mock_api.open_door.assert_awaited_once_with("dev1", side.access_id, None)
+
+    async def test_the_default_door_is_general_even_when_listed_last(
+        self, full_coordinator, mock_api
+    ):
+        general = full_coordinator.pairing.access_doors["GENERAL"]
+        side = self._two_doors(full_coordinator)
+        full_coordinator.pairing = Pairing(
+            device_id="dev1",
+            tag="Home",
+            installation_id="inst_1",
+            access_doors={"SIDE": side, "GENERAL": general},
+        )
+        mock_api.open_door = AsyncMock(return_value=True)
+        with patch("custom_components.fermax_blue.coordinator.async_dispatcher_send"):
+            assert await full_coordinator.open_door() is True
+        mock_api.open_door.assert_awaited_once_with("dev1", general.access_id, None)
+
+    async def test_a_refused_door_open_is_not_announced(self, full_coordinator, mock_api):
+        mock_api.open_door = AsyncMock(return_value=False)
+        with patch("custom_components.fermax_blue.coordinator.async_dispatcher_send") as dispatch:
+            assert await full_coordinator.open_door() is False
+        dispatch.assert_not_called()
+
+    async def test_in_call_f1_and_camera_switch_name_the_session(self, full_coordinator, mock_api):
+        self._in_a_call(full_coordinator)
+        mock_api.press_f1_incall = AsyncMock(return_value=True)
+        divert = DivertResponse("r", "blue", 1.0, "d", "t")
+        mock_api.change_video_source_incall = AsyncMock(return_value=divert)
+
+        await full_coordinator.press_f1()
+        assert await full_coordinator.change_video_source() is divert
+
+        mock_api.press_f1_incall.assert_awaited_once_with(**self.IN_CALL)
+        mock_api.change_video_source_incall.assert_awaited_once_with(**self.IN_CALL)
+        mock_api.change_video_source.assert_not_called()
+
+    async def test_camera_switch_outside_a_call_uses_the_push_token(
+        self, full_coordinator, mock_api
+    ):
+        full_coordinator.notification_listener = MagicMock(fcm_token="tok")
+        divert = DivertResponse("r", "blue", 1.0, "d", "t")
+        mock_api.change_video_source = AsyncMock(return_value=divert)
+        assert await full_coordinator.change_video_source() is divert
+        mock_api.change_video_source.assert_awaited_once_with("dev1", "tok")
+
+    async def _start(self, coordinator, mock_api, *, started=True, **kwargs):
+        coordinator.notification_listener = MagicMock(fcm_token="tok")
+        coordinator.hass.config.media_dirs = {"local": "/my/media"}
+        mock_api.get_access_token = AsyncMock(return_value="oauth-from-api")
+        session = MagicMock()
+        session.start = AsyncMock(return_value=started)
+        with (
+            patch(
+                "custom_components.fermax_blue.coordinator.FermaxStreamSession",
+                return_value=session,
+            ) as session_cls,
+            patch("custom_components.fermax_blue.coordinator.async_dispatcher_send") as dispatch,
+            patch(
+                "custom_components.fermax_blue.coordinator.async_call_later",
+                return_value=MagicMock(),
+            ),
+        ):
+            await coordinator._start_stream("room1", "https://signaling.example", **kwargs)
+        return session, session_cls.call_args.kwargs, dispatch
+
+    async def test_stream_session_is_built_for_that_room(self, full_coordinator, mock_api):
+        session, built, dispatch = await self._start(
+            full_coordinator, mock_api, fermax_token="push-token", receive_only=True
+        )
+        full_decode = built.pop("full_decode")
+        assert callable(built.pop("on_end"))
+        assert built == {
+            "signaling_url": "https://signaling.example",
+            "oauth_token": "push-token",
+            "fcm_token": "tok",
+            "room_id": "room1",
+            "media_root": "/my/media",
+            "receive_only": True,
+        }
+        # Full decoding only while someone watches the MJPEG.
+        assert full_decode() is False
+        full_coordinator.mjpeg_clients = 1
+        assert full_decode() is True
+        mock_api.get_access_token.assert_not_called()
+        assert full_coordinator.stream_session is session
+        assert full_coordinator.camera_active is True
+        dispatch.assert_called_once_with(full_coordinator.hass, SIGNAL_CAMERA_ON.format("dev1"))
+        full_coordinator.async_set_updated_data.assert_called_with(full_coordinator.data)
+
+    async def test_stream_without_a_push_token_uses_the_account_token(
+        self, full_coordinator, mock_api
+    ):
+        _, built, _ = await self._start(full_coordinator, mock_api)
+        assert built["oauth_token"] == "oauth-from-api"
+        # A stream is attended unless the caller says otherwise.
+        assert built["receive_only"] is False
+
+    async def test_a_stream_that_fails_to_start_leaves_no_session(self, full_coordinator, mock_api):
+        _, _, dispatch = await self._start(full_coordinator, mock_api, started=False)
+        assert full_coordinator.stream_session is None
+        assert full_coordinator.camera_active is False
+        assert full_coordinator.wake_progress() == -1.0
+        dispatch.assert_not_called()
+        full_coordinator.async_set_updated_data.assert_called_with(full_coordinator.data)
+
+    async def test_stopping_the_stream_clears_the_session(self, full_coordinator):
+        session = MagicMock()
+        session.latest_frame = None
+        session.stop = AsyncMock()
+        full_coordinator._stream_session = session
+        full_coordinator._camera_active = True
+        await full_coordinator.stop_stream()
+        session.stop.assert_awaited_once()
+        assert full_coordinator.stream_session is None
+        assert full_coordinator.camera_active is False
+
+    async def test_push_listener_gets_the_firebase_settings(
+        self, full_coordinator, mock_api, tmp_path
+    ):
+        full_coordinator._firebase_config = {
+            "firebase_api_key": "key",
+            "firebase_sender_id": 123,
+            "firebase_app_id": "app",
+            "firebase_project_id": "project",
+            "firebase_package_name": "pkg",
+        }
+        listener = MagicMock()
+        listener.register = AsyncMock(return_value=None)
+        with patch(
+            "custom_components.fermax_blue.coordinator.FermaxNotificationListener",
+            return_value=listener,
+        ) as listener_cls:
+            await full_coordinator.setup_notifications(tmp_path)
+        assert listener_cls.call_args.kwargs == {
+            "hass": full_coordinator.hass,
+            "notification_callback": full_coordinator._handle_notification,
+            **full_coordinator._firebase_config,
+        }
+
+    async def test_push_listener_defaults_when_no_firebase_settings(
+        self, full_coordinator, mock_api, tmp_path
+    ):
+        listener = MagicMock()
+        listener.register = AsyncMock(return_value=None)
+        with patch(
+            "custom_components.fermax_blue.coordinator.FermaxNotificationListener",
+            return_value=listener,
+        ) as listener_cls:
+            await full_coordinator.setup_notifications(tmp_path)
+        built = listener_cls.call_args.kwargs
+        assert {name: built[name] for name in built if name.startswith("firebase_")} == {
+            "firebase_api_key": "",
+            "firebase_sender_id": 0,
+            "firebase_app_id": "",
+            "firebase_project_id": "",
+            "firebase_package_name": "",
+        }
