@@ -12,6 +12,10 @@ Home Assistant custom integration for **Fermax Blue** video door entry systems (
 
 This integration simulates a Fermax Blue mobile app client, connecting to the Fermax cloud API and receiving real-time push notifications via Firebase Cloud Messaging when someone rings your doorbell.
 
+If it's useful to you, you can support its upkeep:
+
+[![Buy Me a Coffee](https://www.buymeacoffee.com/assets/img/custom_images/yellow_img.png)](https://buymeacoffee.com/basiliovera)
+
 ## Features
 
 - **Live video streaming** — Real-time video from the intercom camera (~720x480) with the intercom's audio, over WebRTC in the standard camera cards and the companion apps; MJPEG is still served. Opening the card wakes the intercom, and the card shows the last snapshot with a progress bar until the live picture arrives.
