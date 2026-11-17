@@ -1982,3 +1982,135 @@ class TestQueueDepth:
         assert _queue_depth(SimpleNamespace(_queue=asyncio.Queue())) == 0
         assert _queue_depth(SimpleNamespace(_queue=object())) is None
         assert _queue_depth(object()) is None
+
+
+class TestSessionWiring:
+    """Which transport, producer and track each step of a session start is given."""
+
+    @staticmethod
+    def _transport(name):
+        return TransportData(
+            id=f"t-{name}",
+            dtls_parameters=json.dumps({"role": "auto", "for": name}),
+            ice_candidates=json.dumps([{"foundation": f"f-{name}"}]),
+            ice_parameters=json.dumps({"usernameFragment": f"u-{name}"}),
+        )
+
+    async def _started(self, tmp_path):
+        env = _pickup_session(tmp_path)
+        env.signaling.connect.return_value = RoomJoinResult(
+            video_producer_id="vp",
+            audio_producer_id="ap",
+            router_rtp_capabilities=json.dumps({"codecs": ["router"]}),
+            recv_video_transport=self._transport("video"),
+            recv_audio_transport=self._transport("audio"),
+            send_transport=self._transport("send"),
+        )
+        with contextlib.ExitStack() as stack:
+            for p in env.patches:
+                stack.enter_context(p)
+            assert await env.session.start() is True
+        await asyncio.sleep(0.01)
+        # The patched pymediasoup classes, in the order _pickup_session lists them.
+        _, env.caps_cls, env.dtls_cls, env.candidate_cls, env.ice_cls = (p.new for p in env.patches)
+        return env
+
+    async def test_each_transport_is_created_from_its_own_parameters(self, tmp_path):
+        env = await self._started(tmp_path)
+        device = env.session._device
+        try:
+            env.caps_cls.assert_called_once_with(codecs=["router"])
+            device.load.assert_awaited_once_with(env.caps_cls.return_value)
+
+            created = [
+                *device.createRecvTransport.call_args_list,
+                *device.createSendTransport.call_args_list,
+            ]
+            assert [call.kwargs["id"] for call in created] == ["t-video", "t-audio", "t-send"]
+            assert device.createSendTransport.call_args.kwargs["sctpParameters"] is None
+            for call in created:
+                assert call.kwargs["iceParameters"] is env.ice_cls.return_value
+                assert call.kwargs["dtlsParameters"] is env.dtls_cls.return_value
+                assert call.kwargs["iceCandidates"] == [env.candidate_cls.return_value]
+            names = ["video", "audio", "send"]
+            assert [c.kwargs for c in env.ice_cls.call_args_list] == [
+                {"usernameFragment": f"u-{name}"} for name in names
+            ]
+            assert [c.kwargs for c in env.candidate_cls.call_args_list] == [
+                {"foundation": f"f-{name}"} for name in names
+            ]
+            assert [c.kwargs for c in env.dtls_cls.call_args_list] == [
+                {"role": "auto", "for": name} for name in names
+            ]
+        finally:
+            await env.session.stop()
+
+    async def test_video_and_audio_are_consumed_on_their_own_transports(self, tmp_path):
+        env = await self._started(tmp_path)
+        try:
+            caps = json.dumps({"codecs": []})
+            assert [c.kwargs for c in env.signaling.consume_transport.await_args_list] == [
+                {"transport_id": "t-video", "producer_id": "vp", "rtp_capabilities": caps},
+                {
+                    "transport_id": "t-audio",
+                    "producer_id": "remote-audio",
+                    "rtp_capabilities": caps,
+                },
+            ]
+            video = env.video_transport.consume.await_args.kwargs
+            assert (video["id"], video["producerId"], video["kind"]) == ("c-video", "vp", "video")
+            audio = env.audio_transport.consume.await_args.kwargs
+            assert (audio["id"], audio["producerId"], audio["kind"]) == (
+                "c-audio",
+                "remote-audio",
+                "audio",
+            )
+        finally:
+            await env.session.stop()
+
+    async def test_each_transport_reports_its_own_connection(self, tmp_path):
+        env = await self._started(tmp_path)
+        try:
+            for name, transport in (
+                ("video", env.video_transport),
+                ("audio", env.audio_transport),
+                ("send", env.send_transport),
+            ):
+                env.signaling.connect_transport.reset_mock()
+                dtls = SimpleNamespace(dict=lambda exclude_none=True, n=name: {"fingerprint": n})
+                await transport.handlers["connect"](dtls)
+                env.signaling.connect_transport.assert_awaited_once_with(
+                    transport_id=f"t-{name}", dtls_parameters=json.dumps({"fingerprint": name})
+                )
+        finally:
+            await env.session.stop()
+
+    async def test_answering_produces_our_audio_track_and_leaves_receive_only(self, tmp_path):
+        env = await self._started(tmp_path)
+        try:
+            env.send_transport.produce.assert_awaited_once_with(
+                track=env.session._switchable_track, stopTracks=False, appData={}
+            )
+            assert env.session._switchable_track is not None
+            assert env.session._receive_only is False
+            assert env.signaling.pickup.await_args.kwargs["app_data"] == "{}"
+            assert env.session._audio_producer is env.producer
+        finally:
+            await env.session.stop()
+
+    async def test_stop_releases_everything_the_session_held(self, tmp_path):
+        env = await self._started(tmp_path)
+        await env.session.stop()
+        session = env.session
+        assert session.is_active is False
+        assert [
+            session._consumer,
+            session._audio_consumer,
+            session._audio_producer,
+            session._recv_transport,
+            session._recv_audio_transport,
+            session._send_transport,
+            session._audio_task,
+        ] == [None] * 7
+        env.producer.close.assert_awaited_once()
+        env.signaling.disconnect.assert_awaited_once()

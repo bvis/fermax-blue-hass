@@ -1949,6 +1949,9 @@ class TestWhatTheCoordinatorSends:
         with patch("custom_components.fermax_blue.coordinator.async_dispatcher_send") as dispatch:
             assert await full_coordinator.open_door() is False
         dispatch.assert_not_called()
+        mock_api.open_door.assert_awaited_once_with(
+            "dev1", full_coordinator.pairing.access_doors["GENERAL"].access_id, None
+        )
 
     async def test_in_call_f1_and_camera_switch_name_the_session(self, full_coordinator, mock_api):
         self._in_a_call(full_coordinator)
