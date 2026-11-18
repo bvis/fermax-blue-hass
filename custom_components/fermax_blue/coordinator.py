@@ -130,6 +130,8 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         self._last_call: CallLogEntry | None = None
         self._call_log: list[CallLogEntry] = []
         self._stream_session: FermaxStreamSession | None = None
+        # (device, unit) the live session's push named, for in-call actions
+        self._session_target: tuple[str, str] | None = None
         self._storage_path: Path | None = None
         self._auto_response_file = auto_response_file
         self._ring_preview = False
@@ -570,6 +572,10 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
                 socket_url = DEFAULT_SIGNALING_URL
             fermax_token = data.get("FermaxToken", "")
             receive_only = notification_type == "Call" and not attend
+            # In-call actions go to whoever the session names: the unit itself,
+            # or its street panel on a pairing whose doors hang off the panel (#185)
+            own = self.pairing.device_id
+            target = (data.get("DeviceId") or own, data.get("CallAs") or own)
             self._background(
                 self._start_stream(
                     room_id,
@@ -578,6 +584,7 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
                     receive_only=receive_only,
                     preview_timeout=data.get("PreviewTimeout"),
                     conversation_timeout=data.get("ConversationTimeout"),
+                    session_target=target,
                 ),
                 "stream start",
             )
@@ -629,14 +636,9 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         success = False
 
         # If there's an active stream, use the in-call endpoint
-        if self._stream_session and self._stream_session.is_active:
-            fcm_token = self.notification_listener.fcm_token if self.notification_listener else None
-            success = await self.api.open_door_incall(
-                device_id=self.pairing.device_id,
-                room_id=self._stream_session._room_id,
-                fcm_token=fcm_token,
-                call_as=self.pairing.device_id,
-            )
+        context = self._incall_context()
+        if context:
+            success = await self.api.open_door_incall(**context)
             if not success:
                 _LOGGER.warning("In-call door open failed, falling back to the standard endpoint")
 
@@ -736,17 +738,19 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         start, cap = WAKE_STAGES[stage]
         return start + (cap - start) * (1 - math.exp(-elapsed / WAKE_CREEP_SECONDS))
 
-    def _incall_context(self) -> dict[str, str | None] | None:
+    def _incall_context(self) -> dict[str, Any] | None:
         """Session context for in-call actions, or None when no stream is up."""
         if not self.has_active_stream or not self._stream_session:
             return None
 
+        device_id, call_as = self._session_target or (self.pairing.device_id,) * 2
         return {
+            "device_id": device_id,
             "room_id": self._stream_session._room_id,
             "fcm_token": (
                 self.notification_listener.fcm_token if self.notification_listener else None
             ),
-            "call_as": self.pairing.device_id,
+            "call_as": call_as,
         }
 
     async def change_video_source(self) -> DivertResponse | None:
@@ -758,9 +762,7 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         """
         context = self._incall_context()
         if context:
-            result = await self.api.change_video_source_incall(
-                device_id=self.pairing.device_id, **context
-            )
+            result = await self.api.change_video_source_incall(**context)
             if result:
                 return result
             _LOGGER.warning(
@@ -790,7 +792,7 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         """Press the F1 auxiliary button, following the stream when one is up."""
         context = self._incall_context()
         if context:
-            if await self.api.press_f1_incall(device_id=self.pairing.device_id, **context):
+            if await self.api.press_f1_incall(**context):
                 return
             _LOGGER.warning("In-call F1 failed, falling back to the standard endpoint")
 
@@ -814,6 +816,7 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         receive_only: bool = False,
         preview_timeout: str | int | None = None,
         conversation_timeout: str | int | None = None,
+        session_target: tuple[str, str] | None = None,
     ) -> None:
         """Start a video stream session for the given room."""
         self._conversation_timeout = _positive_int(
@@ -844,6 +847,8 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
             self.async_set_updated_data(self.data)
 
         media_root = self.hass.config.media_dirs.get("local", "/media")
+        # Set together with the session, so the two always describe the same room
+        self._session_target = session_target
         session = self._stream_session = FermaxStreamSession(
             signaling_url=signaling_url,
             oauth_token=oauth_token,

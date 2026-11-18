@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.0.1] - unreleased
+
+### Fixed
+- **Switch camera, F1 and opening the door during a live view on installations whose doors belong to the street panel (#185)** — while the camera was showing, these went out addressed to the home unit and the intercom refused them ("Switch camera" always failed). They now go to whoever the live session named, the street panel in those installations. Nothing changes where the monitor has its own connection.
+
 ## [1.0.0] - 2026-11-11
 
 First 1.0 release. Nothing breaks or needs changing when you update from 0.26: the number only says what has been true for a while, that entities, services and options are stable. From here a breaking change means a 2.0.
