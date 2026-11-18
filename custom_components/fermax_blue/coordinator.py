@@ -575,7 +575,7 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
             # In-call actions go to whoever the session names: the unit itself,
             # or its street panel on a pairing whose doors hang off the panel (#185)
             own = self.pairing.device_id
-            self._session_target = (data.get("DeviceId") or own, data.get("CallAs") or own)
+            target = (data.get("DeviceId") or own, data.get("CallAs") or own)
             self._background(
                 self._start_stream(
                     room_id,
@@ -584,6 +584,7 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
                     receive_only=receive_only,
                     preview_timeout=data.get("PreviewTimeout"),
                     conversation_timeout=data.get("ConversationTimeout"),
+                    session_target=target,
                 ),
                 "stream start",
             )
@@ -815,6 +816,7 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         receive_only: bool = False,
         preview_timeout: str | int | None = None,
         conversation_timeout: str | int | None = None,
+        session_target: tuple[str, str] | None = None,
     ) -> None:
         """Start a video stream session for the given room."""
         self._conversation_timeout = _positive_int(
@@ -845,6 +847,8 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
             self.async_set_updated_data(self.data)
 
         media_root = self.hass.config.media_dirs.get("local", "/media")
+        # Set together with the session, so the two always describe the same room
+        self._session_target = session_target
         session = self._stream_session = FermaxStreamSession(
             signaling_url=signaling_url,
             oauth_token=oauth_token,

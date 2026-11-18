@@ -295,6 +295,7 @@ class TestRingPreview:
             receive_only=True,
             preview_timeout="29",
             conversation_timeout="90",
+            session_target=("dev1", "dev1"),
         )
 
     def test_no_stream_in_notify_mode_by_default(self, coordinator):
@@ -1246,6 +1247,10 @@ class TestHandleNotification:
         session.is_active = True
         session._room_id = "room9"
         full_coordinator._stream_session = session
+        # what _start_stream sets next to the session
+        full_coordinator._session_target = full_coordinator._start_stream.call_args.kwargs[
+            "session_target"
+        ]
         mock_api.change_video_source_incall = AsyncMock(return_value=MagicMock())
         mock_api.press_f1_incall = AsyncMock(return_value=True)
         mock_api.open_door_incall = AsyncMock(return_value=True)
