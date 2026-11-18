@@ -124,6 +124,7 @@ def coordinator(mock_hass, mock_api, pairing):
         coord.device_info = None
         coord.notification_listener = None
         coord._stream_session = None
+        coord._session_target = None
         coord._last_photo = None
         coord._last_photo_id = None
         coord._doorbell_ringing = False
@@ -1221,6 +1222,46 @@ class TestHandleNotification:
         assert full_coordinator._photo_fetch_pending is False
         dispatch.assert_not_called()  # no doorbell ring signal for auto-on
         mock_api.ack_notification.assert_called_once_with("auto1", is_call=False)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("ids", "expected"),
+        [
+            ({"DeviceId": "panel1", "CallAs": "dev1"}, ("panel1", "dev1")),
+            ({}, ("dev1", "dev1")),
+        ],
+    )
+    async def test_incall_actions_go_to_whoever_the_session_named(
+        self, full_coordinator, mock_api, ids, expected
+    ):
+        """A session opened through the street panel is addressed to the panel (#185)."""
+        _close_coro_tasks(full_coordinator)
+        full_coordinator._start_stream = MagicMock()
+        self._fire(
+            full_coordinator,
+            {"FermaxNotificationType": "Autoon", "RoomId": "room9", **ids},
+            persistent_id="auto2",
+        )
+        session = MagicMock()
+        session.is_active = True
+        session._room_id = "room9"
+        full_coordinator._stream_session = session
+        mock_api.change_video_source_incall = AsyncMock(return_value=MagicMock())
+        mock_api.press_f1_incall = AsyncMock(return_value=True)
+        mock_api.open_door_incall = AsyncMock(return_value=True)
+
+        await full_coordinator.change_video_source()
+        await full_coordinator.press_f1()
+        with patch("custom_components.fermax_blue.coordinator.async_dispatcher_send"):
+            await full_coordinator.open_door()
+
+        for call in (
+            mock_api.change_video_source_incall,
+            mock_api.press_f1_incall,
+            mock_api.open_door_incall,
+        ):
+            sent = call.await_args.kwargs
+            assert (sent["device_id"], sent["call_as"], sent["room_id"]) == (*expected, "room9")
 
     def test_change_video_source_push_follows_the_new_room(self, full_coordinator, mock_api):
         """Switching camera hands us a new room; the stream has to follow it."""
