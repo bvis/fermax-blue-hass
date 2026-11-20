@@ -186,6 +186,9 @@
       },
       "ring_preview": {
         "name": "Ring preview"
+      },
+      "ring_photo": {
+        "name": "Photo on ring"
       }
     }
   },

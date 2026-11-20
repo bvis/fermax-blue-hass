@@ -186,6 +186,9 @@
       },
       "ring_preview": {
         "name": "Pré-visualização ao tocar"
+      },
+      "ring_photo": {
+        "name": "Foto ao tocar"
       }
     }
   },

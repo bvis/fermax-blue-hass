@@ -159,6 +159,25 @@ class TestPhotoCallerSwitch:
         mock_coordinator.set_photo_caller.assert_called_once_with(False)
 
 
+class TestRingPhotoSwitch:
+    """The photo on ring switch drives its own coordinator setting."""
+
+    @pytest.mark.asyncio
+    async def test_ring_photo_turn_on_off(self, mock_coordinator):
+        from custom_components.fermax_blue.switch import FermaxRingPhotoSwitch
+
+        mock_coordinator.ring_preview = False
+        switch = FermaxRingPhotoSwitch(mock_coordinator)
+        switch.async_write_ha_state = MagicMock()
+        assert switch.unique_id == "test_dev_ring_photo"
+
+        await switch.async_turn_on()
+        assert (mock_coordinator.ring_photo, mock_coordinator.ring_preview) == (True, False)
+        assert switch.is_on is True
+        await switch.async_turn_off()
+        assert mock_coordinator.ring_photo is False
+
+
 class TestRingPreviewSwitch:
     """Test the ring preview switch and its restore behavior."""
 
@@ -1301,6 +1320,7 @@ class TestSwitchStateReads:
             "test_dev_dnd",
             "test_dev_notifications",
             "test_dev_photo_caller",
+            "test_dev_ring_photo",
             "test_dev_ring_preview",
         ]
 
@@ -1315,7 +1335,7 @@ class TestSwitchStateReads:
 
         unique_ids = {entity.unique_id for entity in added}
         assert "test_dev_notifications" not in unique_ids
-        assert len(added) == 3
+        assert len(added) == 4
 
 
 class TestGenericSensorValues:

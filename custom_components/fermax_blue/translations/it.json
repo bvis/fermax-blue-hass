@@ -186,6 +186,9 @@
       },
       "ring_preview": {
         "name": "Anteprima alla chiamata"
+      },
+      "ring_photo": {
+        "name": "Foto alla chiamata"
       }
     }
   },

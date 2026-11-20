@@ -213,10 +213,11 @@ For each paired intercom device, the integration creates:
 | `switch.<name>_dnd` | Switch | Do Not Disturb mode |
 | `switch.<name>_photo_caller` | Switch | Enable/disable automatic visitor photos |
 | `switch.<name>_ring_preview` | Switch | Enable/disable live view-only preview on ring without answering the call (see [Ring preview](#ring-preview)) |
+| `switch.<name>_ring_photo` | Switch | Take one photo of the visitor on ring and leave the call at once, without answering (see [Ring preview](#ring-preview)) |
 | `select.<name>_call_mode` | Select | What a ring does: notify only, record the call, or auto-respond with the configured audio file |
 | `number.<name>_stream_duration` | Number | Length of a stream session in seconds (10-120, default 30) |
 
-The WiFi signal, status and connection entities are diagnostic entities, and the notifications, photo caller and ring preview switches, the call mode and the stream duration are configuration entities, so they appear under those headings on the device page. Every entity goes unavailable while the Fermax cloud doesn't answer.
+The WiFi signal, status and connection entities are diagnostic entities, and the notifications, photo caller, ring preview and ring photo switches, the call mode and the stream duration are configuration entities, so they appear under those headings on the device page. Every entity goes unavailable while the Fermax cloud doesn't answer.
 
 ### Ring preview
 
@@ -225,6 +226,8 @@ When the `ring_preview` switch is on, a doorbell ring starts a view-only video s
 - The switch only has an effect in `notify_only` call mode. `record` and `auto_respond` already start a stream by answering the call.
 - The stream stops after the configured stream duration, capped by a server-side preview limit of about 29 seconds.
 - Like any stream session, the preview is recorded to the media folder (subject to the recording retention setting) and updates the last visitor photo. Every ring leaves a snapshot without answering.
+
+If you only want the picture, turn on `ring_photo` instead. The integration then joins the ringing call just long enough to get the first picture, usually a second or two, and leaves. The picture becomes the last visitor photo and is saved to the media folder; no video is recorded. With both switches on, the live preview is what runs.
 
 ### Live view and talk-back
 

@@ -186,6 +186,9 @@
       },
       "ring_preview": {
         "name": "Vorschau beim Klingeln"
+      },
+      "ring_photo": {
+        "name": "Foto beim Klingeln"
       }
     }
   },

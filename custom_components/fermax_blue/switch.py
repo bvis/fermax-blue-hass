@@ -43,6 +43,7 @@ async def async_setup_entry(
         entities.append(FermaxDndSwitch(coordinator))
         entities.append(FermaxPhotoCallerSwitch(coordinator))
         entities.append(FermaxRingPreviewSwitch(coordinator))
+        entities.append(FermaxRingPhotoSwitch(coordinator))
 
     async_add_entities(entities)
 
@@ -96,37 +97,50 @@ class FermaxRingPreviewSwitch(FermaxBlueEntity, SwitchEntity, RestoreEntity):
 
     _attr_translation_key = "ring_preview"
     _attr_entity_category = EntityCategory.CONFIG
+    # Coordinator attribute this switch drives; also the unique id suffix
+    _setting = "ring_preview"
 
     def __init__(self, coordinator: FermaxBlueCoordinator) -> None:
         super().__init__(coordinator)
-        self._attr_unique_id = f"{self._device_id}_ring_preview"
+        self._attr_unique_id = f"{self._device_id}_{self._setting}"
 
     async def async_added_to_hass(self) -> None:
         """Restore the previous setting when added to hass."""
         await super().async_added_to_hass()
         last_state = await self.async_get_last_state()
         if last_state is not None:
-            self.coordinator.ring_preview = last_state.state == STATE_ON
+            setattr(self.coordinator, self._setting, last_state.state == STATE_ON)
 
     @property
     def is_on(self) -> bool:
-        """Return True if ring preview is enabled."""
-        return self.coordinator.ring_preview
+        """Return True if the setting is enabled."""
+        return bool(getattr(self.coordinator, self._setting))
 
     async def async_turn_on(self, **kwargs: Any) -> None:
-        """Enable ring preview."""
-        self.coordinator.ring_preview = True
+        """Enable the setting."""
+        setattr(self.coordinator, self._setting, True)
         self.async_write_ha_state()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
-        """Disable ring preview."""
-        self.coordinator.ring_preview = False
+        """Disable the setting."""
+        setattr(self.coordinator, self._setting, False)
         self.async_write_ha_state()
 
     @property
     def available(self) -> bool:
         """Always available — a local setting, not device state."""
         return True
+
+
+class FermaxRingPhotoSwitch(FermaxRingPreviewSwitch):
+    """Switch for the photo on doorbell ring.
+
+    Like the ring preview, but the session leaves the call as soon as it has
+    one picture of the visitor. With both on, the live preview wins.
+    """
+
+    _attr_translation_key = "ring_photo"
+    _setting = "ring_photo"
 
 
 class FermaxDndSwitch(FermaxBlueEntity, SwitchEntity):

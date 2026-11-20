@@ -186,6 +186,9 @@
       },
       "ring_preview": {
         "name": "Voorbeeld bij aanbellen"
+      },
+      "ring_photo": {
+        "name": "Foto bij aanbellen"
       }
     }
   },
