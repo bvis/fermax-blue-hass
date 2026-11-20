@@ -186,6 +186,9 @@
       },
       "ring_preview": {
         "name": "Zil önizlemesi"
+      },
+      "ring_photo": {
+        "name": "Zil çalınca fotoğraf"
       }
     }
   },

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import math
 import secrets
@@ -135,6 +136,7 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         self._storage_path: Path | None = None
         self._auto_response_file = auto_response_file
         self._ring_preview = False
+        self._ring_photo = False
         self._call_mode = CALL_MODE_NOTIFY
         self._stream_duration = DEFAULT_STREAM_DURATION
         self._stream_stop_unsub: CALLBACK_TYPE | None = None
@@ -175,6 +177,16 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
     def ring_preview(self, value: bool) -> None:
         """Enable or disable the receive-only ring preview."""
         self._ring_preview = value
+
+    @property
+    def ring_photo(self) -> bool:
+        """Return whether a ring takes one photo of the visitor and leaves."""
+        return self._ring_photo
+
+    @ring_photo.setter
+    def ring_photo(self, value: bool) -> None:
+        """Enable or disable the photo on ring."""
+        self._ring_photo = value
 
     @property
     def stream_duration(self) -> int:
@@ -554,13 +566,14 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         #   camera goes idle right after switching
         # - Call (doorbell): depends on call_mode setting; with the ring
         #   preview option a receive-only stream starts even in notify mode,
-        #   showing the current visitor without answering the call
+        #   showing the current visitor without answering the call; the ring
+        #   photo option does the same but leaves at the first picture
         room_id = data.get("RoomId")
         attend = notification_type == "Call" and self._call_mode != CALL_MODE_NOTIFY
         should_stream = room_id and (
             notification_type in ("Autoon", "ChangeVideoSource")
             or attend
-            or (notification_type == "Call" and self._ring_preview)
+            or (notification_type == "Call" and (self._ring_preview or self._ring_photo))
         )
         if should_stream:
             socket_url = data.get("SocketUrl", DEFAULT_SIGNALING_URL)
@@ -582,6 +595,7 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
                     socket_url,
                     fermax_token,
                     receive_only=receive_only,
+                    photo_only=receive_only and not self._ring_preview,
                     preview_timeout=data.get("PreviewTimeout"),
                     conversation_timeout=data.get("ConversationTimeout"),
                     session_target=target,
@@ -814,6 +828,7 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         signaling_url: str,
         fermax_token: str = "",
         receive_only: bool = False,
+        photo_only: bool = False,
         preview_timeout: str | int | None = None,
         conversation_timeout: str | int | None = None,
         session_target: tuple[str, str] | None = None,
@@ -857,6 +872,7 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
             on_end=_on_stream_end,
             media_root=media_root,
             receive_only=receive_only,
+            record=not photo_only,
             full_decode=lambda: self.mjpeg_clients > 0,
         )
 
@@ -882,12 +898,26 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
                     stop_after, _positive_int(preview_timeout, DEFAULT_PREVIEW_TIMEOUT)
                 )
             self._schedule_stream_stop(stop_after)
+            if photo_only:
+                self._background(self._leave_after_first_frame(session), "ring photo")
         else:
             _LOGGER.warning("Failed to start video stream for room %s", room_id)
             self._stream_session = None
             # Otherwise the next viewer waits for this dead preview instead of waking the intercom
             self._camera_active = False
             self.async_set_updated_data(self.data)
+
+    async def _leave_after_first_frame(self, session: FermaxStreamSession) -> None:
+        """Ring photo: leave the call as soon as the first picture is in.
+
+        With no picture the stream's own stop timer ends the session.
+        """
+        with contextlib.suppress(TimeoutError):
+            async with asyncio.timeout(DEFAULT_PREVIEW_TIMEOUT):
+                await session.first_frame.wait()
+        if self._stream_session is session and (raw := session.latest_frame_raw):
+            self._background(self._save_call_photo(raw), "ring photo save")
+            await self.stop_stream()
 
     @callback
     def _schedule_stream_stop(self, seconds: int) -> None:

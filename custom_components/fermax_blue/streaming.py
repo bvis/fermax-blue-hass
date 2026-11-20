@@ -822,6 +822,7 @@ class FermaxStreamSession:
         media_root: str = "/media",
         receive_only: bool = False,
         full_decode: Callable[[], bool] | None = None,
+        record: bool = True,
     ) -> None:
         # Enforce secure scheme for signaling URL
         if signaling_url and not signaling_url.startswith(("https://", "wss://")):
@@ -839,6 +840,7 @@ class FermaxStreamSession:
             send_hangup=not receive_only,
         )
         self._receive_only = receive_only
+        self._record = record
         self._room_id = room_id
         self._on_end = on_end
         self._media_root = media_root
@@ -852,6 +854,8 @@ class FermaxStreamSession:
         self._recorder: Any = None
         self._frame_task: asyncio.Task[None] | None = None
         self._latest_frame: bytes | None = None
+        # Set once the first picture of the session is in
+        self.first_frame = asyncio.Event()
         self._last_raw_frame: bytes | None = None
         self._active = False
         self._room: Any = None
@@ -1210,7 +1214,8 @@ class FermaxStreamSession:
             return False
 
         # 8. Initialize recording (frames collected in _grab_frames)
-        await self._init_recording()
+        if self._record:
+            await self._init_recording()
 
         # 9. Start frame grabber + audio recorder
         self._active = True
@@ -1408,6 +1413,7 @@ class FermaxStreamSession:
                 self._last_raw_frame = raw_jpeg
                 self._latest_frame = display_jpeg
                 if frame_count == 1:
+                    self.first_frame.set()
                     _LOGGER.info("First frame received: %d bytes", len(self._latest_frame))
                 elif frame_count % 100 == 0:
                     _LOGGER.debug("Frame %d received", frame_count)

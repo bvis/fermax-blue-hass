@@ -1,6 +1,9 @@
 # Changelog
 
-## [1.0.1] - unreleased
+## [1.1.0] - unreleased
+
+### Added
+- **Photo on ring** — a new per-device `switch.<name>_ring_photo` takes one picture of the visitor when the doorbell rings and leaves the call as soon as it has it, usually within a second or two, instead of staying for the whole ring like the ring preview does. The call is never answered. The picture becomes the last visitor photo and is saved to the media folder; no video is recorded. Off by default, only has an effect in `notify_only` mode, and the ring preview wins when both are on.
 
 ### Fixed
 - **Switch camera, F1 and opening the door during a live view on installations whose doors belong to the street panel (#185)** — while the camera was showing, these went out addressed to the home unit and the intercom refused them ("Switch camera" always failed). They now go to whoever the live session named, the street panel in those installations. Nothing changes where the monitor has its own connection.

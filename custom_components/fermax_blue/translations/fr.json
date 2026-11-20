@@ -186,6 +186,9 @@
       },
       "ring_preview": {
         "name": "Aperçu à la sonnerie"
+      },
+      "ring_photo": {
+        "name": "Photo à la sonnerie"
       }
     }
   },

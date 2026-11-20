@@ -293,28 +293,58 @@ class TestRingPreview:
             "https://signaling-pro-duoxme.fermax.io",
             "ftok",
             receive_only=True,
+            photo_only=False,
             preview_timeout="29",
             conversation_timeout="90",
             session_target=("dev1", "dev1"),
         )
 
-    def test_no_stream_in_notify_mode_by_default(self, coordinator):
+    def test_ring_photo_starts_a_photo_only_stream(self, coordinator):
         coordinator.hass.async_create_task = MagicMock(side_effect=lambda coro: coro.close())
+        coordinator._ring_photo = True
         coordinator._start_stream = MagicMock()
 
         self._ring(coordinator)
 
-        coordinator._start_stream.assert_not_called()
+        kwargs = coordinator._start_stream.call_args.kwargs
+        assert (kwargs["receive_only"], kwargs["photo_only"]) == (True, True)
 
-    def test_attending_call_mode_still_picks_up(self, coordinator):
+    def test_live_preview_wins_over_ring_photo(self, coordinator):
         coordinator.hass.async_create_task = MagicMock(side_effect=lambda coro: coro.close())
-        coordinator._ring_preview = True
-        coordinator._call_mode = CALL_MODE_RECORD
+        coordinator._ring_photo = coordinator._ring_preview = True
         coordinator._start_stream = MagicMock()
 
         self._ring(coordinator)
 
-        assert coordinator._start_stream.call_args.kwargs["receive_only"] is False
+        assert coordinator._start_stream.call_args.kwargs["photo_only"] is False
+
+    @pytest.mark.asyncio
+    async def test_ring_photo_leaves_at_the_first_picture(self, coordinator):
+        session = MagicMock(latest_frame_raw=b"jpeg", first_frame=asyncio.Event())
+        coordinator._stream_session = session
+        coordinator.stop_stream = AsyncMock()
+        coordinator._save_call_photo = MagicMock()
+        coordinator._background = MagicMock()
+
+        task = asyncio.ensure_future(coordinator._leave_after_first_frame(session))
+        await asyncio.sleep(0)
+        coordinator.stop_stream.assert_not_awaited()
+        session.first_frame.set()
+        await task
+
+        coordinator._save_call_photo.assert_called_once_with(b"jpeg")
+        coordinator.stop_stream.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_ring_photo_does_nothing_once_the_session_is_gone(self, coordinator):
+        session = MagicMock(first_frame=asyncio.Event())
+        session.first_frame.set()
+        coordinator._stream_session = None
+        coordinator.stop_stream = AsyncMock()
+
+        await coordinator._leave_after_first_frame(session)
+
+        coordinator.stop_stream.assert_not_awaited()
 
 
 class TestPreviewTimeoutClamp:
@@ -348,6 +378,34 @@ class TestPreviewTimeoutClamp:
                 preview_timeout=preview_timeout,
             )
         return call_later.call_args.args[1]
+
+    @pytest.mark.asyncio
+    async def test_photo_only_session_does_not_record_and_leaves_early(self, coordinator):
+        coordinator._stream_session = None
+        coordinator._stream_stop_unsub = None
+        coordinator._stream_duration = 30
+        coordinator.notification_listener = MagicMock(fcm_token="tok")
+        coordinator._background = MagicMock(side_effect=lambda coro, _name: coro.close())
+        session = MagicMock()
+        session.start = AsyncMock(return_value=True)
+        with (
+            patch(
+                "custom_components.fermax_blue.coordinator.FermaxStreamSession",
+                return_value=session,
+            ) as session_cls,
+            patch("custom_components.fermax_blue.coordinator.async_dispatcher_send"),
+            patch("custom_components.fermax_blue.coordinator.async_call_later"),
+        ):
+            await coordinator._start_stream(
+                "room1",
+                "https://signaling-pro-duoxme.fermax.io",
+                "ftok",
+                receive_only=True,
+                photo_only=True,
+            )
+
+        assert session_cls.call_args.kwargs["record"] is False
+        assert coordinator._background.call_args.args[1] == "ring photo"
 
     @pytest.mark.asyncio
     async def test_clamped_to_payload_timeout(self, coordinator):
@@ -2054,6 +2112,7 @@ class TestWhatTheCoordinatorSends:
             "room_id": "room1",
             "media_root": "/my/media",
             "receive_only": True,
+            "record": True,
         }
         # Full decoding only while someone watches the MJPEG.
         assert full_decode() is False

@@ -186,6 +186,9 @@
       },
       "ring_preview": {
         "name": "Podgląd przy dzwonku"
+      },
+      "ring_photo": {
+        "name": "Zdjęcie przy dzwonku"
       }
     }
   },
