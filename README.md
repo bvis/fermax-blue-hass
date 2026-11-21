@@ -31,7 +31,7 @@ If it's useful to you, you can support its upkeep:
 - **Do Not Disturb** — Toggle DND mode per device (useful for night automations)
 - **Photo caller control** — Enable/disable automatic visitor photo capture
 - **Opening history** — Track who opened the door and when
-- **Connection status** — Monitor if your intercom is online (entities go unavailable when offline)
+- **Connection status** — Monitor the connection state reported by the cloud (activated NOWIFI monitors can remain usable when reported as `DISCONNECTED`)
 - **WiFi signal** — Track the intercom's wireless signal strength
 - **Notification control** — Enable/disable doorbell notifications
 - **Media browser** — Browse doorbell photos and call recordings from the HA media browser
@@ -218,6 +218,8 @@ For each paired intercom device, the integration creates:
 | `number.<name>_stream_duration` | Number | Length of a stream session in seconds (10-120, default 30) |
 
 The WiFi signal, status and connection entities are diagnostic entities, and the notifications, photo caller, ring preview and ring photo switches, the call mode and the stream duration are configuration entities, so they appear under those headings on the device page. Every entity goes unavailable while the Fermax cloud doesn't answer.
+
+Activated `NOWIFI` monitors (reported with VEO NOWIFI) may report `connection_state: DISCONNECTED` even while door opening and camera actions work. Their controls remain available when a successful cloud poll returns both `subtype: NOWIFI` and `status: ACTIVATED` with that connection state. The connection diagnostic still shows the state reported by the backend. Missing or other activation/connection states do not qualify for this exception, and a failed cloud poll still makes these controls unavailable.
 
 ### Ring preview
 
