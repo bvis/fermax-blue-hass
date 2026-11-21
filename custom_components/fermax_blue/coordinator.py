@@ -145,6 +145,8 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         self.webrtc_token = secrets.token_urlsafe(16)
         # MJPEG viewers currently connected: the session decodes every frame for them
         self.mjpeg_clients = 0
+        # The session a WebRTC viewer joined while it was live (see _leave_after_first_frame)
+        self._watched_session: FermaxStreamSession | None = None
         self._firebase_config = firebase_config or {}
         self._processed_notifications: deque[str] = deque(maxlen=100)
         self._notification_start_time: float | None = None
@@ -910,14 +912,19 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
     async def _leave_after_first_frame(self, session: FermaxStreamSession) -> None:
         """Ring photo: leave the call as soon as the first picture is in.
 
-        With no picture the stream's own stop timer ends the session.
+        With no picture the stream's own stop timer ends the session. The same
+        when someone opened the camera or answered in the meantime: the photo
+        is saved, but the call is theirs now.
         """
         with contextlib.suppress(TimeoutError):
             async with asyncio.timeout(DEFAULT_PREVIEW_TIMEOUT):
                 await session.first_frame.wait()
-        if self._stream_session is session and (raw := session.latest_frame_raw):
-            self._background(self._save_call_photo(raw), "ring photo save")
-            await self.stop_stream()
+        if self._stream_session is not session or not (raw := session.latest_frame_raw):
+            return
+        self._background(self._save_call_photo(raw), "ring photo save")
+        if session.picked_up or self.mjpeg_clients > 0 or self._watched_session is session:
+            return
+        await self.stop_stream()
 
     @callback
     def _schedule_stream_stop(self, seconds: int) -> None:
@@ -955,6 +962,7 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         # answers 409, and its push would replace the session being started
         async with self._wake_lock:
             if self.has_active_stream:
+                self._watched_session = self._stream_session
                 return self._stream_session
             # _camera_active is set by a preview request whose push has not landed yet
             if not self._camera_active and not await self.start_camera_preview():
@@ -988,6 +996,7 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
                 await self._keep_preview(self._stream_session.latest_frame_raw)
             await self._stream_session.stop()
             self._stream_session = None
+            self._watched_session = None
             self._camera_active = False
 
 
