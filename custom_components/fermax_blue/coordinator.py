@@ -971,6 +971,7 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
             while time.monotonic() < deadline:
                 await asyncio.sleep(0.1)
                 if self.has_active_stream:
+                    self._watched_session = self._stream_session
                     return self._stream_session
             _LOGGER.warning("Intercom did not start a stream within %ss", WEBRTC_START_TIMEOUT)
             self._set_wake("failed")
