@@ -198,7 +198,7 @@ For each paired intercom device, the integration creates:
 | `event.<name>_doorbell` | Event | Fires when someone rings the doorbell; the `door` attribute holds the calling panel's door key as the intercom sends it (`GENERAL`, `ZERO`, `UNSUPPORTED`...), to tell panels on the same monitor apart |
 | `event.<name>_door_opened` | Event | Fires when a door is successfully opened |
 | `event.<name>_camera_on` | Event | Fires when camera preview / live stream starts |
-| `binary_sensor.<name>_connection` | Binary Sensor | Device connectivity: off while the intercom is disconnected, and then the other entities go unavailable |
+| `binary_sensor.<name>_connection` | Binary Sensor | Shows the connection state reported by Fermax. Reads off when Fermax reports the intercom as disconnected. |
 | `lock.<name>_<door>_lock` | Lock | Lock/unlock (open) the door |
 | `button.<name>_<door>_open` | Button | One-press door opening |
 | `button.<name>_camera_preview` | Button | Start camera preview / live stream |
