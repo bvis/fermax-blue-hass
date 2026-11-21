@@ -125,6 +125,8 @@ def coordinator(mock_hass, mock_api, pairing):
         coord.notification_listener = None
         coord._stream_session = None
         coord._session_target = None
+        coord._watched_session = None
+        coord.mjpeg_clients = 0
         coord._last_photo = None
         coord._last_photo_id = None
         coord._doorbell_ringing = False
@@ -320,7 +322,7 @@ class TestRingPreview:
 
     @pytest.mark.asyncio
     async def test_ring_photo_leaves_at_the_first_picture(self, coordinator):
-        session = MagicMock(latest_frame_raw=b"jpeg", first_frame=asyncio.Event())
+        session = MagicMock(latest_frame_raw=b"jpeg", first_frame=asyncio.Event(), picked_up=False)
         coordinator._stream_session = session
         coordinator.stop_stream = AsyncMock()
         coordinator._save_call_photo = MagicMock()
@@ -334,6 +336,48 @@ class TestRingPreview:
 
         coordinator._save_call_photo.assert_called_once_with(b"jpeg")
         coordinator.stop_stream.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("taken_over", ["answered", "mjpeg", "webrtc"])
+    async def test_ring_photo_keeps_a_call_someone_is_on(self, coordinator, taken_over):
+        session = MagicMock(
+            latest_frame_raw=b"jpeg", first_frame=asyncio.Event(), picked_up=False, is_active=True
+        )
+        session.first_frame.set()
+        coordinator._stream_session = session
+        coordinator.stop_stream = AsyncMock()
+        coordinator._save_call_photo = MagicMock()
+        coordinator._background = MagicMock()
+        if taken_over == "answered":
+            session.picked_up = True
+        elif taken_over == "mjpeg":
+            coordinator.mjpeg_clients = 1
+        else:
+            assert await coordinator.ensure_stream() is session
+
+        await coordinator._leave_after_first_frame(session)
+
+        coordinator._save_call_photo.assert_called_once_with(b"jpeg")
+        coordinator.stop_stream.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_ring_photo_keeps_a_call_a_waiting_viewer_joined(self, coordinator):
+        session = MagicMock(
+            latest_frame_raw=b"jpeg", first_frame=asyncio.Event(), picked_up=False, is_active=True
+        )
+        session.first_frame.set()
+        coordinator._camera_active = True  # the viewer is waiting for the ring's session
+        coordinator.stop_stream = AsyncMock()
+        coordinator._save_call_photo = MagicMock()
+        coordinator._background = MagicMock()
+
+        waiting = asyncio.ensure_future(coordinator.ensure_stream())
+        await asyncio.sleep(0)
+        coordinator._stream_session = session
+        assert await waiting is session
+        await coordinator._leave_after_first_frame(session)
+
+        coordinator.stop_stream.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_ring_photo_does_nothing_once_the_session_is_gone(self, coordinator):
