@@ -1,6 +1,6 @@
 # Changelog
 
-## [1.1.1] - unreleased
+## [1.1.1] - 2026-11-22
 
 ### Fixed
 - **Monitors without WiFi that Fermax reports as disconnected keep working** — on some VEO monitors paired without WiFi the cloud answers "disconnected" although opening the door and the camera preview work. Every entity then showed as unavailable. They now stay available when the monitor is activated; the connection sensor still shows what Fermax reports. Thanks to @dragners (#189).
