@@ -593,7 +593,12 @@ class FermaxBlueApi:
         return None
 
     async def auto_on(
-        self, device_id: str, fcm_token: str, call_as: str | None = None
+        self,
+        device_id: str,
+        fcm_token: str,
+        call_as: str | None = None,
+        *,
+        raise_on_conflict: bool = False,
     ) -> DivertResponse | None:
         """Start camera preview (auto-on) without a doorbell ring.
 
@@ -614,6 +619,8 @@ class FermaxBlueApi:
                 json=payload,
             )
         except httpx.HTTPStatusError as exc:
+            if raise_on_conflict and exc.response.status_code == 409:
+                raise
             _LOGGER.error("autoOn failed: %s", exc)
             return None
         except httpx.TimeoutException as exc:

@@ -23,6 +23,7 @@ from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
+from ._compat import httpx
 from .api import (
     CallLogEntry,
     DeviceInfo,
@@ -119,6 +120,7 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         self._last_photo_id: str | None = None
         self._doorbell_ringing: bool = False
         self._camera_active: bool = False
+        self._selected_preview_panel_id: str | None = None
         self._wake_lock = asyncio.Lock()
         # (stage, monotonic time it was reached); stage "failed" or a WAKE_STAGES key
         self._wake: tuple[str, float] | None = None
@@ -681,7 +683,9 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
 
         return success
 
-    async def start_camera_preview(self) -> DivertResponse | None:
+    async def start_camera_preview(
+        self, panel_id: str | None = None, *, raise_on_conflict: bool = False
+    ) -> DivertResponse | None:
         """Start camera preview (auto-on) to view the intercom camera."""
         if not self.notification_listener or not self.notification_listener.fcm_token:
             _LOGGER.error("Cannot start camera: no FCM token available")
@@ -689,18 +693,27 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
 
         # A NOWIFI home unit has no connection of its own: the request goes
         # to the street panel on the unit's behalf, as for its doors (#165)
-        panel_id = self._preview_panel_id()
+        panel_id = panel_id or self._preview_panel_id()
         self._set_wake("request")
-        result = await self.api.auto_on(
-            panel_id or self.pairing.device_id,
-            self.notification_listener.fcm_token,
-            self.pairing.device_id if panel_id else None,
-        )
+        try:
+            # Keep the ordinary preview call unchanged; switching needs to
+            # distinguish a closing session (409) from other failures.
+            options = {"raise_on_conflict": True} if raise_on_conflict else {}
+            result = await self.api.auto_on(
+                panel_id or self.pairing.device_id,
+                self.notification_listener.fcm_token,
+                self.pairing.device_id if panel_id else None,
+                **options,
+            )
+        except httpx.HTTPStatusError:
+            self._set_wake("failed")
+            raise
         # The push may already have started the session while auto-on answered
         if self._wake and self._wake[0] == "request":
             self._set_wake("accepted" if result else "failed")
 
         if result:
+            self._selected_preview_panel_id = panel_id
             self._camera_active = True
 
             _LOGGER.info(
@@ -772,10 +785,22 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
     async def change_video_source(self) -> DivertResponse | None:
         """Switch the intercom to the next video source.
 
+        Multiple visible panels need a fresh auto-on session on the next panel.
+        With one panel, keep the native source-change action for its cameras.
         Mirrors open_door: while a stream is up the intercom only accepts the
         action addressed to that session, so the in-call endpoint is tried first
         and the standard one is the fallback.
         """
+        panels = list(
+            dict.fromkeys(
+                door.panel_id
+                for door in self.pairing.access_doors.values()
+                if door.panel_id and door.visible
+            )
+        )
+        if len(panels) > 1:
+            return await self._switch_panel_by_restart(panels)
+
         context = self._incall_context()
         if context:
             result = await self.api.change_video_source_incall(**context)
@@ -792,6 +817,45 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
             self.pairing.device_id,
             self.notification_listener.fcm_token,
         )
+
+    async def _switch_panel_by_restart(self, panels: list[str]) -> DivertResponse | None:
+        """Release the current preview before waking the next visible panel."""
+        async with self._wake_lock:
+            if self._doorbell_ringing or not self.has_active_stream:
+                return None
+            if not self.notification_listener or not self.notification_listener.fcm_token:
+                return None
+
+            current = self._session_target[0] if self._session_target else None
+            if current not in panels:
+                current = self._selected_preview_panel_id or self._preview_panel_id()
+            index = panels.index(current) if current in panels else 0
+            next_panel = panels[(index + 1) % len(panels)]
+
+            await self.stop_stream()
+            for attr in ("_camera_timeout_unsub", "_stream_stop_unsub"):
+                if unsubscribe := getattr(self, attr):
+                    unsubscribe()
+                    setattr(self, attr, None)
+            self._camera_active = False
+            self.async_set_updated_data(self.data)
+
+            # The cloud can still own the old room after local teardown.
+            # Bound retries to the delays used by the two-panel workaround.
+            for delay in (2, 4, 8, 18):
+                await asyncio.sleep(delay)
+                # A real call or another push may have arrived during teardown.
+                if self._doorbell_ringing or self._stream_session is not None:
+                    return None
+                try:
+                    return await self.start_camera_preview(next_panel, raise_on_conflict=True)
+                except httpx.HTTPStatusError as exc:
+                    if exc.response.status_code != 409:
+                        raise
+                    _LOGGER.debug("Previous camera session is still closing")
+
+            _LOGGER.warning("Camera panel switch failed after four auto-on conflicts")
+            return None
 
     async def set_dnd(self, enabled: bool) -> None:
         """Set Do Not Disturb."""

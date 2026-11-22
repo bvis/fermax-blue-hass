@@ -408,3 +408,23 @@ async def test_opening_history_request_and_records() -> None:
         OpeningRecord("", "", "ZERO", None),
         OpeningRecord("", "", "", None),
     ]
+
+
+async def test_auto_on_conflict_is_optional_for_switch_retry() -> None:
+    import pytest
+
+    wire = _Wire(httpx.Response(409))
+    assert await wire.api.auto_on("panel", "tok", "unit") is None
+    assert len(wire.requests) == 1
+
+    wire = _Wire(httpx.Response(409))
+    with pytest.raises(httpx.HTTPStatusError) as error:
+        await wire.api.auto_on("panel", "tok", "unit", raise_on_conflict=True)
+    assert error.value.response.status_code == 409
+    assert len(wire.requests) == 1
+
+
+async def test_auto_on_switch_does_not_propagate_other_client_errors() -> None:
+    wire = _Wire(httpx.Response(403))
+    assert await wire.api.auto_on("panel", "tok", "unit", raise_on_conflict=True) is None
+    assert len(wire.requests) == 1
