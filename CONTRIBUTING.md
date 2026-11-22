@@ -48,6 +48,8 @@ git rebase --exec "git commit --amend --no-edit -S" HEAD~N
 git push --force-with-lease
 ```
 
+That recipe is for a branch with a straight line of commits. If yours has merge commits (for example, you merged `main` into it), say so in the pull request and we'll sort it out together.
+
 ## Pull Request Process
 
 ### Requirements
