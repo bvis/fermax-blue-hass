@@ -20,11 +20,19 @@ class FermaxBlueEntity(CoordinatorEntity[FermaxBlueCoordinator]):
 
     @property
     def available(self) -> bool:
-        """Available while the cloud answers and reports the intercom connected."""
+        """Available while the cloud answers and the intercom can be used."""
         return (
             super().available
             and bool(self.coordinator.data)
-            and self.coordinator.data.get("connection_state") == "Connected"
+            and (
+                self.coordinator.data.get("connection_state") == "Connected"
+                # Activated NOWIFI monitors can work despite this cloud state.
+                or (
+                    self.coordinator.data.get("connection_state") == "DISCONNECTED"
+                    and self.coordinator.data.get("subtype") == "NOWIFI"
+                    and self.coordinator.data.get("status") == "ACTIVATED"
+                )
+            )
         )
 
     @property

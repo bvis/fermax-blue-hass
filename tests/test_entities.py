@@ -73,6 +73,72 @@ class TestEntityAvailability:
         entity = FermaxBlueEntity(mock_coordinator)
         assert entity.available is True
 
+    @pytest.mark.parametrize(
+        ("subtype", "status", "connection_state", "expected"),
+        [
+            ("NOWIFI", "ACTIVATED", "DISCONNECTED", True),
+            ("NOWIFI", "ACTIVATED", "Connected", True),
+            ("WIFI", "ACTIVATED", "Connected", True),
+            ("WIFI", "ACTIVATED", "DISCONNECTED", False),
+            ("WIFI", "ACTIVATED", "Disconnected", False),
+            (None, "ACTIVATED", "DISCONNECTED", False),
+            ("", "ACTIVATED", "DISCONNECTED", False),
+            ("NOWIFI", "DEACTIVATED", "DISCONNECTED", False),
+            ("NOWIFI", "Unknown", "DISCONNECTED", False),
+            ("NOWIFI", None, "DISCONNECTED", False),
+            ("NOWIFI", "", "DISCONNECTED", False),
+            ("NOWIFI", "ACTIVATED", "Unknown", False),
+            ("NOWIFI", "ACTIVATED", None, False),
+            ("NOWIFI", "ACTIVATED", "", False),
+        ],
+    )
+    def test_nowifi_exception_requires_the_reported_states(
+        self, mock_coordinator, subtype, status, connection_state, expected
+    ):
+        from custom_components.fermax_blue.entity import FermaxBlueEntity
+
+        mock_coordinator.data = {
+            key: value
+            for key, value in {
+                "subtype": subtype,
+                "status": status,
+                "connection_state": connection_state,
+            }.items()
+            if value is not None
+        }
+        assert FermaxBlueEntity(mock_coordinator).available is expected
+
+    @pytest.mark.parametrize("cloud_available", [True, False])
+    def test_nowifi_controls_follow_cloud_availability(self, mock_coordinator, cloud_available):
+        """The workaround reaches controls, but cannot hide a failed poll."""
+        from custom_components.fermax_blue.binary_sensor import FermaxConnectionSensor
+        from custom_components.fermax_blue.button import FermaxCameraPreviewButton
+        from custom_components.fermax_blue.camera import FermaxCamera
+        from custom_components.fermax_blue.lock import FermaxDoorLock
+        from custom_components.fermax_blue.switch import FermaxDndSwitch
+
+        mock_coordinator.data = {
+            "subtype": "NOWIFI",
+            "status": "ACTIVATED",
+            "connection_state": "DISCONNECTED",
+        }
+        mock_coordinator.last_update_success = cloud_available
+        mock_coordinator.last_photo = None
+        mock_coordinator.stream_session = None
+        controls = [
+            FermaxDoorLock(mock_coordinator, "GENERAL", "Exterior"),
+            FermaxDoorLock(mock_coordinator, "ZERO", "Interior"),
+            FermaxCamera(mock_coordinator),
+            FermaxCameraPreviewButton(mock_coordinator),
+            FermaxDndSwitch(mock_coordinator),
+        ]
+        for entity in controls:
+            assert entity.available is cloud_available
+
+        connection = FermaxConnectionSensor(mock_coordinator)
+        assert connection.available is cloud_available
+        assert connection.is_on is False
+
     def test_unavailable_when_disconnected(self, mock_coordinator):
         from custom_components.fermax_blue.entity import FermaxBlueEntity
 
@@ -80,10 +146,11 @@ class TestEntityAvailability:
         entity = FermaxBlueEntity(mock_coordinator)
         assert entity.available is False
 
-    def test_unavailable_when_no_data(self, mock_coordinator):
+    @pytest.mark.parametrize("data", [None, {}])
+    def test_unavailable_when_no_data(self, mock_coordinator, data):
         from custom_components.fermax_blue.entity import FermaxBlueEntity
 
-        mock_coordinator.data = None
+        mock_coordinator.data = data
         entity = FermaxBlueEntity(mock_coordinator)
         assert entity.available is False
 
