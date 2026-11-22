@@ -37,6 +37,19 @@ test(api): add tests for call log parsing
 chore(ci): update Python version matrix
 ```
 
+### Signed commits
+
+`main` only accepts signed commits, so a pull request whose commits show as *Unverified* on GitHub can't be merged. Set signing up once, following GitHub's guides: [telling Git about your signing key](https://docs.github.com/en/authentication/managing-commit-signature-verification/telling-git-about-your-signing-key) (an SSH key is the quickest) and [signing commits](https://docs.github.com/en/authentication/managing-commit-signature-verification/signing-commits). `git config --global commit.gpgsign true` then signs every commit you make.
+
+To sign commits you have already pushed, where `N` is the number of commits in your pull request:
+
+```bash
+git rebase --exec "git commit --amend --no-edit -S" HEAD~N
+git push --force-with-lease
+```
+
+That recipe is for a branch with a straight line of commits. If yours has merge commits (for example, you merged `main` into it), say so in the pull request and we'll sort it out together.
+
 ## Pull Request Process
 
 ### Requirements
@@ -45,9 +58,10 @@ All PRs must:
 
 1. **Pass CI checks** — Tests, linting, and HACS validation must all pass
 2. **Follow conventional commits** — PR title and all commits must use the convention above
-3. **Include tests** — New features must include unit tests; bug fixes should include a regression test
-4. **Update documentation** — If your change affects user-facing behavior, update the README
-5. **One concern per PR** — Keep PRs focused on a single feature or fix
+3. **Sign your commits** — `main` only accepts signed commits, see [Signed commits](#signed-commits)
+4. **Include tests** — New features must include unit tests; bug fixes should include a regression test
+5. **Update documentation** — If your change affects user-facing behavior, update the README
+6. **One concern per PR** — Keep PRs focused on a single feature or fix
 
 ### Review Criteria
 

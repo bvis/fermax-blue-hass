@@ -14,6 +14,7 @@
 ## Checklist
 
 - [ ] My PR title follows [Conventional Commits](https://www.conventionalcommits.org/) format
+- [ ] My commits are signed (see [CONTRIBUTING](https://github.com/bvis/fermax-blue-hass/blob/main/CONTRIBUTING.md#signed-commits))
 - [ ] I have tested my changes locally
 - [ ] I have added/updated tests for my changes
 - [ ] I have updated documentation if needed
