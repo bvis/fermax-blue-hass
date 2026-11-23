@@ -133,7 +133,7 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         self._last_call: CallLogEntry | None = None
         self._call_log: list[CallLogEntry] = []
         self._stream_session: FermaxStreamSession | None = None
-        self._stream_start_tasks: set[asyncio.Task[None]] = set()
+        self._stream_start_tasks: dict[asyncio.Task[None], bool] = {}
         self._session_is_doorbell_call = False
         # (device, unit) the live session's push named, for in-call actions
         self._session_target: tuple[str, str] | None = None
@@ -595,9 +595,16 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
             # or its street panel on a pairing whose doors hang off the panel (#185)
             own = self.pairing.device_id
             target = (data.get("DeviceId") or own, data.get("CallAs") or own)
-            # A source-change push can replace the room of an ongoing doorbell call.
+            # A source-change push can replace a doorbell call before its room exists.
             doorbell_call = notification_type == "Call" or (
-                notification_type == "ChangeVideoSource" and self._session_is_doorbell_call
+                notification_type == "ChangeVideoSource"
+                and (
+                    self._session_is_doorbell_call
+                    or any(
+                        is_call and not task.done()
+                        for task, is_call in self._stream_start_tasks.items()
+                    )
+                )
             )
             task = self._background(
                 self._start_stream(
@@ -613,8 +620,8 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
                 ),
                 "stream start",
             )
-            self._stream_start_tasks.add(task)
-            task.add_done_callback(self._stream_start_tasks.discard)
+            self._stream_start_tasks[task] = doorbell_call
+            task.add_done_callback(self._stream_start_tasks.pop)
             if (
                 notification_type == "Call"
                 and self._call_mode == CALL_MODE_AUTO_RESPOND

@@ -124,7 +124,7 @@ def coordinator(mock_hass, mock_api, pairing):
         coord.device_info = None
         coord.notification_listener = None
         coord._stream_session = None
-        coord._stream_start_tasks = set()
+        coord._stream_start_tasks = {}
         coord._session_is_doorbell_call = False
         coord._session_target = None
         coord._watched_session = None
@@ -2447,6 +2447,76 @@ class TestPanelSwitchByRestart:
             assert await switching.change_video_source() is None
 
         assert switching.stream_session is session
+        switching.stop_stream.assert_not_called()
+        mock_api.auto_on.assert_not_called()
+
+    @pytest.mark.parametrize("call_queued", [False, True])
+    async def test_replacement_inherits_doorbell_origin_before_session_install(
+        self, switching, mock_api, call_queued
+    ):
+        switching.hass.async_create_task.side_effect = asyncio.create_task
+        switching._ring_preview = True
+        call_fetching_token = asyncio.Event()
+        call_token = asyncio.Future()
+        replacement_token = asyncio.Future()
+        tokens = iter((call_token, replacement_token))
+
+        async def get_token():
+            token = next(tokens)
+            if token is call_token:
+                call_fetching_token.set()
+            return await token
+
+        mock_api.get_access_token.side_effect = get_token
+        call, replacement = (
+            MagicMock(
+                is_active=True,
+                start=AsyncMock(return_value=True),
+                picked_up=False,
+                pickup=AsyncMock(return_value=True),
+            )
+            for _ in range(2)
+        )
+        with (
+            patch(
+                "custom_components.fermax_blue.coordinator.FermaxStreamSession",
+                side_effect=[call, replacement],
+            ),
+            patch("custom_components.fermax_blue.coordinator.async_dispatcher_send"),
+            patch("custom_components.fermax_blue.coordinator.async_call_later") as call_later,
+            patch.object(switching, "async_request_refresh", new_callable=AsyncMock),
+        ):
+            switching._handle_notification(
+                {"data": {"FermaxNotificationType": "Call", "RoomId": "call"}},
+                "call-push",
+            )
+            reset_ringing = call_later.call_args.args[2]
+            (call_task,) = switching._stream_start_tasks
+            if not call_queued:
+                await call_fetching_token.wait()
+            assert not switching._session_is_doorbell_call
+
+            switching._handle_notification(
+                {"data": {"FermaxNotificationType": "ChangeVideoSource", "RoomId": "replacement"}},
+                "source-change-push",
+            )
+            (replacement_task,) = (
+                task for task in switching._stream_start_tasks if task is not call_task
+            )
+            call_token.set_result("call-token")
+            await call_task
+            replacement_token.set_result("replacement-token")
+            await replacement_task
+            assert await switching.pickup()
+            replacement.pickup.assert_awaited_once()
+            reset_ringing(None)
+            switching.stop_stream.reset_mock()
+
+            assert not switching._doorbell_ringing
+            assert not switching._stream_start_tasks
+            assert switching.stream_session is replacement
+            assert await switching.change_video_source() is None
+
         switching.stop_stream.assert_not_called()
         mock_api.auto_on.assert_not_called()
 
