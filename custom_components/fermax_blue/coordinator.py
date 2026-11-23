@@ -133,6 +133,8 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         self._last_call: CallLogEntry | None = None
         self._call_log: list[CallLogEntry] = []
         self._stream_session: FermaxStreamSession | None = None
+        self._stream_start_tasks: set[asyncio.Task[None]] = set()
+        self._session_is_doorbell_call = False
         # (device, unit) the live session's push named, for in-call actions
         self._session_target: tuple[str, str] | None = None
         self._storage_path: Path | None = None
@@ -155,10 +157,10 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         # Set while push registration is failing: when the watchdog tries again
         self._push_retry_at: float | None = None
 
-    def _background(self, target: Coroutine[Any, Any, Any], name: str) -> None:
+    def _background[T](self, target: Coroutine[Any, Any, T], name: str) -> asyncio.Task[T]:
         """Run a task tied to the entry: unloading it cancels the task."""
         assert self.config_entry is not None
-        self.config_entry.async_create_background_task(
+        return self.config_entry.async_create_background_task(
             self.hass, target, f"{DOMAIN} {name}", eager_start=False
         )
 
@@ -593,7 +595,11 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
             # or its street panel on a pairing whose doors hang off the panel (#185)
             own = self.pairing.device_id
             target = (data.get("DeviceId") or own, data.get("CallAs") or own)
-            self._background(
+            # A source-change push can replace the room of an ongoing doorbell call.
+            doorbell_call = notification_type == "Call" or (
+                notification_type == "ChangeVideoSource" and self._session_is_doorbell_call
+            )
+            task = self._background(
                 self._start_stream(
                     room_id,
                     socket_url,
@@ -603,9 +609,12 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
                     preview_timeout=data.get("PreviewTimeout"),
                     conversation_timeout=data.get("ConversationTimeout"),
                     session_target=target,
+                    doorbell_call=doorbell_call,
                 ),
                 "stream start",
             )
+            self._stream_start_tasks.add(task)
+            task.add_done_callback(self._stream_start_tasks.discard)
             if (
                 notification_type == "Call"
                 and self._call_mode == CALL_MODE_AUTO_RESPOND
@@ -821,7 +830,12 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
     async def _switch_panel_by_restart(self, panels: list[str]) -> DivertResponse | None:
         """Release the current preview before waking the next visible panel."""
         async with self._wake_lock:
-            if self._doorbell_ringing or not self.has_active_stream:
+            if (
+                self._doorbell_ringing
+                or self._session_is_doorbell_call
+                or self._stream_start_tasks
+                or not self.has_active_stream
+            ):
                 return None
             if not self.notification_listener or not self.notification_listener.fcm_token:
                 return None
@@ -832,20 +846,24 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
             index = panels.index(current) if current in panels else 0
             next_panel = panels[(index + 1) % len(panels)]
 
-            await self.stop_stream()
             for attr in ("_camera_timeout_unsub", "_stream_stop_unsub"):
                 if unsubscribe := getattr(self, attr):
                     unsubscribe()
                     setattr(self, attr, None)
-            self._camera_active = False
-            self.async_set_updated_data(self.data)
+            await self.stop_stream()
+            if self._stream_session is None:
+                self.async_set_updated_data(self.data)
 
             # The cloud can still own the old room after local teardown.
             # Bound retries to the delays used by the two-panel workaround.
             for delay in (2, 4, 8, 18):
                 await asyncio.sleep(delay)
                 # A real call or another push may have arrived during teardown.
-                if self._doorbell_ringing or self._stream_session is not None:
+                if (
+                    self._doorbell_ringing
+                    or self._stream_start_tasks
+                    or self._stream_session is not None
+                ):
                     return None
                 try:
                     return await self.start_camera_preview(next_panel, raise_on_conflict=True)
@@ -898,6 +916,8 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         preview_timeout: str | int | None = None,
         conversation_timeout: str | int | None = None,
         session_target: tuple[str, str] | None = None,
+        *,
+        doorbell_call: bool = False,
     ) -> None:
         """Start a video stream session for the given room."""
         self._conversation_timeout = _positive_int(
@@ -915,15 +935,18 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
 
         @callback
         def _on_stream_end() -> None:
+            if self._stream_session is not session:
+                return
             # Cancel auto-stop timer if still pending
             if self._stream_stop_unsub:
                 self._stream_stop_unsub()
                 self._stream_stop_unsub = None
             # Save last frame as photo preview before releasing the session
-            if self._stream_session and self._stream_session.latest_frame:
-                raw = self._stream_session.latest_frame_raw
+            if session.latest_frame:
+                raw = session.latest_frame_raw
                 self._background(self._keep_preview(raw, notify=True), "stream preview")
             self._stream_session = None
+            self._session_is_doorbell_call = False
             self._camera_active = False
             self.async_set_updated_data(self.data)
 
@@ -941,6 +964,7 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
             record=not photo_only,
             full_decode=lambda: self.mjpeg_clients > 0,
         )
+        self._session_is_doorbell_call = doorbell_call
 
         success = await session.start()
         if self._stream_session is not session:
@@ -969,6 +993,7 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         else:
             _LOGGER.warning("Failed to start video stream for room %s", room_id)
             self._stream_session = None
+            self._session_is_doorbell_call = False
             # Otherwise the next viewer waits for this dead preview instead of waking the intercom
             self._camera_active = False
             self.async_set_updated_data(self.data)
@@ -1055,13 +1080,17 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
 
     async def stop_stream(self) -> None:
         """Stop the current video stream session."""
-        if self._stream_session:
-            # Save last frame before stopping (stop() may clear internal state)
-            if self._stream_session.latest_frame:
-                await self._keep_preview(self._stream_session.latest_frame_raw)
-            await self._stream_session.stop()
-            self._stream_session = None
+        if not (session := self._stream_session):
+            return
+        # Save last frame before stopping (stop() may clear internal state)
+        if session.latest_frame:
+            await self._keep_preview(session.latest_frame_raw)
+        await session.stop()
+        if self._watched_session is session:
             self._watched_session = None
+        if self._stream_session is session:
+            self._stream_session = None
+            self._session_is_doorbell_call = False
             self._camera_active = False
 
 
