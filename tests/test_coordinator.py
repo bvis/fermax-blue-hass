@@ -56,8 +56,8 @@ def mock_hass():
 def _entry(hass):
     """A config entry whose background tasks go through hass.async_create_task."""
     entry = MagicMock()
-    entry.async_create_background_task = MagicMock(
-        side_effect=lambda hass_, target, name, eager_start=True: hass.async_create_task(target)
+    entry.async_create_background_task.side_effect = lambda hass_, target, name, eager_start=True: (
+        hass.async_create_task(target) or MagicMock()
     )
     return entry
 
@@ -124,6 +124,8 @@ def coordinator(mock_hass, mock_api, pairing):
         coord.device_info = None
         coord.notification_listener = None
         coord._stream_session = None
+        coord._stream_start_tasks = {}
+        coord._session_is_doorbell_call = False
         coord._session_target = None
         coord._watched_session = None
         coord.mjpeg_clients = 0
@@ -299,6 +301,7 @@ class TestRingPreview:
             preview_timeout="29",
             conversation_timeout="90",
             session_target=("dev1", "dev1"),
+            doorbell_call=True,
         )
 
     def test_ring_photo_starts_a_photo_only_stream(self, coordinator):
@@ -1652,6 +1655,31 @@ class TestStreamLifecycle:
         assert full_coordinator.stream_session is second
         assert full_coordinator._camera_active is True
 
+    async def test_old_stop_cannot_clear_a_replacement_call(self, full_coordinator):
+        stopping = asyncio.Event()
+        finish_stop = asyncio.Event()
+
+        async def stop():
+            stopping.set()
+            await finish_stop.wait()
+
+        old = MagicMock(latest_frame=None, stop=AsyncMock(side_effect=stop))
+        call = MagicMock(is_active=True)
+        full_coordinator._stream_session = old
+        task = asyncio.create_task(full_coordinator.stop_stream())
+        await stopping.wait()
+        full_coordinator._stream_session = call
+        full_coordinator._watched_session = call
+        full_coordinator._session_is_doorbell_call = True
+        full_coordinator._camera_active = True
+        finish_stop.set()
+        await task
+
+        assert full_coordinator.stream_session is call
+        assert full_coordinator._watched_session is call
+        assert full_coordinator._session_is_doorbell_call
+        assert full_coordinator.camera_active
+
     async def test_no_listener_never_builds_session(self, full_coordinator):
         with (
             patch("custom_components.fermax_blue.coordinator.FermaxStreamSession") as session_cls,
@@ -2236,3 +2264,312 @@ class TestWhatTheCoordinatorSends:
             "firebase_project_id": "",
             "firebase_package_name": "",
         }
+
+
+class TestPanelSwitchByRestart:
+    """#185: use the existing button to restart on a distinct visible panel."""
+
+    @pytest.fixture
+    def switching(self, full_coordinator, mock_api):
+        coord = full_coordinator
+        coord.notification_listener = MagicMock(fcm_token="tok")
+        coord.pairing.access_doors.clear()
+        coord.pairing.access_doors.update(
+            {
+                name: AccessDoor(name, name, {}, visible, panel_id=panel)
+                for name, panel, visible in (
+                    ("hidden", "hidden_panel", False),
+                    ("interior", "panel_1", True),
+                    ("duplicate", "panel_1", True),
+                    ("exterior", "panel_2", True),
+                )
+            }
+        )
+        coord._stream_session = MagicMock(is_active=True)
+        coord._session_target = ("panel_1", "dev1")
+        coord._camera_timeout_unsub = MagicMock()
+        coord._stream_stop_unsub = MagicMock()
+
+        async def stop():
+            coord._stream_session = None
+            coord._camera_active = False
+
+        coord.stop_stream = AsyncMock(side_effect=stop)
+        mock_api.auto_on.return_value = DivertResponse("starting", "blueStream", 1, "ok", "tok")
+        with (
+            patch(
+                "custom_components.fermax_blue.coordinator.asyncio.sleep", new_callable=AsyncMock
+            ),
+            patch("custom_components.fermax_blue.coordinator.async_call_later"),
+        ):
+            yield coord
+
+    @staticmethod
+    def conflict(status=409):
+        return httpx.HTTPStatusError(
+            "rejected",
+            request=httpx.Request("POST", "https://example.com/autoon"),
+            response=httpx.Response(status),
+        )
+
+    @pytest.mark.parametrize(
+        ("current", "target"), [("panel_1", "panel_2"), ("panel_2", "panel_1")]
+    )
+    async def test_switches_both_directions_and_cancels_old_timers(
+        self, switching, mock_api, current, target
+    ):
+        switching._session_target = (current, "dev1")
+        camera_timer = switching._camera_timeout_unsub
+        stream_timer = switching._stream_stop_unsub
+        assert await switching.change_video_source() is mock_api.auto_on.return_value
+        switching.stop_stream.assert_awaited_once()
+        camera_timer.assert_called_once()
+        stream_timer.assert_called_once()
+        mock_api.auto_on.assert_awaited_once_with(target, "tok", "dev1", raise_on_conflict=True)
+        assert switching._selected_preview_panel_id == target
+        assert switching.camera_active
+        mock_api.change_video_source_incall.assert_not_called()
+        mock_api.change_video_source.assert_not_called()
+
+    async def test_selected_panel_used_when_push_does_not_name_panel(self, switching, mock_api):
+        switching._session_target = ("dev1", "dev1")
+        switching._selected_preview_panel_id = "panel_2"
+        await switching.change_video_source()
+        assert mock_api.auto_on.call_args.args[0] == "panel_1"
+
+    async def test_default_panel_used_without_session_target(self, switching, mock_api):
+        switching._session_target = None
+        await switching.change_video_source()
+        assert mock_api.auto_on.call_args.args[0] == "panel_2"
+
+    async def test_retries_only_conflicts_with_bounded_delays(self, switching, mock_api):
+        result = mock_api.auto_on.return_value
+        mock_api.auto_on.side_effect = [self.conflict(), self.conflict(), self.conflict(), result]
+        with patch("custom_components.fermax_blue.coordinator.asyncio.sleep") as sleep:
+            assert await switching.change_video_source() is result
+        assert [call.args[0] for call in sleep.await_args_list] == [2, 4, 8, 18]
+        assert mock_api.auto_on.await_count == 4
+        assert {call.args[0] for call in mock_api.auto_on.await_args_list} == {"panel_2"}
+
+    async def test_exhausted_conflicts_leave_camera_off(self, switching, mock_api):
+        mock_api.auto_on.side_effect = self.conflict()
+        assert await switching.change_video_source() is None
+        assert mock_api.auto_on.await_count == 4
+        assert not switching.camera_active
+        assert switching._camera_timeout_unsub is None
+        assert switching._stream_stop_unsub is None
+        assert switching.wake_progress() == -1.0
+        assert not switching._wake_lock.locked()
+
+    async def test_non_conflict_failure_is_not_retried(self, switching, mock_api):
+        mock_api.auto_on.return_value = None
+        assert await switching.change_video_source() is None
+        assert mock_api.auto_on.await_count == 1
+
+    @pytest.mark.parametrize("status", [403, 500])
+    async def test_unexpected_http_error_is_not_retried(self, switching, mock_api, status):
+        mock_api.auto_on.side_effect = self.conflict(status)
+        with pytest.raises(httpx.HTTPStatusError):
+            await switching.change_video_source()
+        assert mock_api.auto_on.await_count == 1
+        assert not switching._wake_lock.locked()
+
+    @pytest.mark.parametrize("blocked", ["ringing", "idle", "no_token"])
+    async def test_does_not_stop_when_switch_is_unavailable(self, switching, mock_api, blocked):
+        if blocked == "ringing":
+            switching._doorbell_ringing = True
+        elif blocked == "idle":
+            switching._stream_session = None
+        else:
+            switching.notification_listener = None
+        assert await switching.change_video_source() is None
+        switching.stop_stream.assert_not_called()
+        mock_api.auto_on.assert_not_called()
+
+    @pytest.mark.parametrize("arrival", ["ringing", "session"])
+    async def test_does_not_replace_call_arriving_during_teardown(
+        self, switching, mock_api, arrival
+    ):
+        async def incoming(_delay):
+            if arrival == "ringing":
+                switching._doorbell_ringing = True
+            else:
+                switching._stream_session = MagicMock(is_active=True)
+
+        with patch("custom_components.fermax_blue.coordinator.asyncio.sleep", side_effect=incoming):
+            assert await switching.change_video_source() is None
+        mock_api.auto_on.assert_not_called()
+
+    async def test_wake_lock_covers_stop_and_restart(self, switching):
+        async def stop():
+            assert switching._wake_lock.locked()
+            switching._stream_session = None
+
+        switching.stop_stream.side_effect = stop
+        await switching.change_video_source()
+        assert not switching._wake_lock.locked()
+
+    async def test_answered_doorbell_call_survives_ring_reset(self, switching, mock_api):
+        switching.hass.async_create_task.side_effect = asyncio.create_task
+        switching._ring_preview = True
+        session = MagicMock(
+            is_active=True,
+            picked_up=False,
+            pickup=AsyncMock(return_value=True),
+            start=AsyncMock(return_value=True),
+        )
+        with (
+            patch(
+                "custom_components.fermax_blue.coordinator.FermaxStreamSession",
+                return_value=session,
+            ),
+            patch("custom_components.fermax_blue.coordinator.async_dispatcher_send"),
+            patch("custom_components.fermax_blue.coordinator.async_call_later") as call_later,
+            patch.object(switching, "async_request_refresh", new_callable=AsyncMock),
+        ):
+            switching._handle_notification(
+                {
+                    "data": {
+                        "FermaxNotificationType": "Call",
+                        "RoomId": "ring",
+                        "FermaxToken": "ftok",
+                    }
+                },
+                "ring-push",
+            )
+            reset_ringing = call_later.call_args.args[2]
+            await asyncio.gather(*switching._stream_start_tasks)
+            assert await switching.pickup()
+            reset_ringing(None)
+            assert not switching._doorbell_ringing
+
+            switching.stop_stream.reset_mock()
+            assert await switching.change_video_source() is None
+
+        assert switching.stream_session is session
+        switching.stop_stream.assert_not_called()
+        mock_api.auto_on.assert_not_called()
+
+    @pytest.mark.parametrize("call_queued", [False, True])
+    async def test_replacement_inherits_doorbell_origin_before_session_install(
+        self, switching, mock_api, call_queued
+    ):
+        switching.hass.async_create_task.side_effect = asyncio.create_task
+        switching._ring_preview = True
+        call_fetching_token = asyncio.Event()
+        call_token = asyncio.Future()
+        replacement_token = asyncio.Future()
+        tokens = iter((call_token, replacement_token))
+
+        async def get_token():
+            token = next(tokens)
+            if token is call_token:
+                call_fetching_token.set()
+            return await token
+
+        mock_api.get_access_token.side_effect = get_token
+        call, replacement = (
+            MagicMock(
+                is_active=True,
+                start=AsyncMock(return_value=True),
+                picked_up=False,
+                pickup=AsyncMock(return_value=True),
+            )
+            for _ in range(2)
+        )
+        with (
+            patch(
+                "custom_components.fermax_blue.coordinator.FermaxStreamSession",
+                side_effect=[call, replacement],
+            ),
+            patch("custom_components.fermax_blue.coordinator.async_dispatcher_send"),
+            patch("custom_components.fermax_blue.coordinator.async_call_later") as call_later,
+            patch.object(switching, "async_request_refresh", new_callable=AsyncMock),
+        ):
+            switching._handle_notification(
+                {"data": {"FermaxNotificationType": "Call", "RoomId": "call"}},
+                "call-push",
+            )
+            reset_ringing = call_later.call_args.args[2]
+            (call_task,) = switching._stream_start_tasks
+            if not call_queued:
+                await call_fetching_token.wait()
+            assert not switching._session_is_doorbell_call
+
+            switching._handle_notification(
+                {"data": {"FermaxNotificationType": "ChangeVideoSource", "RoomId": "replacement"}},
+                "source-change-push",
+            )
+            (replacement_task,) = (
+                task for task in switching._stream_start_tasks if task is not call_task
+            )
+            call_token.set_result("call-token")
+            await call_task
+            replacement_token.set_result("replacement-token")
+            await replacement_task
+            assert await switching.pickup()
+            replacement.pickup.assert_awaited_once()
+            reset_ringing(None)
+            switching.stop_stream.reset_mock()
+
+            assert not switching._doorbell_ringing
+            assert not switching._stream_start_tasks
+            assert switching.stream_session is replacement
+            assert await switching.change_video_source() is None
+
+        switching.stop_stream.assert_not_called()
+        mock_api.auto_on.assert_not_called()
+
+    @pytest.mark.parametrize("push_type", ["Autoon", "ChangeVideoSource"])
+    async def test_push_waiting_for_token_blocks_retry(self, switching, mock_api, push_type):
+        switching.hass.async_create_task.side_effect = asyncio.create_task
+        fetching_token = asyncio.Event()
+        release_token = asyncio.Event()
+
+        async def get_token():
+            fetching_token.set()
+            await release_token.wait()
+            raise FermaxAuthError("expired")
+
+        mock_api.get_access_token.side_effect = get_token
+        mock_api.auto_on.side_effect = self.conflict()
+        push_tasks = []
+
+        async def wait_for_retry(delay):
+            if delay == 4:
+                switching._handle_notification(
+                    {"data": {"FermaxNotificationType": push_type, "RoomId": "new"}},
+                    "room-push",
+                )
+                push_tasks.extend(switching._stream_start_tasks)
+                await fetching_token.wait()
+                assert switching.stream_session is None
+
+        with patch(
+            "custom_components.fermax_blue.coordinator.asyncio.sleep",
+            side_effect=wait_for_retry,
+        ):
+            assert await switching.change_video_source() is None
+            assert mock_api.auto_on.await_count == 1
+
+        release_token.set()
+        with pytest.raises(FermaxAuthError):
+            await asyncio.gather(*push_tasks)
+        assert not switching._stream_start_tasks
+
+    async def test_push_queued_before_switch_blocks_teardown_and_clears_on_cancel(
+        self, switching, mock_api
+    ):
+        switching.hass.async_create_task.side_effect = asyncio.create_task
+        switching._handle_notification(
+            {"data": {"FermaxNotificationType": "Autoon", "RoomId": "new"}},
+            "room-push",
+        )
+        (task,) = switching._stream_start_tasks
+        assert await switching.change_video_source() is None
+        switching.stop_stream.assert_not_called()
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert not switching._stream_start_tasks
+        assert await switching.change_video_source() is mock_api.auto_on.return_value
