@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.2] - unreleased
+
+**No rush:** Switch camera now works on installations with two street panels. Install it whenever it suits you.
+
+### Fixed
+- **Switch camera on installations with two street panels (#185)** — the intercom refused the change during a live view. Switch camera now ends the current view and starts a new one on the other panel, so the picture pauses for a few seconds while it changes. A doorbell call is never cut off by it. Installations with one panel work as before. Thanks to @dragners for finding the way and for the fix (#194).
+
 ## [1.1.1] - 2026-11-22
 
 ### Fixed
