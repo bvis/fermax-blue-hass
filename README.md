@@ -196,7 +196,7 @@ For each paired intercom device, the integration creates:
 |--------|------|-------------|
 | `camera.<name>_visitor` | Camera | Live video with intercom audio over WebRTC (MJPEG also served); last frame as preview when idle |
 | `event.<name>_doorbell` | Event | Fires when someone rings the doorbell; the `door` attribute holds the calling panel's door key as the intercom sends it (`GENERAL`, `ZERO`, `UNSUPPORTED`...), to tell panels on the same monitor apart |
-| `event.<name>_call` | Event | Fires `call_attended` when a doorbell call is answered on the monitor or the DuoxMe app, and `call_ended` when Fermax reports the call over. `room_id` identifies the call when Fermax sends it |
+| `event.<name>_call` | Event | Fires `call_attended` when a doorbell call is answered in the DuoxMe app, and `call_ended` when Fermax reports the call over. A call taken on the monitor is a `call_ended` with `reason: answered_on_monitor`, one nobody answered has `reason: missed`. `room_id` identifies the call when Fermax sends it |
 | `event.<name>_door_opened` | Event | Fires when a door is successfully opened |
 | `event.<name>_camera_on` | Event | Fires when camera preview / live stream starts |
 | `binary_sensor.<name>_connection` | Binary Sensor | Shows the connection state reported by Fermax. Reads off when Fermax reports the intercom as disconnected. |

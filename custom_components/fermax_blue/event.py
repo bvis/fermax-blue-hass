@@ -166,6 +166,7 @@ class FermaxCallStatusEvent(FermaxBlueEventEntity):
         )
 
     @callback
-    def _handle_event(self, event_type: str, room_id: str | None) -> None:
-        self._trigger_event(event_type, {"room_id": room_id} if room_id else None)
+    def _handle_event(self, event_type: str, room_id: str | None, reason: str | None) -> None:
+        attrs = {"room_id": room_id, "reason": reason}
+        self._trigger_event(event_type, {k: v for k, v in attrs.items() if v} or None)
         self.async_write_ha_state()
