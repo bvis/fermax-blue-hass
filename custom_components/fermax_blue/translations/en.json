@@ -107,9 +107,18 @@
         "state_attributes": {
           "event_type": {
             "state": {
-              "ring": "Ring",
+              "ring": "Ring"
+            }
+          }
+        }
+      },
+      "call": {
+        "name": "Call",
+        "state_attributes": {
+          "event_type": {
+            "state": {
               "call_attended": "Answered elsewhere",
-              "call_ended": "Call ended"
+              "call_ended": "Ended"
             }
           }
         }

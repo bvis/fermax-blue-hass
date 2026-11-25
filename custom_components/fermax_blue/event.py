@@ -52,15 +52,16 @@ async def async_setup_entry(
         entities.append(FermaxDoorbellEvent(coordinator))
         entities.append(FermaxDoorOpenedEvent(coordinator))
         entities.append(FermaxCameraOnEvent(coordinator))
+        entities.append(FermaxCallStatusEvent(coordinator))
 
     async_add_entities(entities)
 
 
 class FermaxDoorbellEvent(FermaxBlueEventEntity):
-    """Event entity for doorbell rings, and calls taken or ended elsewhere (#197)."""
+    """Event entity for doorbell rings."""
 
     _attr_translation_key = "doorbell"
-    _attr_event_types = ["ring", "call_attended", "call_ended"]
+    _attr_event_types = ["ring"]
 
     def __init__(self, coordinator: FermaxBlueCoordinator) -> None:
         super().__init__(coordinator)
@@ -75,11 +76,6 @@ class FermaxDoorbellEvent(FermaxBlueEventEntity):
                 self.hass, SIGNAL_DOORBELL_RING.format(self._device_id), self._handle_event
             )
         )
-        self.async_on_remove(
-            async_dispatcher_connect(
-                self.hass, SIGNAL_CALL_STATUS.format(self._device_id), self._handle_call_status
-            )
-        )
 
     @callback
     def _handle_event(self, door: str | None = None) -> None:
@@ -87,11 +83,6 @@ class FermaxDoorbellEvent(FermaxBlueEventEntity):
             self._trigger_event("ring", {"door": door})
         else:
             self._trigger_event("ring")
-        self.async_write_ha_state()
-
-    @callback
-    def _handle_call_status(self, event_type: str, room_id: str | None) -> None:
-        self._trigger_event(event_type, {"room_id": room_id} if room_id else None)
         self.async_write_ha_state()
 
 
@@ -146,4 +137,35 @@ class FermaxCameraOnEvent(FermaxBlueEventEntity):
     @callback
     def _handle_event(self) -> None:
         self._trigger_event("camera_on")
+        self.async_write_ha_state()
+
+
+class FermaxCallStatusEvent(FermaxBlueEventEntity):
+    """Event entity for calls answered or ended on the monitor or the app (#197).
+
+    Its own entity, so automations triggered by any doorbell event change keep
+    firing only on rings.
+    """
+
+    _attr_translation_key = "call"
+    _attr_event_types = ["call_attended", "call_ended"]
+
+    def __init__(self, coordinator: FermaxBlueCoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{self._device_id}_call_event"
+
+    async def async_added_to_hass(self) -> None:
+        """Register callbacks when added to hass."""
+        await super().async_added_to_hass()
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass,
+                SIGNAL_CALL_STATUS.format(self._device_id),
+                self._handle_event,
+            )
+        )
+
+    @callback
+    def _handle_event(self, event_type: str, room_id: str | None) -> None:
+        self._trigger_event(event_type, {"room_id": room_id} if room_id else None)
         self.async_write_ha_state()

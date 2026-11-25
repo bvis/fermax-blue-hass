@@ -107,9 +107,18 @@
         "state_attributes": {
           "event_type": {
             "state": {
-              "ring": "Dzwonienie",
+              "ring": "Dzwonienie"
+            }
+          }
+        }
+      },
+      "call": {
+        "name": "Połączenie",
+        "state_attributes": {
+          "event_type": {
+            "state": {
               "call_attended": "Odebrano gdzie indziej",
-              "call_ended": "Połączenie zakończone"
+              "call_ended": "Zakończono"
             }
           }
         }

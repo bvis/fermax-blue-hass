@@ -107,9 +107,18 @@
         "state_attributes": {
           "event_type": {
             "state": {
-              "ring": "Toque",
+              "ring": "Toque"
+            }
+          }
+        }
+      },
+      "call": {
+        "name": "Chamada",
+        "state_attributes": {
+          "event_type": {
+            "state": {
               "call_attended": "Atendida noutro dispositivo",
-              "call_ended": "Chamada terminada"
+              "call_ended": "Terminada"
             }
           }
         }

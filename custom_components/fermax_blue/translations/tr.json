@@ -107,9 +107,18 @@
         "state_attributes": {
           "event_type": {
             "state": {
-              "ring": "Çalma",
+              "ring": "Çalma"
+            }
+          }
+        }
+      },
+      "call": {
+        "name": "Arama",
+        "state_attributes": {
+          "event_type": {
+            "state": {
               "call_attended": "Başka cihazda yanıtlandı",
-              "call_ended": "Arama sona erdi"
+              "call_ended": "Sona erdi"
             }
           }
         }

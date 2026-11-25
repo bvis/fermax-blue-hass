@@ -107,9 +107,18 @@
         "state_attributes": {
           "event_type": {
             "state": {
-              "ring": "Bel",
+              "ring": "Bel"
+            }
+          }
+        }
+      },
+      "call": {
+        "name": "Gesprek",
+        "state_attributes": {
+          "event_type": {
+            "state": {
               "call_attended": "Elders beantwoord",
-              "call_ended": "Gesprek beëindigd"
+              "call_ended": "Beëindigd"
             }
           }
         }

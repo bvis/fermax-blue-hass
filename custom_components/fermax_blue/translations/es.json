@@ -107,9 +107,18 @@
         "state_attributes": {
           "event_type": {
             "state": {
-              "ring": "Llamada",
+              "ring": "Llamada"
+            }
+          }
+        }
+      },
+      "call": {
+        "name": "Llamada",
+        "state_attributes": {
+          "event_type": {
+            "state": {
               "call_attended": "Atendida en otro dispositivo",
-              "call_ended": "Llamada terminada"
+              "call_ended": "Terminada"
             }
           }
         }

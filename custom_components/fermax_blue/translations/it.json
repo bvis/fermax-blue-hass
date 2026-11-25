@@ -107,9 +107,18 @@
         "state_attributes": {
           "event_type": {
             "state": {
-              "ring": "Suonata",
+              "ring": "Suonata"
+            }
+          }
+        }
+      },
+      "call": {
+        "name": "Chiamata",
+        "state_attributes": {
+          "event_type": {
+            "state": {
               "call_attended": "Risposta altrove",
-              "call_ended": "Chiamata terminata"
+              "call_ended": "Terminata"
             }
           }
         }
