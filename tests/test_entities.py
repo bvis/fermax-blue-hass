@@ -1202,11 +1202,15 @@ class TestEventEntities:
         entity = self._make(FermaxCallStatusEvent, mock_coordinator)
         assert entity.unique_id == "test_dev_call_event"
         assert entity.event_types == ["call_attended", "call_ended"]
-        entity._handle_event("call_attended", "room1")
+        entity._handle_event("call_attended", "room1", None)
         entity._trigger_event.assert_called_once_with("call_attended", {"room_id": "room1"})
-        entity._handle_event("call_ended", None)
+        entity._handle_event("call_ended", None, None)
         entity._trigger_event.assert_called_with("call_ended", None)
-        assert entity.async_write_ha_state.call_count == 2
+        entity._handle_event("call_ended", "room1", "missed")
+        entity._trigger_event.assert_called_with(
+            "call_ended", {"room_id": "room1", "reason": "missed"}
+        )
+        assert entity.async_write_ha_state.call_count == 3
 
     @pytest.mark.asyncio
     async def test_doorbell_listens_to_the_device_whatever_its_doors(self, mock_coordinator):

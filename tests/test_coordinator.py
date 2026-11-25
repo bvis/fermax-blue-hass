@@ -1286,7 +1286,7 @@ class TestHandleNotification:
         dispatch, _ = self._fire(full_coordinator, attend, persistent_id="attend")
 
         dispatch.assert_any_call(
-            full_coordinator.hass, SIGNAL_CALL_STATUS.format("dev1"), "call_attended", "room1"
+            full_coordinator.hass, SIGNAL_CALL_STATUS.format("dev1"), "call_attended", "room1", None
         )
         assert full_coordinator.doorbell_ringing is False
         timer.assert_called_once()
@@ -1301,9 +1301,31 @@ class TestHandleNotification:
         dispatch, _ = self._fire(full_coordinator, end, persistent_id="end")
 
         dispatch.assert_called_once_with(
-            full_coordinator.hass, SIGNAL_CALL_STATUS.format("dev1"), "call_ended", "older"
+            full_coordinator.hass, SIGNAL_CALL_STATUS.format("dev1"), "call_ended", "older", None
         )
         assert full_coordinator.doorbell_ringing is True
+
+    @pytest.mark.parametrize(
+        ("title_key", "reason"),
+        [
+            ("notification_call_answered_by_device_title", "answered_on_monitor"),
+            ("notification_call_missed_title", "missed"),
+            ("something_new", None),
+        ],
+    )
+    def test_call_end_says_why(self, full_coordinator, title_key, reason):
+        # Monitor pick-up and nobody answering both send CallEnd (#197)
+        _close_coro_tasks(full_coordinator)
+        end = {
+            "FermaxNotificationType": "CallEnd",
+            "RoomId": "room1",
+            "NotificationTitleLocKey": title_key,
+        }
+        dispatch, _ = self._fire(full_coordinator, end, persistent_id="end")
+
+        dispatch.assert_called_once_with(
+            full_coordinator.hass, SIGNAL_CALL_STATUS.format("dev1"), "call_ended", "room1", reason
+        )
 
     def test_ring_reset_callback_clears_state(self, full_coordinator):
         _close_coro_tasks(full_coordinator)

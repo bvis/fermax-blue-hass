@@ -58,6 +58,11 @@ _LOGGER = logging.getLogger(__name__)
 DOORBELL_RESET_SECONDS = 30
 # Pushes about a call taken or ended on another device, as doorbell event types (#197)
 CALL_STATUS_EVENTS = {"CallAttend": "call_attended", "CallEnd": "call_ended"}
+# Why a call ended, from the push's title key (#197)
+CALL_END_REASONS = {
+    "notification_call_answered_by_device_title": "answered_on_monitor",
+    "notification_call_missed_title": "missed",
+}
 CAMERA_TIMEOUT_SECONDS = 90
 # The server bounds unattended preview sessions by the push payload's
 # PreviewTimeout field (29 s by default), independent of our local timer.
@@ -666,6 +671,7 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
                 SIGNAL_CALL_STATUS.format(self.pairing.device_id),
                 event_type,
                 room_id,
+                CALL_END_REASONS.get(data.get("NotificationTitleLocKey", "")),
             )
             if self._doorbell_ringing and room_id and room_id == self._ring_room_id:
                 if self._doorbell_reset_unsub:
