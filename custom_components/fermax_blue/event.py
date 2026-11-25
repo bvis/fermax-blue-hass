@@ -7,7 +7,12 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import SIGNAL_CAMERA_ON, SIGNAL_DOOR_OPENED, SIGNAL_DOORBELL_RING
+from .const import (
+    SIGNAL_CALL_STATUS,
+    SIGNAL_CAMERA_ON,
+    SIGNAL_DOOR_OPENED,
+    SIGNAL_DOORBELL_RING,
+)
 from .coordinator import FermaxBlueConfigEntry, FermaxBlueCoordinator
 from .entity import FermaxBlueEntity
 
@@ -52,10 +57,10 @@ async def async_setup_entry(
 
 
 class FermaxDoorbellEvent(FermaxBlueEventEntity):
-    """Event entity for doorbell rings."""
+    """Event entity for doorbell rings, and calls taken or ended elsewhere (#197)."""
 
     _attr_translation_key = "doorbell"
-    _attr_event_types = ["ring"]
+    _attr_event_types = ["ring", "call_attended", "call_ended"]
 
     def __init__(self, coordinator: FermaxBlueCoordinator) -> None:
         super().__init__(coordinator)
@@ -70,6 +75,11 @@ class FermaxDoorbellEvent(FermaxBlueEventEntity):
                 self.hass, SIGNAL_DOORBELL_RING.format(self._device_id), self._handle_event
             )
         )
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass, SIGNAL_CALL_STATUS.format(self._device_id), self._handle_call_status
+            )
+        )
 
     @callback
     def _handle_event(self, door: str | None = None) -> None:
@@ -77,6 +87,11 @@ class FermaxDoorbellEvent(FermaxBlueEventEntity):
             self._trigger_event("ring", {"door": door})
         else:
             self._trigger_event("ring")
+        self.async_write_ha_state()
+
+    @callback
+    def _handle_call_status(self, event_type: str, room_id: str | None) -> None:
+        self._trigger_event(event_type, {"room_id": room_id} if room_id else None)
         self.async_write_ha_state()
 
 

@@ -107,7 +107,9 @@
         "state_attributes": {
           "event_type": {
             "state": {
-              "ring": "Sonnerie"
+              "ring": "Sonnerie",
+              "call_attended": "Répondu ailleurs",
+              "call_ended": "Appel terminé"
             }
           }
         }

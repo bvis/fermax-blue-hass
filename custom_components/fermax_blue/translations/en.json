@@ -107,7 +107,9 @@
         "state_attributes": {
           "event_type": {
             "state": {
-              "ring": "Ring"
+              "ring": "Ring",
+              "call_attended": "Answered elsewhere",
+              "call_ended": "Call ended"
             }
           }
         }

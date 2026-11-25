@@ -107,7 +107,9 @@
         "state_attributes": {
           "event_type": {
             "state": {
-              "ring": "Bel"
+              "ring": "Bel",
+              "call_attended": "Elders beantwoord",
+              "call_ended": "Gesprek beëindigd"
             }
           }
         }

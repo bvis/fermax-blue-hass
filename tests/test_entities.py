@@ -2,7 +2,7 @@
 
 import asyncio
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 from homeassistant.components.sensor import SensorDeviceClass
@@ -1194,6 +1194,17 @@ class TestEventEntities:
         entity._handle_event("UNSUPPORTED")
         entity._trigger_event.assert_called_once_with("ring", {"door": "UNSUPPORTED"})
 
+    def test_doorbell_fires_calls_taken_or_ended_elsewhere(self, mock_coordinator):
+        from custom_components.fermax_blue.event import FermaxDoorbellEvent
+
+        entity = self._make(FermaxDoorbellEvent, mock_coordinator)
+        assert entity.event_types == ["ring", "call_attended", "call_ended"]
+        entity._handle_call_status("call_attended", "room1")
+        entity._trigger_event.assert_called_once_with("call_attended", {"room_id": "room1"})
+        entity._handle_call_status("call_ended", None)
+        entity._trigger_event.assert_called_with("call_ended", None)
+        assert entity.async_write_ha_state.call_count == 2
+
     @pytest.mark.asyncio
     async def test_doorbell_listens_to_the_device_whatever_its_doors(self, mock_coordinator):
         # Panel doors (#97) are named after the panel, not after the push's AccessDoorKey
@@ -1215,9 +1226,10 @@ class TestEventEntities:
         ):
             await entity.async_added_to_hass()
 
-        connect.assert_called_once_with(
-            entity.hass, "fermax_blue_doorbell_ring_test_dev", entity._handle_event
-        )
+        assert connect.call_args_list == [
+            call(entity.hass, "fermax_blue_doorbell_ring_test_dev", entity._handle_event),
+            call(entity.hass, "fermax_blue_call_status_test_dev", entity._handle_call_status),
+        ]
 
     @pytest.mark.asyncio
     async def test_setup_entry_creates_the_three_event_entities(self, mock_coordinator):

@@ -44,6 +44,7 @@ from .const import (
     FCM_REGISTER_RETRY_INTERVAL,
     RECORDINGS_DIR,
     SIGNAL_CALL_ENDED,
+    SIGNAL_CALL_STATUS,
     SIGNAL_CAMERA_ON,
     SIGNAL_DOOR_OPENED,
     SIGNAL_DOORBELL_RING,
@@ -55,6 +56,8 @@ from .streaming import DEFAULT_SIGNALING_URL, FermaxStreamSession
 _LOGGER = logging.getLogger(__name__)
 
 DOORBELL_RESET_SECONDS = 30
+# Pushes about a call taken or ended on another device, as doorbell event types (#197)
+CALL_STATUS_EVENTS = {"CallAttend": "call_attended", "CallEnd": "call_ended"}
 CAMERA_TIMEOUT_SECONDS = 90
 # The server bounds unattended preview sessions by the push payload's
 # PreviewTimeout field (29 s by default), independent of our local timer.
@@ -119,6 +122,7 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         self._last_photo: bytes | None = None
         self._last_photo_id: str | None = None
         self._doorbell_ringing: bool = False
+        self._ring_room_id: str | None = None
         self._camera_active: bool = False
         self._selected_preview_panel_id: str | None = None
         self._wake_lock = asyncio.Lock()
@@ -632,6 +636,7 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
         # Only trigger doorbell ring for actual calls, not auto-on
         if notification_type == "Call":
             self._doorbell_ringing = True
+            self._ring_room_id = room_id
             self._photo_fetch_pending = True
 
             # Per device, whatever door rang: the push's AccessDoorKey does not
@@ -647,23 +652,36 @@ class FermaxBlueCoordinator(DataUpdateCoordinator):
             if self._doorbell_reset_unsub:
                 self._doorbell_reset_unsub()
 
-            @callback
-            def _reset_ringing(_now: Any) -> None:
-                """Reset doorbell ringing state."""
-                self._doorbell_ringing = False
-                async_dispatcher_send(
-                    self.hass,
-                    SIGNAL_CALL_ENDED.format(self.pairing.device_id),
-                )
-                self.async_set_updated_data(self.data)
-                self._doorbell_reset_unsub = None
-
             self._doorbell_reset_unsub = async_call_later(
-                self.hass, DOORBELL_RESET_SECONDS, _reset_ringing
+                self.hass, DOORBELL_RESET_SECONDS, self._end_ringing
             )
 
             # Trigger a data refresh to get any new photos
             self._background(self.async_request_refresh(), "refresh after ring")
+        elif event_type := CALL_STATUS_EVENTS.get(notification_type):
+            # Taken or hung up on the monitor or the app: automations hear it
+            # now, and the ring of that same call stops without its timer (#197)
+            async_dispatcher_send(
+                self.hass,
+                SIGNAL_CALL_STATUS.format(self.pairing.device_id),
+                event_type,
+                room_id,
+            )
+            if self._doorbell_ringing and room_id and room_id == self._ring_room_id:
+                if self._doorbell_reset_unsub:
+                    self._doorbell_reset_unsub()
+                self._end_ringing(None)
+
+    @callback
+    def _end_ringing(self, _now: Any) -> None:
+        """Reset doorbell ringing state."""
+        self._doorbell_ringing = False
+        async_dispatcher_send(
+            self.hass,
+            SIGNAL_CALL_ENDED.format(self.pairing.device_id),
+        )
+        self.async_set_updated_data(self.data)
+        self._doorbell_reset_unsub = None
 
     async def open_door(self, door_name: str = "GENERAL") -> bool:
         """Open a specific door. Uses in-call endpoint if stream is active."""

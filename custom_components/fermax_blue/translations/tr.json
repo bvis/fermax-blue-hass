@@ -107,7 +107,9 @@
         "state_attributes": {
           "event_type": {
             "state": {
-              "ring": "Çalma"
+              "ring": "Çalma",
+              "call_attended": "Başka cihazda yanıtlandı",
+              "call_ended": "Arama sona erdi"
             }
           }
         }

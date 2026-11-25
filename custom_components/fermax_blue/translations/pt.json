@@ -107,7 +107,9 @@
         "state_attributes": {
           "event_type": {
             "state": {
-              "ring": "Toque"
+              "ring": "Toque",
+              "call_attended": "Atendida noutro dispositivo",
+              "call_ended": "Chamada terminada"
             }
           }
         }

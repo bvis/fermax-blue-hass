@@ -107,7 +107,9 @@
         "state_attributes": {
           "event_type": {
             "state": {
-              "ring": "Klingeln"
+              "ring": "Klingeln",
+              "call_attended": "Anderswo angenommen",
+              "call_ended": "Anruf beendet"
             }
           }
         }
