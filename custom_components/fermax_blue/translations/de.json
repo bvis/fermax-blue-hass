@@ -112,6 +112,17 @@
           }
         }
       },
+      "call": {
+        "name": "Anruf",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "call_attended": "Anderswo angenommen",
+              "call_ended": "Beendet"
+            }
+          }
+        }
+      },
       "door_opened": {
         "name": "Tür geöffnet",
         "state_attributes": {

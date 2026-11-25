@@ -112,6 +112,17 @@
           }
         }
       },
+      "call": {
+        "name": "Arama",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "call_attended": "Başka cihazda yanıtlandı",
+              "call_ended": "Sona erdi"
+            }
+          }
+        }
+      },
       "door_opened": {
         "name": "Kapı açıldı",
         "state_attributes": {

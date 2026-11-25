@@ -112,6 +112,17 @@
           }
         }
       },
+      "call": {
+        "name": "Call",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "call_attended": "Answered elsewhere",
+              "call_ended": "Ended"
+            }
+          }
+        }
+      },
       "door_opened": {
         "name": "Door opened",
         "state_attributes": {

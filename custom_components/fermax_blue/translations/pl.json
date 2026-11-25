@@ -112,6 +112,17 @@
           }
         }
       },
+      "call": {
+        "name": "Połączenie",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "call_attended": "Odebrano gdzie indziej",
+              "call_ended": "Zakończono"
+            }
+          }
+        }
+      },
       "door_opened": {
         "name": "Drzwi otwarte",
         "state_attributes": {

@@ -112,6 +112,17 @@
           }
         }
       },
+      "call": {
+        "name": "Appel",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "call_attended": "Répondu ailleurs",
+              "call_ended": "Terminé"
+            }
+          }
+        }
+      },
       "door_opened": {
         "name": "Porte ouverte",
         "state_attributes": {

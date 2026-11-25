@@ -1194,6 +1194,20 @@ class TestEventEntities:
         entity._handle_event("UNSUPPORTED")
         entity._trigger_event.assert_called_once_with("ring", {"door": "UNSUPPORTED"})
 
+    def test_call_event_fires_calls_taken_or_ended_elsewhere(self, mock_coordinator):
+        # Its own entity: the doorbell event stays ring-only for existing automations (#197)
+        from custom_components.fermax_blue.event import FermaxCallStatusEvent, FermaxDoorbellEvent
+
+        assert self._make(FermaxDoorbellEvent, mock_coordinator).event_types == ["ring"]
+        entity = self._make(FermaxCallStatusEvent, mock_coordinator)
+        assert entity.unique_id == "test_dev_call_event"
+        assert entity.event_types == ["call_attended", "call_ended"]
+        entity._handle_event("call_attended", "room1")
+        entity._trigger_event.assert_called_once_with("call_attended", {"room_id": "room1"})
+        entity._handle_event("call_ended", None)
+        entity._trigger_event.assert_called_with("call_ended", None)
+        assert entity.async_write_ha_state.call_count == 2
+
     @pytest.mark.asyncio
     async def test_doorbell_listens_to_the_device_whatever_its_doors(self, mock_coordinator):
         # Panel doors (#97) are named after the panel, not after the push's AccessDoorKey
@@ -1220,7 +1234,28 @@ class TestEventEntities:
         )
 
     @pytest.mark.asyncio
-    async def test_setup_entry_creates_the_three_event_entities(self, mock_coordinator):
+    async def test_call_event_listens_to_its_device(self, mock_coordinator):
+        from custom_components.fermax_blue import event as event_module
+
+        entity = event_module.FermaxCallStatusEvent(mock_coordinator)
+        entity.hass = MagicMock()
+        entity.async_on_remove = MagicMock()
+
+        with (
+            patch(
+                "homeassistant.helpers.update_coordinator.CoordinatorEntity.async_added_to_hass",
+                new_callable=AsyncMock,
+            ),
+            patch.object(event_module, "async_dispatcher_connect") as connect,
+        ):
+            await entity.async_added_to_hass()
+
+        connect.assert_called_once_with(
+            entity.hass, "fermax_blue_call_status_test_dev", entity._handle_event
+        )
+
+    @pytest.mark.asyncio
+    async def test_setup_entry_creates_the_four_event_entities(self, mock_coordinator):
         from custom_components.fermax_blue.event import async_setup_entry
 
         entry = MagicMock()
@@ -1232,6 +1267,7 @@ class TestEventEntities:
         await async_setup_entry(hass, entry, lambda entities: added.extend(entities))
 
         assert sorted(entity.unique_id for entity in added) == [
+            "test_dev_call_event",
             "test_dev_camera_on_event",
             "test_dev_door_opened_event",
             "test_dev_doorbell_event",

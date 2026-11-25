@@ -112,6 +112,17 @@
           }
         }
       },
+      "call": {
+        "name": "Chamada",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "call_attended": "Atendida noutro dispositivo",
+              "call_ended": "Terminada"
+            }
+          }
+        }
+      },
       "door_opened": {
         "name": "Porta aberta",
         "state_attributes": {

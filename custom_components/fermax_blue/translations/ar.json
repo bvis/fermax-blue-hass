@@ -112,6 +112,17 @@
           }
         }
       },
+      "call": {
+        "name": "مكالمة",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "call_attended": "تم الرد من جهاز آخر",
+              "call_ended": "انتهت"
+            }
+          }
+        }
+      },
       "door_opened": {
         "name": "تم فتح الباب",
         "state_attributes": {

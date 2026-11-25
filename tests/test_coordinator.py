@@ -30,6 +30,7 @@ from custom_components.fermax_blue.const import (
     DEFAULT_STREAM_DURATION,
     RECORDINGS_DIR,
     SIGNAL_CALL_ENDED,
+    SIGNAL_CALL_STATUS,
     SIGNAL_CAMERA_ON,
     SIGNAL_DOOR_OPENED,
     SIGNAL_DOORBELL_RING,
@@ -1272,6 +1273,37 @@ class TestHandleNotification:
         )
         # ACK falls back to the persistent id and flags the message as a call
         mock_api.ack_notification.assert_called_once_with("ring1", is_call=True)
+
+    def test_call_taken_elsewhere_fires_and_ends_that_ring(self, full_coordinator, mock_api):
+        # Answered on the monitor or the app: automations hear it now (#197)
+        _close_coro_tasks(full_coordinator)
+        full_coordinator.async_set_updated_data = MagicMock()
+        self._fire(full_coordinator, self._call_data(), persistent_id="ring")
+        timer = MagicMock()
+        full_coordinator._doorbell_reset_unsub = timer
+
+        attend = {"FermaxNotificationType": "CallAttend", "RoomId": "room1"}
+        dispatch, _ = self._fire(full_coordinator, attend, persistent_id="attend")
+
+        dispatch.assert_any_call(
+            full_coordinator.hass, SIGNAL_CALL_STATUS.format("dev1"), "call_attended", "room1"
+        )
+        assert full_coordinator.doorbell_ringing is False
+        timer.assert_called_once()
+        assert full_coordinator._doorbell_reset_unsub is None
+        mock_api.ack_notification.assert_called_with("attend", is_call=True)
+
+    def test_call_end_of_another_call_leaves_the_ring(self, full_coordinator):
+        _close_coro_tasks(full_coordinator)
+        self._fire(full_coordinator, self._call_data(), persistent_id="ring")
+
+        end = {"FermaxNotificationType": "CallEnd", "RoomId": "older"}
+        dispatch, _ = self._fire(full_coordinator, end, persistent_id="end")
+
+        dispatch.assert_called_once_with(
+            full_coordinator.hass, SIGNAL_CALL_STATUS.format("dev1"), "call_ended", "older"
+        )
+        assert full_coordinator.doorbell_ringing is True
 
     def test_ring_reset_callback_clears_state(self, full_coordinator):
         _close_coro_tasks(full_coordinator)

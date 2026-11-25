@@ -112,6 +112,17 @@
           }
         }
       },
+      "call": {
+        "name": "Chiamata",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "call_attended": "Risposta altrove",
+              "call_ended": "Terminata"
+            }
+          }
+        }
+      },
       "door_opened": {
         "name": "Porta aperta",
         "state_attributes": {

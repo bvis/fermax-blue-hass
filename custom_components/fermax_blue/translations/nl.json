@@ -112,6 +112,17 @@
           }
         }
       },
+      "call": {
+        "name": "Gesprek",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "call_attended": "Elders beantwoord",
+              "call_ended": "Beëindigd"
+            }
+          }
+        }
+      },
       "door_opened": {
         "name": "Deur geopend",
         "state_attributes": {

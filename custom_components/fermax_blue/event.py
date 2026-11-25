@@ -7,7 +7,12 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import SIGNAL_CAMERA_ON, SIGNAL_DOOR_OPENED, SIGNAL_DOORBELL_RING
+from .const import (
+    SIGNAL_CALL_STATUS,
+    SIGNAL_CAMERA_ON,
+    SIGNAL_DOOR_OPENED,
+    SIGNAL_DOORBELL_RING,
+)
 from .coordinator import FermaxBlueConfigEntry, FermaxBlueCoordinator
 from .entity import FermaxBlueEntity
 
@@ -47,6 +52,7 @@ async def async_setup_entry(
         entities.append(FermaxDoorbellEvent(coordinator))
         entities.append(FermaxDoorOpenedEvent(coordinator))
         entities.append(FermaxCameraOnEvent(coordinator))
+        entities.append(FermaxCallStatusEvent(coordinator))
 
     async_add_entities(entities)
 
@@ -131,4 +137,35 @@ class FermaxCameraOnEvent(FermaxBlueEventEntity):
     @callback
     def _handle_event(self) -> None:
         self._trigger_event("camera_on")
+        self.async_write_ha_state()
+
+
+class FermaxCallStatusEvent(FermaxBlueEventEntity):
+    """Event entity for calls answered or ended on the monitor or the app (#197).
+
+    Its own entity, so automations triggered by any doorbell event change keep
+    firing only on rings.
+    """
+
+    _attr_translation_key = "call"
+    _attr_event_types = ["call_attended", "call_ended"]
+
+    def __init__(self, coordinator: FermaxBlueCoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{self._device_id}_call_event"
+
+    async def async_added_to_hass(self) -> None:
+        """Register callbacks when added to hass."""
+        await super().async_added_to_hass()
+        self.async_on_remove(
+            async_dispatcher_connect(
+                self.hass,
+                SIGNAL_CALL_STATUS.format(self._device_id),
+                self._handle_event,
+            )
+        )
+
+    @callback
+    def _handle_event(self, event_type: str, room_id: str | None) -> None:
+        self._trigger_event(event_type, {"room_id": room_id} if room_id else None)
         self.async_write_ha_state()
