@@ -190,7 +190,7 @@
         "name": "Deurbelmeldingen"
       },
       "dnd": {
-        "name": "Niet storen"
+        "name": "Oproepen in Home Assistant dempen"
       },
       "photo_caller": {
         "name": "Bezoeker foto"

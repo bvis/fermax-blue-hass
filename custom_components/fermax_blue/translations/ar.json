@@ -190,7 +190,7 @@
         "name": "إشعارات الجرس"
       },
       "dnd": {
-        "name": "عدم الإزعاج"
+        "name": "كتم المكالمات في Home Assistant"
       },
       "photo_caller": {
         "name": "صورة الزائر"

@@ -190,7 +190,7 @@
         "name": "Klingelbenachrichtigungen"
       },
       "dnd": {
-        "name": "Nicht stören"
+        "name": "Anrufe in Home Assistant stummschalten"
       },
       "photo_caller": {
         "name": "Besucherfoto"

@@ -136,7 +136,7 @@ cards:
     cards:
       - type: custom:mushroom-entity-card
         entity: switch.DEVICE_NAME_dnd   # Replace
-        name: No molestar
+        name: Silenciar llamadas en Home Assistant
         icon: mdi:bell-off
         layout: vertical
         tap_action:

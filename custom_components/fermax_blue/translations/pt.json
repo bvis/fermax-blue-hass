@@ -190,7 +190,7 @@
         "name": "Notificações da campainha"
       },
       "dnd": {
-        "name": "Não perturbar"
+        "name": "Silenciar chamadas no Home Assistant"
       },
       "photo_caller": {
         "name": "Foto do visitante"

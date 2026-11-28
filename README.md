@@ -28,7 +28,7 @@ If it's useful to you, you can support its upkeep:
 - **F1 auxiliary button** — Trigger the intercom's F1 function
 - **Switch camera** — During a live preview, stop the current session and start a new one on the next visible panel. The video pauses while the previous session closes; HTTP 409 conflicts are retried up to four attempts (after 2, 4, 8 and 18 seconds). No separate panel buttons are needed. Incoming doorbell calls are not interrupted. Installations with one panel keep the native in-session camera change.
 - **Call guard** — Call the building's guard/janitor
-- **Do Not Disturb** — Toggle DND mode per device (useful for night automations)
+- **Mute calls in Home Assistant** — Home Assistant stops getting the calls of a device, like Do Not Disturb in the app does for one phone. The monitor and the other phones keep ringing
 - **Photo caller control** — Enable/disable automatic visitor photo capture
 - **Opening history** — Track who opened the door and when
 - **Connection status** — Monitor the connection state reported by the cloud (activated NOWIFI monitors can remain usable when reported as `DISCONNECTED`)
@@ -211,7 +211,7 @@ For each paired intercom device, the integration creates:
 | `sensor.<name>_last_opening` | Sensor | Last door opening timestamp (with user, door, guest attributes) |
 | `sensor.<name>_last_call` | Sensor | Last call/doorbell ring timestamp (with call_id, answered, recent_calls count) |
 | `switch.<name>_notifications` | Switch | Enable/disable push notifications |
-| `switch.<name>_dnd` | Switch | Do Not Disturb mode |
+| `switch.<name>_dnd` | Switch | Mute calls in Home Assistant (the monitor and the phones still ring) |
 | `switch.<name>_photo_caller` | Switch | Enable/disable automatic visitor photos |
 | `switch.<name>_ring_preview` | Switch | Enable/disable live view-only preview on ring without answering the call (see [Ring preview](#ring-preview)) |
 | `switch.<name>_ring_photo` | Switch | Take one photo of the visitor on ring and leave the call at once, without answering (see [Ring preview](#ring-preview)) |
@@ -290,7 +290,7 @@ A ready-to-use dashboard card template is included in [`blueprints/fermax_dashbo
 - Door open + camera preview buttons
 - F1 + call guard buttons
 - Doorbell event, connection status, door lock
-- DND, photo caller, notification switches
+- Mute, photo caller, notification switches
 - WiFi signal + last opening info
 
 **To use it:**
@@ -408,11 +408,13 @@ automation:
           flash: long
 ```
 
-### Enable Do Not Disturb at night
+### Pause doorbell calls in Home Assistant at night
+
+The mute switch only affects Home Assistant: no ring events, recordings or automations while it is on. The monitor and the phones with the app ring as usual.
 
 ```yaml
 automation:
-  - alias: "DND at night"
+  - alias: "Mute Fermax calls in Home Assistant at night"
     trigger:
       - platform: time
         at: "23:00:00"
@@ -421,7 +423,7 @@ automation:
         target:
           entity_id: switch.fermax_your_home_dnd
 
-  - alias: "Disable DND in the morning"
+  - alias: "Unmute Fermax calls in the morning"
     trigger:
       - platform: time
         at: "07:00:00"

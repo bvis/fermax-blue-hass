@@ -190,7 +190,7 @@
         "name": "Notificaciones del timbre"
       },
       "dnd": {
-        "name": "No molestar"
+        "name": "Silenciar llamadas en Home Assistant"
       },
       "photo_caller": {
         "name": "Foto de visitante"

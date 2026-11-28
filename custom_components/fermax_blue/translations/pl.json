@@ -190,7 +190,7 @@
         "name": "Powiadomienia dzwonka"
       },
       "dnd": {
-        "name": "Nie przeszkadzać"
+        "name": "Wycisz połączenia w Home Assistant"
       },
       "photo_caller": {
         "name": "Zdjęcie odwiedzającego"

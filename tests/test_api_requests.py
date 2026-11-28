@@ -344,7 +344,7 @@ async def test_do_not_disturb_is_read_and_set_for_this_app() -> None:
     wire.assert_call(
         "POST",
         "/notification/api/v1/mutedevice/me",
-        body={"deviceId": "dev1", "token": "fcm1", "muted": True},
+        body={"deviceId": "dev1", "token": "fcm1", "muteOn": True},
     )
 
 
