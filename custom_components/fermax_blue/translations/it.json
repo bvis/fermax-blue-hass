@@ -190,7 +190,7 @@
         "name": "Notifiche campanello"
       },
       "dnd": {
-        "name": "Non disturbare"
+        "name": "Silenzia le chiamate in Home Assistant"
       },
       "photo_caller": {
         "name": "Foto visitatore"

@@ -723,7 +723,7 @@ class FermaxBlueApi:
         """Set Do Not Disturb status for a device."""
         await self._api_post(
             "/notification/api/v1/mutedevice/me",
-            json={"deviceId": device_id, "token": fcm_token, "muted": enabled},
+            json={"deviceId": device_id, "token": fcm_token, "muteOn": enabled},
         )
 
     async def press_f1(self, device_id: str) -> None:

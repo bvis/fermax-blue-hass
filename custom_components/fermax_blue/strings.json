@@ -190,7 +190,7 @@
         "name": "Doorbell notifications"
       },
       "dnd": {
-        "name": "Do not disturb"
+        "name": "Mute calls in Home Assistant"
       },
       "photo_caller": {
         "name": "Photo caller"

@@ -190,7 +190,7 @@
         "name": "Notifications sonnette"
       },
       "dnd": {
-        "name": "Ne pas déranger"
+        "name": "Couper les appels dans Home Assistant"
       },
       "photo_caller": {
         "name": "Photo visiteur"

@@ -173,7 +173,7 @@ views:
             name: Door lock
           - type: tile
             entity: switch.DEVICE_NAME_dnd
-            name: Do not disturb
+            name: Mute calls in Home Assistant
           - type: tile
             entity: select.DEVICE_NAME_call_mode
             name: Call mode
