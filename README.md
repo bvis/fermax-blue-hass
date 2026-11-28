@@ -410,7 +410,7 @@ automation:
 
 ### Pause doorbell calls in Home Assistant at night
 
-The mute switch only affects Home Assistant: no ring events, recordings or automations while it is on. The monitor and the phones with the app ring as usual.
+The mute switch only affects Home Assistant: while it is on, it gets no ring events, so nothing a ring would start runs (recording, auto-respond, your automations). The camera preview button still works. The monitor and the phones with the app ring as usual.
 
 ```yaml
 automation:
